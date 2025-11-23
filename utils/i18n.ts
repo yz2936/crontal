@@ -1,4 +1,5 @@
 
+
 import { Language } from '../types';
 
 export const translations = {
@@ -122,7 +123,10 @@ export const translations = {
     quote_submitted_desc: "Since this is a serverless application, you must send this secure link back to the Buyer so they can import your pricing.",
     copy_response_link: "Copy Response Link",
     close_window: "Close",
-    quote_imported_success: "Successfully imported quote from {supplier}!"
+    quote_imported_success: "Successfully imported quote from {supplier}!",
+    
+    expand_details: "Expand Details",
+    collapse_details: "Collapse Details"
   },
   es: {
     welcome: "Bienvenido",
@@ -241,7 +245,10 @@ export const translations = {
     quote_submitted_desc: "Al ser una aplicación sin servidor, debe enviar este enlace seguro al Comprador para que importe sus precios.",
     copy_response_link: "Copiar Enlace de Respuesta",
     close_window: "Cerrar",
-    quote_imported_success: "¡Cotización de {supplier} importada con éxito!"
+    quote_imported_success: "¡Cotización de {supplier} importada con éxito!",
+
+    expand_details: "Expandir Detalles",
+    collapse_details: "Contraer Detalles"
   },
   zh: {
     welcome: "欢迎",
@@ -360,7 +367,10 @@ export const translations = {
     quote_submitted_desc: "由于这是一个无服务器应用程序，您必须将此安全链接发送回买家，以便他们导入您的价格。",
     copy_response_link: "复制回复链接",
     close_window: "关闭",
-    quote_imported_success: "成功导入来自 {supplier} 的报价！"
+    quote_imported_success: "成功导入来自 {supplier} 的报价！",
+    
+    expand_details: "展开详情",
+    collapse_details: "收起详情"
   }
 };
 

@@ -25,10 +25,12 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
   const [isTourActive, setIsTourActive] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   
+  // UI State
   const [activeStep, setActiveStep] = useState(1);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'price' | 'leadTime'>('price');
   const [awardEmail, setAwardEmail] = useState('');
+  const [isInfoCollapsed, setIsInfoCollapsed] = useState(false); // New state for collapsing
 
   // Navigation State
   const [showNav, setShowNav] = useState(true);
@@ -104,13 +106,15 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       if (target) {
           setRfq(target);
           setMessages([{ role: 'assistant', content: t(lang, 'clarify_default_response') }]);
-          // Close nav on mobile if implemented, or just update view
+          // Auto expand info when loading
+          setIsInfoCollapsed(false);
       }
   };
 
   const handleNewProject = () => {
       setRfq(null);
       setMessages([{ role: 'assistant', content: t(lang, 'initial_greeting') }]);
+      setIsInfoCollapsed(false);
   };
 
   const handleDeleteProject = (e: React.MouseEvent, id: string) => {
@@ -430,7 +434,7 @@ Best regards,
       <Walkthrough steps={steps} isActive={isTourActive} onClose={() => setIsTourActive(false)} lang={lang} />
       
       {/* Sidebar Navigation */}
-      <div className="md:w-64 flex-shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+      <div className="md:w-64 flex-shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-fit sticky top-4">
           <div className="p-4 border-b border-slate-100">
               <button 
                   onClick={handleNewProject}
@@ -440,7 +444,7 @@ Best regards,
                   {t(lang, 'nav_new_project')}
               </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div className="flex-1 overflow-y-auto p-2 space-y-1 max-h-[calc(100vh-200px)]">
               <h3 className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t(lang, 'nav_drafts')}</h3>
               {savedRfqs.length === 0 && (
                   <p className="px-3 text-xs text-slate-400 italic">No saved projects</p>
@@ -663,112 +667,155 @@ Best regards,
                             </div>
                         ) : (
                             <>
-                                {/* Project Information Section */}
-                                <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-4">
-                                    <div className="flex justify-between items-start">
-                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">{t(lang, 'project_info')}</h3>
-                                        <div className="flex gap-2">
-                                            <button 
-                                                onClick={handleAudit}
-                                                disabled={isAuditing}
-                                                className="text-[10px] text-orange-600 hover:text-white hover:bg-orange-500 font-medium flex items-center gap-1 bg-white border border-orange-200 px-2 py-1 rounded transition disabled:opacity-50"
-                                            >
-                                                {isAuditing ? t(lang, 'audit_running') : t(lang, 'audit_specs')}
-                                            </button>
-                                            <button 
-                                                onClick={handleGenerateSummary}
-                                                disabled={isGeneratingSummary}
-                                                className="text-[10px] text-accent hover:text-white hover:bg-accent font-medium flex items-center gap-1 bg-white border border-accent/20 px-2 py-1 rounded transition disabled:opacity-50"
-                                            >
-                                                {isGeneratingSummary ? '...' : t(lang, 'generate_summary')}
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="grid md:grid-cols-1 gap-4">
-                                        <div className="group">
-                                            <label className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">{t(lang, 'project_name')}</label>
-                                            <input 
-                                                value={rfq.project_name || ''}
-                                                onChange={(e) => setRfq({...rfq, project_name: e.target.value})}
-                                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent outline-none font-medium text-sm transition"
-                                                placeholder="Enter project name"
-                                            />
-                                        </div>
-                                        <div className="group">
-                                            <label className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">{t(lang, 'project_description')}</label>
-                                            <textarea 
-                                                value={rfq.project_description || ''}
-                                                onChange={(e) => setRfq({...rfq, project_description: e.target.value})}
-                                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent outline-none text-xs transition min-h-[60px]"
-                                                placeholder="Provide context for the supplier..."
-                                            />
-                                        </div>
-                                        {rfq.ai_summary && (
-                                            <div className="bg-accent/5 rounded-lg p-3 border border-accent/10 animate-in fade-in">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-[10px] font-bold text-accent uppercase">{t(lang, 'ai_summary_label')}</span>
+                                {/* Collapsible Project Info Section */}
+                                <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden transition-all duration-300 ease-in-out">
+                                    {/* Info Header / Toggle Bar */}
+                                    <div 
+                                        onClick={() => setIsInfoCollapsed(!isInfoCollapsed)}
+                                        className="px-4 py-3 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">{t(lang, 'project_info')}</h3>
+                                            
+                                            {/* Summary View when collapsed */}
+                                            {isInfoCollapsed && (
+                                                <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2">
+                                                     <div className="h-4 w-[1px] bg-slate-300"></div>
+                                                     <span className="text-sm font-semibold text-slate-900">{rfq.project_name || "Untitled Project"}</span>
+                                                     <span className={`text-[10px] px-2 py-0.5 rounded-full border ${rfq.status === 'awarded' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-200 text-slate-600 border-slate-300'}`}>
+                                                        {rfq.status || 'draft'}
+                                                     </span>
                                                 </div>
-                                                <p className="text-xs text-slate-700 italic leading-relaxed">"{rfq.ai_summary}"</p>
-                                            </div>
-                                        )}
-                                        {rfq.audit_warnings && rfq.audit_warnings.length > 0 && (
-                                            <div className="bg-orange-50 rounded-lg p-3 border border-orange-100 animate-in fade-in">
-                                                 <div className="flex items-center gap-2 mb-1 text-orange-700">
-                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                                    <span className="text-[10px] font-bold uppercase">{t(lang, 'audit_warnings')}</span>
-                                                </div>
-                                                <ul className="list-disc list-inside text-xs text-orange-800 space-y-1">
-                                                    {rfq.audit_warnings.map((w, idx) => <li key={idx}>{w}</li>)}
-                                                </ul>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-3">
+                                             {/* Only show actions in header when collapsed to save space */}
+                                            {isInfoCollapsed && (
+                                                 <div className="flex gap-2 mr-2" onClick={(e) => e.stopPropagation()}>
+                                                    <button onClick={handleGenerateSummary} className="text-[10px] text-accent hover:underline">{t(lang, 'generate_summary')}</button>
+                                                 </div>
+                                            )}
 
-                                {/* EPC Commercial Terms */}
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
-                                        <div className="group">
-                                            <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'destination')}</span>
-                                            <input 
-                                                value={rfq.commercial.destination || ''}
-                                                onChange={(e) => handleUpdateCommercial('destination', e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent focus:bg-white transition outline-none font-medium"
-                                            />
-                                        </div>
-                                        <div className="group">
-                                            <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'incoterm')}</span>
-                                            <input 
-                                                value={rfq.commercial.incoterm || ''}
-                                                onChange={(e) => handleUpdateCommercial('incoterm', e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent focus:bg-white transition outline-none font-medium"
-                                            />
-                                        </div>
-                                        <div className="group">
-                                            <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'payment')}</span>
-                                            <input 
-                                                value={rfq.commercial.paymentTerm || ''}
-                                                onChange={(e) => handleUpdateCommercial('paymentTerm', e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent focus:bg-white transition outline-none font-medium"
-                                            />
+                                            <button className="text-slate-400 hover:text-slate-600 transition p-1">
+                                                {isInfoCollapsed ? (
+                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                                ) : (
+                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                                                )}
+                                            </button>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" checked={rfq.commercial.req_mtr} onChange={e => handleUpdateCommercial('req_mtr', e.target.checked)} className="rounded border-slate-300 text-accent focus:ring-accent" />
-                                            <span className="text-xs font-medium text-slate-700">{t(lang, 'req_mtr')}</span>
-                                        </label>
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" checked={rfq.commercial.req_avl} onChange={e => handleUpdateCommercial('req_avl', e.target.checked)} className="rounded border-slate-300 text-accent focus:ring-accent" />
-                                            <span className="text-xs font-medium text-slate-700">{t(lang, 'req_avl')}</span>
-                                        </label>
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" checked={rfq.commercial.req_tpi} onChange={e => handleUpdateCommercial('req_tpi', e.target.checked)} className="rounded border-slate-300 text-accent focus:ring-accent" />
-                                            <span className="text-xs font-medium text-slate-700">{t(lang, 'req_tpi')}</span>
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-medium text-slate-700 whitespace-nowrap">{t(lang, 'warranty')}</span>
-                                            <input type="number" value={rfq.commercial.warranty_months} onChange={e => handleUpdateCommercial('warranty_months', parseInt(e.target.value))} className="w-12 text-center text-xs border border-slate-300 rounded" />
+
+                                    {/* Expanded Content */}
+                                    <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isInfoCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1000px] opacity-100'}`}>
+                                        <div className="p-4 space-y-4 pt-0">
+                                            <div className="flex justify-end gap-2 mb-2">
+                                                <button 
+                                                    onClick={handleAudit}
+                                                    disabled={isAuditing}
+                                                    className="text-[10px] text-orange-600 hover:text-white hover:bg-orange-500 font-medium flex items-center gap-1 bg-white border border-orange-200 px-2 py-1 rounded transition disabled:opacity-50"
+                                                >
+                                                    {isAuditing ? t(lang, 'audit_running') : t(lang, 'audit_specs')}
+                                                </button>
+                                                <button 
+                                                    onClick={handleGenerateSummary}
+                                                    disabled={isGeneratingSummary}
+                                                    className="text-[10px] text-accent hover:text-white hover:bg-accent font-medium flex items-center gap-1 bg-white border border-accent/20 px-2 py-1 rounded transition disabled:opacity-50"
+                                                >
+                                                    {isGeneratingSummary ? '...' : t(lang, 'generate_summary')}
+                                                </button>
+                                            </div>
+
+                                            <div className="grid md:grid-cols-1 gap-4">
+                                                <div className="group">
+                                                    <label className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">{t(lang, 'project_name')}</label>
+                                                    <input 
+                                                        value={rfq.project_name || ''}
+                                                        onChange={(e) => setRfq({...rfq, project_name: e.target.value})}
+                                                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent outline-none font-medium text-sm transition"
+                                                        placeholder="Enter project name"
+                                                    />
+                                                </div>
+                                                <div className="group">
+                                                    <label className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">{t(lang, 'project_description')}</label>
+                                                    <textarea 
+                                                        value={rfq.project_description || ''}
+                                                        onChange={(e) => setRfq({...rfq, project_description: e.target.value})}
+                                                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent outline-none text-xs transition min-h-[60px]"
+                                                        placeholder="Provide context for the supplier..."
+                                                    />
+                                                </div>
+                                                {rfq.ai_summary && (
+                                                    <div className="bg-accent/5 rounded-lg p-3 border border-accent/10 animate-in fade-in">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="text-[10px] font-bold text-accent uppercase">{t(lang, 'ai_summary_label')}</span>
+                                                        </div>
+                                                        <p className="text-xs text-slate-700 italic leading-relaxed">"{rfq.ai_summary}"</p>
+                                                    </div>
+                                                )}
+                                                {rfq.audit_warnings && rfq.audit_warnings.length > 0 && (
+                                                    <div className="bg-orange-50 rounded-lg p-3 border border-orange-100 animate-in fade-in">
+                                                        <div className="flex items-center gap-2 mb-1 text-orange-700">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                                            <span className="text-[10px] font-bold uppercase">{t(lang, 'audit_warnings')}</span>
+                                                        </div>
+                                                        <ul className="list-disc list-inside text-xs text-orange-800 space-y-1">
+                                                            {rfq.audit_warnings.map((w, idx) => <li key={idx}>{w}</li>)}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* EPC Commercial Terms */}
+                                            <div className="pt-4 border-t border-slate-100 mt-4">
+                                                <div className="space-y-4">
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
+                                                        <div className="group">
+                                                            <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'destination')}</span>
+                                                            <input 
+                                                                value={rfq.commercial.destination || ''}
+                                                                onChange={(e) => handleUpdateCommercial('destination', e.target.value)}
+                                                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent transition outline-none font-medium"
+                                                            />
+                                                        </div>
+                                                        <div className="group">
+                                                            <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'incoterm')}</span>
+                                                            <input 
+                                                                value={rfq.commercial.incoterm || ''}
+                                                                onChange={(e) => handleUpdateCommercial('incoterm', e.target.value)}
+                                                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent transition outline-none font-medium"
+                                                            />
+                                                        </div>
+                                                        <div className="group">
+                                                            <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'payment')}</span>
+                                                            <input 
+                                                                value={rfq.commercial.paymentTerm || ''}
+                                                                onChange={(e) => handleUpdateCommercial('paymentTerm', e.target.value)}
+                                                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent transition outline-none font-medium"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-white p-4 rounded-xl border border-slate-200">
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input type="checkbox" checked={rfq.commercial.req_mtr} onChange={e => handleUpdateCommercial('req_mtr', e.target.checked)} className="rounded border-slate-300 text-accent focus:ring-accent" />
+                                                            <span className="text-xs font-medium text-slate-700">{t(lang, 'req_mtr')}</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input type="checkbox" checked={rfq.commercial.req_avl} onChange={e => handleUpdateCommercial('req_avl', e.target.checked)} className="rounded border-slate-300 text-accent focus:ring-accent" />
+                                                            <span className="text-xs font-medium text-slate-700">{t(lang, 'req_avl')}</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input type="checkbox" checked={rfq.commercial.req_tpi} onChange={e => handleUpdateCommercial('req_tpi', e.target.checked)} className="rounded border-slate-300 text-accent focus:ring-accent" />
+                                                            <span className="text-xs font-medium text-slate-700">{t(lang, 'req_tpi')}</span>
+                                                        </label>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-medium text-slate-700 whitespace-nowrap">{t(lang, 'warranty')}</span>
+                                                            <input type="number" value={rfq.commercial.warranty_months} onChange={e => handleUpdateCommercial('warranty_months', parseInt(e.target.value))} className="w-12 text-center text-xs border border-slate-300 rounded" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
