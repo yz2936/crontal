@@ -43,6 +43,7 @@ export interface Dimension {
   
   export interface Rfq {
     id: string;
+    status?: 'draft' | 'sent' | 'awarded';
     project_name: string | null;
     project_description?: string; 
     ai_summary?: string;
@@ -58,11 +59,13 @@ export interface Dimension {
     unitPrice: number | null;
     quantity: number | null;
     lineTotal: number | null;
+    rfqDescription?: string; // Helper for display
   }
   
   export interface Quote {
     id: string;
     rfqId: string;
+    projectName?: string; // Helper for list view
     supplierName: string;
     currency: string;
     total: number;
