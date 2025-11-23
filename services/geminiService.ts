@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Rfq, LineItem, FileAttachment, Language } from "../types";
 
@@ -150,7 +151,11 @@ export const parseRequest = async (
             destination: parsedData.commercial?.destination || "",
             incoterm: parsedData.commercial?.incoterm || "",
             paymentTerm: parsedData.commercial?.payment_terms || "",
-            otherRequirements: parsedData.commercial?.other_requirements || ""
+            otherRequirements: parsedData.commercial?.other_requirements || "",
+            req_mtr: false,
+            req_avl: false,
+            req_tpi: false,
+            warranty_months: 12
         },
         line_items: items
     };
@@ -189,3 +194,80 @@ export const clarifyRequest = async (rfq: Rfq, userMessage: string, lang: Langua
         return "I've processed your request. Please check the table on the right.";
     }
 }
+
+export const generateRfqSummary = async (rfq: Rfq, lang: Language = 'en'): Promise<string> => {
+  const systemInstruction = `
+    You are an expert Procurement Manager.
+    Your task is to write a concise, professional Executive Summary for an RFQ (Request for Quotation) that will be sent to suppliers.
+    
+    Inputs:
+    - Project Name: ${rfq.project_name}
+    - Project Description: ${rfq.project_description || "Not provided"}
+    - Line Items: ${rfq.line_items.length} items
+    - Key Materials: ${Array.from(new Set(rfq.line_items.map(i => i.material_grade))).join(', ')}
+    
+    Requirements:
+    - Language: ${lang}
+    - Length: Under 80 words.
+    - Tone: Professional, Urgent, Clear.
+    - Content: Summarize what is being bought, the scale of the project, and the urgency. Do NOT list every single item. Focus on the "Big Picture" for the supplier.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL_FAST,
+      contents: "Generate executive summary.",
+      config: { 
+        systemInstruction,
+        maxOutputTokens: 200,
+        temperature: 0.7 
+      }
+    });
+    return response.text || "";
+  } catch (e) {
+    console.error("Summary Generation Error", e);
+    return "";
+  }
+};
+
+export const auditRfqSpecs = async (rfq: Rfq, lang: Language = 'en'): Promise<string[]> => {
+    const systemInstruction = `
+      You are an expert EPC Quality Assurance (QA) Engineer.
+      Your job is to audit an RFQ for missing specifications that could lead to procurement errors.
+      
+      Look for:
+      1. Pipes missing Schedule (Wall Thickness) or Material Grade.
+      2. Flanges missing Pressure Class (e.g., #150, #300) or Facing (RF, RTJ).
+      3. Valves missing Trim details or Pressure ratings.
+      4. Ambiguous descriptions (e.g., just "Pipe 4 inch" without standard).
+      
+      Inputs:
+      ${JSON.stringify(rfq.line_items)}
+
+      Output:
+      Return a JSON array of strings. Each string is a warning message referencing the Line Number.
+      Example: ["Line 1: Missing Schedule (WT).", "Line 3: Flange Class not specified."]
+      If perfect, return empty array [].
+      Language: ${lang}
+    `;
+  
+    try {
+      const response = await ai.models.generateContent({
+        model: MODEL_FAST,
+        contents: "Audit these specs.",
+        config: { 
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        }
+      });
+      const parsed = JSON.parse(response.text || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.error("Audit Error", e);
+      return [];
+    }
+  };

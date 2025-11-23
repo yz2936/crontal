@@ -1,3 +1,4 @@
+
 export interface Dimension {
     value: number | null;
     unit: string | null;
@@ -33,11 +34,19 @@ export interface Dimension {
     incoterm: string;
     paymentTerm: string;
     otherRequirements: string;
+    // EPC Specific Booleans
+    req_mtr: boolean; // Material Test Reports (EN 10204 3.1)
+    req_avl: boolean; // Approved Vendor List Restriction
+    req_tpi: boolean; // Third Party Inspection
+    warranty_months: number;
   }
   
   export interface Rfq {
     id: string;
     project_name: string | null;
+    project_description?: string; 
+    ai_summary?: string;
+    audit_warnings?: string[]; // AI Engineering Audit results
     line_items: LineItem[];
     original_text: string;
     commercial: CommercialTerms;

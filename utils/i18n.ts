@@ -1,3 +1,4 @@
+
 import { Language } from '../types';
 
 export const translations = {
@@ -18,6 +19,7 @@ export const translations = {
     download_pdf: "Download PDF",
     share_link: "Share Link (Demo)",
     no_rfq: "No RFQ generated yet.",
+    load_sample: "Load Sample Piping Project",
     destination: "Destination",
     incoterm: "Incoterm",
     payment: "Payment",
@@ -60,20 +62,45 @@ export const translations = {
     sort_by: "Sort by:",
     price: "Price",
     delivery: "Delivery",
-    select_to_award: "Select to Award",
-    generate_award: "Generate Award Email",
+    select_to_award: "Select Quote to Award",
+    generate_award: "Draft Award Email",
     award_email_preview: "Award Email Preview",
     copy_email: "Copy Email",
     download_award_pdf: "Download Award PDF",
     best_offer: "Best Offer",
+    fastest_delivery: "Fastest",
     edit_mode_hint: "Click on any field to edit. Dimensions are split into OD, WT, and Length.",
     link_copied: "Link copied! Open in a new tab to simulate supplier view.",
     return_to_buyer: "Return to Buyer View",
-    initial_greeting: "Hi! I'm Crontal. Tell me what you need to buy (grade, size, quantity), or upload an engineering drawing, and I'll draft the RFQ.",
+    initial_greeting: "Hi! I'm Crontal. Dime what you need to buy (grade, size, quantity), or upload an engineering drawing, and I'll draft the RFQ.",
     rfq_created_msg: "I've created an RFQ with {count} line items. I have separated the dimensions for you.",
     analyzing_error: "Sorry, I had trouble understanding that. Please try again.",
     clarify_default_response: "I've updated the table. Please review the details.",
-    delete_item: "Delete Item"
+    delete_item: "Delete Item",
+    project_info: "Project Information",
+    project_name: "Project Name",
+    project_description: "Project Description (Supplier Context)",
+    generate_summary: "Generate Supplier Summary",
+    ai_summary_label: "AI Generated Summary",
+    
+    // EPC Features
+    dashboard_title: "Procurement Dashboard",
+    action_chat_title: "Draft with AI",
+    action_chat_desc: "Chat or upload PDF/Images to extract specs",
+    action_sample_title: "Load Piping Sample",
+    action_sample_desc: "Pre-load complex pipe, flange & valve data",
+    action_upload_title: "Upload Excel/PDF",
+    action_upload_desc: "Parse existing MTOs directly",
+    
+    audit_specs: "Audit Specs with AI",
+    audit_running: "Auditing...",
+    audit_clean: "Audit Passed: No obvious missing specs found.",
+    audit_warnings: "Audit Warnings Found",
+    
+    req_mtr: "MTR Required (EN 10204 3.1)",
+    req_avl: "Approved Vendor List Only",
+    req_tpi: "Third Party Inspection",
+    warranty: "Warranty (Months)"
   },
   es: {
     welcome: "Bienvenido",
@@ -92,6 +119,7 @@ export const translations = {
     download_pdf: "Descargar PDF",
     share_link: "Compartir Enlace",
     no_rfq: "Aún no se ha generado RFQ.",
+    load_sample: "Cargar Proyecto de Ejemplo",
     destination: "Destino",
     incoterm: "Incoterm",
     payment: "Pago",
@@ -140,6 +168,7 @@ export const translations = {
     copy_email: "Copiar Email",
     download_award_pdf: "Descargar PDF Adjudicación",
     best_offer: "Mejor Oferta",
+    fastest_delivery: "Más Rápido",
     edit_mode_hint: "Haga clic en cualquier campo para editar. Dimensiones divididas en DE, Espesor y Longitud.",
     link_copied: "¡Enlace copiado! Abra en una nueva pestaña para simular la vista del proveedor.",
     return_to_buyer: "Volver al Portal del Comprador",
@@ -147,7 +176,30 @@ export const translations = {
     rfq_created_msg: "He creado una RFQ con {count} partidas. He separado las dimensiones por ti.",
     analyzing_error: "Lo siento, tuve problemas para entender eso. Por favor intenta de nuevo.",
     clarify_default_response: "He actualizado la tabla. Por favor revisa los detalles.",
-    delete_item: "Eliminar ítem"
+    delete_item: "Eliminar ítem",
+    project_info: "Información del Proyecto",
+    project_name: "Nombre del Proyecto",
+    project_description: "Descripción del Proyecto (Contexto)",
+    generate_summary: "Generar Resumen",
+    ai_summary_label: "Resumen Generado por IA",
+
+    dashboard_title: "Panel de Adquisiciones",
+    action_chat_title: "Redactar con IA",
+    action_chat_desc: "Chat o subir PDF/Imágenes",
+    action_sample_title: "Cargar Muestra de Tubería",
+    action_sample_desc: "Datos precargados de tuberías y bridas",
+    action_upload_title: "Subir Excel/PDF",
+    action_upload_desc: "Procesar MTO existentes",
+
+    audit_specs: "Auditar Especificaciones con IA",
+    audit_running: "Auditando...",
+    audit_clean: "Auditoría Aprobada: Sin errores obvios.",
+    audit_warnings: "Advertencias de Auditoría",
+
+    req_mtr: "Requiere MTR (EN 10204 3.1)",
+    req_avl: "Solo Proveedores Aprobados",
+    req_tpi: "Inspección de Terceros",
+    warranty: "Garantía (Meses)"
   },
   zh: {
     welcome: "欢迎",
@@ -166,6 +218,7 @@ export const translations = {
     download_pdf: "下载 PDF",
     share_link: "分享链接",
     no_rfq: "尚未生成询价单。",
+    load_sample: "加载示例管道项目",
     destination: "目的地",
     incoterm: "贸易术语",
     payment: "付款方式",
@@ -214,6 +267,7 @@ export const translations = {
     copy_email: "复制邮件",
     download_award_pdf: "下载授标 PDF",
     best_offer: "最佳报价",
+    fastest_delivery: "最快交货",
     edit_mode_hint: "点击任意字段进行编辑。尺寸分为外径、壁厚和长度。",
     link_copied: "链接已复制！在新标签页打开以模拟供应商视图。",
     return_to_buyer: "返回买家视图",
@@ -221,7 +275,30 @@ export const translations = {
     rfq_created_msg: "我已创建包含 {count} 个物料行的询价单。我已为你分拆了尺寸。",
     analyzing_error: "抱歉，我无法理解您的意思，请重试。",
     clarify_default_response: "我已经更新了表格，请查看详细信息。",
-    delete_item: "删除项目"
+    delete_item: "删除项目",
+    project_info: "项目信息",
+    project_name: "项目名称",
+    project_description: "项目描述（供应商参考）",
+    generate_summary: "生成供应商摘要",
+    ai_summary_label: "AI 生成摘要",
+
+    dashboard_title: "采购仪表板",
+    action_chat_title: "AI 起草",
+    action_chat_desc: "聊天或上传图纸提取规格",
+    action_sample_title: "加载管道示例",
+    action_sample_desc: "预加载复杂的管道、法兰和阀门数据",
+    action_upload_title: "上传 Excel/PDF",
+    action_upload_desc: "直接解析现有 MTO",
+
+    audit_specs: "AI 规格审计",
+    audit_running: "正在审计...",
+    audit_clean: "审计通过：未发现明显缺失。",
+    audit_warnings: "发现审计警告",
+
+    req_mtr: "需要 MTR (EN 10204 3.1)",
+    req_avl: "仅限批准的供应商",
+    req_tpi: "第三方检验",
+    warranty: "保修期（月）"
   }
 };
 

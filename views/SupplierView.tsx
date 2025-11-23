@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Rfq, Quote, Language } from '../types';
 import { t } from '../utils/i18n';
@@ -90,6 +91,24 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                 </button>
             </div>
 
+            {/* AI Summary Banner (If Exists) */}
+            {rfq.ai_summary && (
+                <div className="bg-gradient-to-r from-accent/10 to-transparent p-5 rounded-2xl border border-accent/20 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                        <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1010 10A10 10 0 0012 2zm0 18a8 8 0 118-8 8 8 0 01-8 8z" /></svg>
+                    </div>
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-2 mb-2">
+                             <div className="px-2 py-0.5 bg-accent text-white text-[10px] font-bold rounded-full uppercase tracking-wide">Executive Summary</div>
+                             <span className="text-[10px] text-slate-400">Powered by Gemini</span>
+                        </div>
+                        <p className="text-slate-800 text-sm font-medium leading-relaxed italic max-w-3xl">
+                            "{rfq.ai_summary}"
+                        </p>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl shadow-slate-200/50">
                 <div className="flex flex-col md:flex-row justify-between items-start mb-6 border-b border-slate-100 pb-4 gap-4">
                     <div>
@@ -97,7 +116,15 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                             <h2 className="text-lg font-semibold text-slate-900">{t(lang, 'rfq_label')} {rfq.id}</h2>
                             <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-medium border border-blue-100">Open for Quote</span>
                         </div>
-                        <p className="text-sm text-slate-500 mt-1">{t(lang, 'project_label')} {rfq.project_name}</p>
+                        <p className="text-sm text-slate-500 mt-1"><span className="font-semibold">{t(lang, 'project_label')}</span> {rfq.project_name}</p>
+                        {rfq.project_description && (
+                            <p className="text-xs text-slate-400 mt-1 max-w-xl">{rfq.project_description}</p>
+                        )}
+                        <div className="flex gap-2 mt-3">
+                            {rfq.commercial.req_mtr && <span className="text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded border border-red-100 font-medium">MTR Required</span>}
+                            {rfq.commercial.req_avl && <span className="text-[10px] bg-orange-50 text-orange-600 px-2 py-0.5 rounded border border-orange-100 font-medium">AVL Only</span>}
+                            {rfq.commercial.req_tpi && <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded border border-purple-100 font-medium">TPI Required</span>}
+                        </div>
                     </div>
                     <div className="text-right text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-100">
                         <p><span className="font-semibold">{t(lang, 'dest_label')}</span> {rfq.commercial.destination || t(lang, 'notSpecified')}</p>

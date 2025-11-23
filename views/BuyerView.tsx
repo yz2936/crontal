@@ -1,7 +1,8 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, ChatMessage, Language, LineItem, FileAttachment, Size } from '../types';
-import { parseRequest, clarifyRequest } from '../services/geminiService';
+import { parseRequest, clarifyRequest, generateRfqSummary, auditRfqSpecs } from '../services/geminiService';
 import { Walkthrough } from '../components/Walkthrough';
 import { t } from '../utils/i18n';
 import jsPDF from 'jspdf';
@@ -18,6 +19,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isAuditing, setIsAuditing] = useState(false);
   const [isTourActive, setIsTourActive] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   
@@ -71,6 +74,45 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     });
   };
 
+  const loadSampleData = () => {
+      const sampleRfq: Rfq = {
+          id: `RFQ-DEMO-${Date.now().toString().slice(-4)}`,
+          created_at: Date.now(),
+          project_name: "Texas LNG Expansion - Phase 2",
+          project_description: "Urgent requirement for Seamless Carbon Steel pipes for high-pressure gas lines. MTRs required for all items.",
+          commercial: {
+              destination: "Houston, TX Port",
+              incoterm: "DDP",
+              paymentTerm: "Net 30",
+              otherRequirements: "Strict Vendor List",
+              req_mtr: true,
+              req_avl: true,
+              req_tpi: false,
+              warranty_months: 18
+          },
+          original_text: "Sample Data",
+          line_items: [
+              {
+                  item_id: "L1", line: 1, quantity: 400, uom: "m", description: "Seamless Pipe, API 5L Gr. B", 
+                  material_grade: "API 5L Gr. B", raw_description: "", other_requirements: [],
+                  size: { outer_diameter: { value: 8, unit: "in" }, wall_thickness: { value: 0.322, unit: "in" }, length: { value: 12, unit: "m" } }
+              },
+              {
+                  item_id: "L2", line: 2, quantity: 120, uom: "pcs", description: "Flange, Weld Neck, RF, Class 300", 
+                  material_grade: "ASTM A105", raw_description: "", other_requirements: [],
+                  size: { outer_diameter: { value: 8, unit: "in" }, wall_thickness: { value: null, unit: null }, length: { value: null, unit: null } }
+              },
+              {
+                  item_id: "L3", line: 3, quantity: 50, uom: "pcs", description: "Elbow 90 deg, Long Radius", 
+                  material_grade: "ASTM A234 WPB", raw_description: "", other_requirements: [],
+                  size: { outer_diameter: { value: 8, unit: "in" }, wall_thickness: { value: 0.322, unit: "in" }, length: { value: null, unit: null } }
+              }
+          ]
+      };
+      setRfq(sampleRfq);
+      setMessages(prev => [...prev, { role: 'assistant', content: t(lang, 'rfq_created_msg', { count: '3' }) }]);
+  };
+
   const handleSend = async () => {
     if ((!input.trim() && attachedFiles.length === 0) || isProcessing) return;
     
@@ -101,7 +143,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 created_at: Date.now(),
                 project_name: partial.project_name || "New Project",
                 line_items: partial.line_items as LineItem[] || [],
-                commercial: partial.commercial || { destination: '', incoterm: '', paymentTerm: '', otherRequirements: '' },
+                commercial: partial.commercial || { destination: '', incoterm: '', paymentTerm: '', otherRequirements: '', req_mtr: false, req_avl: false, req_tpi: false, warranty_months: 12 },
                 original_text: text
             };
             setRfq(newRfq);
@@ -158,7 +200,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       setRfq({ ...rfq, line_items: updatedItems });
   };
 
-  const handleUpdateCommercial = (field: string, value: string) => {
+  const handleUpdateCommercial = (field: string, value: any) => {
       if (!rfq) return;
       setRfq({
           ...rfq,
@@ -166,11 +208,37 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       });
   };
 
+  const handleGenerateSummary = async () => {
+    if (!rfq) return;
+    setIsGeneratingSummary(true);
+    try {
+        const summary = await generateRfqSummary(rfq, lang);
+        setRfq({ ...rfq, ai_summary: summary });
+    } catch (e) {
+        console.error(e);
+    } finally {
+        setIsGeneratingSummary(false);
+    }
+  };
+  
+  const handleAudit = async () => {
+      if (!rfq) return;
+      setIsAuditing(true);
+      try {
+          const warnings = await auditRfqSpecs(rfq, lang);
+          setRfq({ ...rfq, audit_warnings: warnings });
+          if(warnings.length === 0) {
+              alert(t(lang, 'audit_clean'));
+          }
+      } catch(e) {
+          console.error(e);
+      } finally {
+          setIsAuditing(false);
+      }
+  };
+
   const handleShareLink = () => {
     if (!rfq) return;
-    
-    // Compress the RFQ data to embed it in the URL
-    // This allows sharing without a backend database
     const jsonStr = JSON.stringify(rfq);
     const compressed = LZString.compressToEncodedURIComponent(jsonStr);
     
@@ -215,7 +283,6 @@ Best regards,
   const handleGeneratePdf = () => {
     if (!rfq) return;
     const doc = new jsPDF();
-    
     let yPos = 20;
     
     doc.setFontSize(18);
@@ -226,22 +293,25 @@ Best regards,
     doc.setFontSize(10);
     doc.text(`RFQ ID: ${rfq.id}`, 14, yPos); yPos += 6;
     doc.text(`Project: ${rfq.project_name || 'N/A'}`, 14, yPos); yPos += 6;
-    
-    if (selectedQuoteId) {
-        const quote = quotes.find(q => q.id === selectedQuoteId);
-        if (quote) {
-            yPos += 6;
-            doc.setFont("helvetica", "bold");
-            doc.text("Awarded To:", 14, yPos); yPos += 6;
-            doc.setFont("helvetica", "normal");
-            doc.text(`${quote.supplierName}`, 14, yPos); yPos += 6;
-            doc.text(`Total Value: ${quote.currency} ${quote.total.toLocaleString()}`, 14, yPos); yPos += 10;
-        }
+    if (rfq.ai_summary) {
+        const splitSummary = doc.splitTextToSize(`Summary: ${rfq.ai_summary}`, 180);
+        doc.text(splitSummary, 14, yPos);
+        yPos += (splitSummary.length * 5) + 4;
     }
-
+    
     doc.text(`Destination: ${rfq.commercial.destination}`, 14, yPos); yPos += 6;
     doc.text(`Incoterm: ${rfq.commercial.incoterm}`, 14, yPos); yPos += 6;
-    doc.text(`Payment Terms: ${rfq.commercial.paymentTerm}`, 14, yPos); yPos += 10;
+    doc.text(`Payment: ${rfq.commercial.paymentTerm}`, 14, yPos); yPos += 6;
+    
+    const reqs = [];
+    if(rfq.commercial.req_mtr) reqs.push("MTR Required");
+    if(rfq.commercial.req_avl) reqs.push("AVL Only");
+    if(reqs.length > 0) {
+        doc.text(`Requirements: ${reqs.join(', ')}`, 14, yPos);
+        yPos += 10;
+    } else {
+        yPos += 4;
+    }
 
     const tableData = rfq.line_items.map(item => [
         item.line,
@@ -249,24 +319,16 @@ Best regards,
         item.material_grade,
         item.quantity,
         item.uom,
-        `${item.size.outer_diameter.value || ''}${item.size.outer_diameter.unit || ''} x ${item.size.wall_thickness.value || ''}${item.size.wall_thickness.unit || ''} x ${item.size.length.value || ''}${item.size.length.unit || ''}`
+        `${item.size.outer_diameter.value || ''}${item.size.outer_diameter.unit || ''} x ${item.size.wall_thickness.value || ''}${item.size.wall_thickness.unit || ''}`
     ]);
 
     autoTable(doc, {
         startY: yPos,
-        head: [['Line', 'Desc', 'Grade', 'Qty', 'UOM', 'Size (OD x WT x L)']],
+        head: [['Line', 'Desc', 'Grade', 'Qty', 'UOM', 'Size']],
         body: tableData,
     });
 
-    if (selectedQuoteId) {
-        const finalY = (doc as any).lastAutoTable.finalY + 40;
-        doc.text("_______________________", 14, finalY);
-        doc.text("Buyer Signature", 14, finalY + 5);
-        doc.text("_______________________", 120, finalY);
-        doc.text("Supplier Signature", 120, finalY + 5);
-    }
-
-    doc.save(`RFQ-${rfq.id}${selectedQuoteId ? '-Award' : ''}.pdf`);
+    doc.save(`RFQ-${rfq.id}.pdf`);
   };
 
   const steps = [
@@ -323,9 +385,6 @@ Best regards,
                                 }`}>
                                     {m.content}
                                 </div>
-                                <span className="text-[10px] text-slate-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity px-1">
-                                    {m.role === 'user' ? 'You' : 'Crontal AI'}
-                                </span>
                             </div>
                         </div>
                     ))}
@@ -392,7 +451,7 @@ Best regards,
             </div>
         </div>
 
-        {/* Right Col: RFQ Data (8 cols) - Scrollable with Window */}
+        {/* Right Col: RFQ Data */}
         <div className="md:col-span-8 flex flex-col">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-200/50 overflow-hidden flex flex-col">
                 <div className="px-6 py-4 border-b border-slate-100 bg-white flex justify-between items-center" id="action-bar">
@@ -422,42 +481,152 @@ Best regards,
                 
                 <div className="p-6 space-y-8" id="rfq-table">
                     {!rfq ? (
-                        <div className="h-[400px] flex flex-col items-center justify-center text-slate-300 gap-4">
-                            <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
-                                <svg className="w-8 h-8 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        <div className="min-h-[400px] flex flex-col justify-center gap-6">
+                            <div className="text-center mb-4">
+                                <h3 className="text-lg font-bold text-slate-900 mb-1">{t(lang, 'dashboard_title')}</h3>
+                                <p className="text-sm text-slate-500">Select an option to begin your procurement process.</p>
                             </div>
-                            <p className="text-sm font-medium">{t(lang, 'no_rfq')}</p>
+                            <div className="grid md:grid-cols-3 gap-4">
+                                <div onClick={() => loadSampleData()} className="group cursor-pointer bg-slate-50 hover:bg-white border border-slate-200 hover:border-accent/50 p-6 rounded-2xl transition-all shadow-sm hover:shadow-md text-center flex flex-col items-center gap-3">
+                                    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold text-slate-900 text-sm">{t(lang, 'action_sample_title')}</h4>
+                                        <p className="text-xs text-slate-500 mt-1">{t(lang, 'action_sample_desc')}</p>
+                                    </div>
+                                </div>
+                                
+                                <div onClick={() => (document.querySelector('input[type="text"]') as HTMLElement)?.focus()} className="group cursor-pointer bg-slate-50 hover:bg-white border border-slate-200 hover:border-accent/50 p-6 rounded-2xl transition-all shadow-sm hover:shadow-md text-center flex flex-col items-center gap-3">
+                                    <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 group-hover:scale-110 transition-transform">
+                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold text-slate-900 text-sm">{t(lang, 'action_chat_title')}</h4>
+                                        <p className="text-xs text-slate-500 mt-1">{t(lang, 'action_chat_desc')}</p>
+                                    </div>
+                                </div>
+
+                                <div onClick={() => fileInputRef.current?.click()} className="group cursor-pointer bg-slate-50 hover:bg-white border border-slate-200 hover:border-accent/50 p-6 rounded-2xl transition-all shadow-sm hover:shadow-md text-center flex flex-col items-center gap-3">
+                                    <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform">
+                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold text-slate-900 text-sm">{t(lang, 'action_upload_title')}</h4>
+                                        <p className="text-xs text-slate-500 mt-1">{t(lang, 'action_upload_desc')}</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     ) : (
                         <>
-                            {/* Editable Commercial Terms */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
-                                <div className="group">
-                                    <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'destination')}</span>
-                                    <input 
-                                        value={rfq.commercial.destination || ''}
-                                        onChange={(e) => handleUpdateCommercial('destination', e.target.value)}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent focus:bg-white transition outline-none font-medium"
-                                        placeholder={t(lang, 'tbd')}
-                                    />
+                            {/* Project Information Section */}
+                            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-4">
+                                <div className="flex justify-between items-start">
+                                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">{t(lang, 'project_info')}</h3>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={handleAudit}
+                                            disabled={isAuditing}
+                                            className="text-[10px] text-orange-600 hover:text-white hover:bg-orange-500 font-medium flex items-center gap-1 bg-white border border-orange-200 px-2 py-1 rounded transition disabled:opacity-50"
+                                        >
+                                            {isAuditing ? t(lang, 'audit_running') : t(lang, 'audit_specs')}
+                                        </button>
+                                        <button 
+                                            onClick={handleGenerateSummary}
+                                            disabled={isGeneratingSummary}
+                                            className="text-[10px] text-accent hover:text-white hover:bg-accent font-medium flex items-center gap-1 bg-white border border-accent/20 px-2 py-1 rounded transition disabled:opacity-50"
+                                        >
+                                            {isGeneratingSummary ? '...' : t(lang, 'generate_summary')}
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="group">
-                                    <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'incoterm')}</span>
-                                    <input 
-                                        value={rfq.commercial.incoterm || ''}
-                                        onChange={(e) => handleUpdateCommercial('incoterm', e.target.value)}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent focus:bg-white transition outline-none font-medium"
-                                        placeholder={t(lang, 'tbd')}
-                                    />
+                                <div className="grid md:grid-cols-1 gap-4">
+                                    <div className="group">
+                                        <label className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">{t(lang, 'project_name')}</label>
+                                        <input 
+                                            value={rfq.project_name || ''}
+                                            onChange={(e) => setRfq({...rfq, project_name: e.target.value})}
+                                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent outline-none font-medium text-sm transition"
+                                            placeholder="Enter project name"
+                                        />
+                                    </div>
+                                    <div className="group">
+                                        <label className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">{t(lang, 'project_description')}</label>
+                                        <textarea 
+                                            value={rfq.project_description || ''}
+                                            onChange={(e) => setRfq({...rfq, project_description: e.target.value})}
+                                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent outline-none text-xs transition min-h-[60px]"
+                                            placeholder="Provide context for the supplier..."
+                                        />
+                                    </div>
+                                    {rfq.ai_summary && (
+                                        <div className="bg-accent/5 rounded-lg p-3 border border-accent/10 animate-in fade-in">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-[10px] font-bold text-accent uppercase">{t(lang, 'ai_summary_label')}</span>
+                                            </div>
+                                            <p className="text-xs text-slate-700 italic leading-relaxed">"{rfq.ai_summary}"</p>
+                                        </div>
+                                    )}
+                                    {rfq.audit_warnings && rfq.audit_warnings.length > 0 && (
+                                        <div className="bg-orange-50 rounded-lg p-3 border border-orange-100 animate-in fade-in">
+                                             <div className="flex items-center gap-2 mb-1 text-orange-700">
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                                <span className="text-[10px] font-bold uppercase">{t(lang, 'audit_warnings')}</span>
+                                            </div>
+                                            <ul className="list-disc list-inside text-xs text-orange-800 space-y-1">
+                                                {rfq.audit_warnings.map((w, idx) => <li key={idx}>{w}</li>)}
+                                            </ul>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="group">
-                                    <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'payment')}</span>
-                                    <input 
-                                        value={rfq.commercial.paymentTerm || ''}
-                                        onChange={(e) => handleUpdateCommercial('paymentTerm', e.target.value)}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent focus:bg-white transition outline-none font-medium"
-                                        placeholder={t(lang, 'tbd')}
-                                    />
+                            </div>
+
+                            {/* EPC Commercial Terms */}
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
+                                    <div className="group">
+                                        <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'destination')}</span>
+                                        <input 
+                                            value={rfq.commercial.destination || ''}
+                                            onChange={(e) => handleUpdateCommercial('destination', e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent focus:bg-white transition outline-none font-medium"
+                                        />
+                                    </div>
+                                    <div className="group">
+                                        <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'incoterm')}</span>
+                                        <input 
+                                            value={rfq.commercial.incoterm || ''}
+                                            onChange={(e) => handleUpdateCommercial('incoterm', e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent focus:bg-white transition outline-none font-medium"
+                                        />
+                                    </div>
+                                    <div className="group">
+                                        <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-2">{t(lang, 'payment')}</span>
+                                        <input 
+                                            value={rfq.commercial.paymentTerm || ''}
+                                            onChange={(e) => handleUpdateCommercial('paymentTerm', e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent focus:bg-white transition outline-none font-medium"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={rfq.commercial.req_mtr} onChange={e => handleUpdateCommercial('req_mtr', e.target.checked)} className="rounded border-slate-300 text-accent focus:ring-accent" />
+                                        <span className="text-xs font-medium text-slate-700">{t(lang, 'req_mtr')}</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={rfq.commercial.req_avl} onChange={e => handleUpdateCommercial('req_avl', e.target.checked)} className="rounded border-slate-300 text-accent focus:ring-accent" />
+                                        <span className="text-xs font-medium text-slate-700">{t(lang, 'req_avl')}</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={rfq.commercial.req_tpi} onChange={e => handleUpdateCommercial('req_tpi', e.target.checked)} className="rounded border-slate-300 text-accent focus:ring-accent" />
+                                        <span className="text-xs font-medium text-slate-700">{t(lang, 'req_tpi')}</span>
+                                    </label>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-slate-700 whitespace-nowrap">{t(lang, 'warranty')}</span>
+                                        <input type="number" value={rfq.commercial.warranty_months} onChange={e => handleUpdateCommercial('warranty_months', parseInt(e.target.value))} className="w-12 text-center text-xs border border-slate-300 rounded" />
+                                    </div>
                                 </div>
                             </div>
 
@@ -580,7 +749,7 @@ Best regards,
 
                             {/* Comparison Section */}
                             {quotes.length > 0 && (
-                                <div id="quote-comparison" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pt-2">
+                                <div id="quote-comparison" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pt-2 pb-20">
                                      <div className="flex justify-between items-center px-1">
                                         <div className="flex items-center gap-2">
                                             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">{t(lang, 'received_quotes')}</h3>
@@ -593,88 +762,114 @@ Best regards,
                                         </div>
                                     </div>
                                     
-                                    <div className="grid md:grid-cols-2 gap-4">
-                                        {getSortedQuotes().map((q, idx) => (
-                                            <div 
-                                                key={q.id} 
-                                                onClick={() => setSelectedQuoteId(q.id)}
-                                                className={`relative p-5 border rounded-xl flex flex-col gap-3 cursor-pointer transition-all group ${
-                                                    selectedQuoteId === q.id 
-                                                    ? 'border-accent bg-accent/5 ring-1 ring-accent shadow-md' 
-                                                    : 'border-slate-200 bg-white hover:border-accent/40 hover:shadow-lg'
-                                                }`}
-                                            >
-                                                {idx === 0 && sortBy === 'price' && (
-                                                    <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-green-500 text-white text-[10px] font-bold uppercase tracking-wide rounded-full shadow-sm">
-                                                        {t(lang, 'best_offer')}
-                                                    </div>
-                                                )}
-                                                
-                                                <div className="flex justify-between items-start">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${selectedQuoteId === q.id ? 'border-accent bg-accent' : 'border-slate-300 group-hover:border-accent/50'}`}>
-                                                            {selectedQuoteId === q.id && <div className="w-2 h-2 bg-white rounded-full"/>}
-                                                        </div>
-                                                        <div>
-                                                            <span className="font-bold text-slate-900 text-sm block">{q.supplierName}</span>
-                                                            <span className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Valid: {q.validity} days</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <span className="font-bold text-slate-900 text-lg block">{q.currency} {q.total.toLocaleString()}</span>
-                                                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${parseInt(q.leadTime) < 15 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>{q.leadTime} days</span>
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="pt-3 border-t border-slate-100/50 flex justify-between items-end text-[10px] text-slate-500">
-                                                    <div>
-                                                        <span className="block font-medium text-slate-400 mb-0.5">Payment Terms</span>
-                                                        <span>{q.payment}</span>
-                                                    </div>
-                                                    {q.notes && (
-                                                        <div className="text-right max-w-[60%]">
-                                                            <span className="block font-medium text-slate-400 mb-0.5">Notes</span>
-                                                            <span className="truncate block">{q.notes}</span>
+                                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {getSortedQuotes().map((q, idx) => {
+                                            const isSelected = selectedQuoteId === q.id;
+                                            return (
+                                                <div 
+                                                    key={q.id} 
+                                                    onClick={() => setSelectedQuoteId(q.id)}
+                                                    className={`relative p-6 border rounded-2xl flex flex-col gap-4 cursor-pointer transition-all duration-300 group ${
+                                                        isSelected 
+                                                        ? 'border-accent ring-2 ring-accent ring-offset-2 bg-white shadow-xl scale-[1.02] z-10' 
+                                                        : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-lg'
+                                                    }`}
+                                                >
+                                                    {isSelected && (
+                                                        <div className="absolute -top-3 -right-3 w-8 h-8 bg-accent rounded-full flex items-center justify-center text-white shadow-lg animate-in zoom-in">
+                                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                                                         </div>
                                                     )}
+
+                                                    {idx === 0 && sortBy === 'price' && (
+                                                        <div className="absolute -top-2.5 left-4 px-3 py-1 bg-green-500 text-white text-[10px] font-bold uppercase tracking-wide rounded-full shadow-md z-20">
+                                                            {t(lang, 'best_offer')}
+                                                        </div>
+                                                    )}
+                                                    {idx === 0 && sortBy === 'leadTime' && (
+                                                        <div className="absolute -top-2.5 left-4 px-3 py-1 bg-blue-500 text-white text-[10px] font-bold uppercase tracking-wide rounded-full shadow-md z-20">
+                                                            {t(lang, 'fastest_delivery')}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    <div className="flex justify-between items-start mt-2">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${isSelected ? 'border-accent bg-accent/10 text-accent' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>
+                                                                {q.supplierName.charAt(0)}
+                                                            </div>
+                                                            <div>
+                                                                <span className={`font-bold text-sm block ${isSelected ? 'text-slate-900' : 'text-slate-600'}`}>{q.supplierName}</span>
+                                                                <span className="text-[10px] text-slate-400 uppercase tracking-wide font-medium">Valid: {q.validity} days</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="py-2">
+                                                        <span className={`block font-bold tracking-tight ${isSelected ? 'text-3xl text-accent' : 'text-2xl text-slate-900'}`}>
+                                                            {q.currency} {q.total.toLocaleString()}
+                                                        </span>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${parseInt(q.leadTime) < 15 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                                {q.leadTime} days lead time
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="pt-4 border-t border-slate-100 mt-auto grid grid-cols-2 gap-2 text-[11px]">
+                                                        <div>
+                                                            <span className="block font-medium text-slate-400">Payment</span>
+                                                            <span className="text-slate-700 font-medium">{q.payment}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="block font-medium text-slate-400">Notes</span>
+                                                            <span className="truncate block text-slate-700">{q.notes || '-'}</span>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {isSelected && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleGenerateAwardEmail(); }}
+                                                            className="mt-4 w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-2 animate-in slide-in-from-bottom-2"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                                            {t(lang, 'generate_award')}
+                                                        </button>
+                                                    )}
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
 
-                                    {selectedQuoteId && (
-                                        <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 space-y-4 animate-in fade-in zoom-in-95 shadow-2xl">
-                                            <div className="flex justify-between items-center">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                                                    <h4 className="text-sm font-bold text-white uppercase tracking-wider">{t(lang, 'select_to_award')}</h4>
+                                    {selectedQuoteId && awardEmail && (
+                                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xl space-y-4 animate-in fade-in slide-in-from-bottom-4 ring-1 ring-slate-100">
+                                            <div className="flex justify-between items-end border-b border-slate-100 pb-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider">{t(lang, 'award_email_preview')}</h4>
+                                                        <p className="text-xs text-slate-500">Review and copy the email content below</p>
+                                                    </div>
                                                 </div>
                                                 <button 
-                                                    onClick={handleGenerateAwardEmail}
-                                                    className="text-[10px] bg-white text-slate-900 px-4 py-2 rounded-lg hover:bg-slate-100 font-bold transition shadow-lg transform hover:-translate-y-0.5 active:translate-y-0"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(awardEmail);
+                                                        alert("Email copied to clipboard!");
+                                                    }}
+                                                    className="text-xs font-medium text-accent hover:text-white hover:bg-accent border border-accent/20 px-3 py-1.5 rounded-lg transition flex items-center gap-2"
                                                 >
-                                                    {t(lang, 'generate_award')}
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                                                    {t(lang, 'copy_email')}
                                                 </button>
                                             </div>
-                                            
-                                            {awardEmail && (
-                                                <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                                                    <div className="flex justify-between items-end">
-                                                        <label className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">{t(lang, 'award_email_preview')}</label>
-                                                        <button 
-                                                            onClick={() => navigator.clipboard.writeText(awardEmail)}
-                                                            className="text-[10px] text-accent hover:text-white transition"
-                                                        >
-                                                            {t(lang, 'copy_email')}
-                                                        </button>
-                                                    </div>
-                                                    <textarea 
-                                                        readOnly
-                                                        value={awardEmail}
-                                                        className="w-full h-40 text-xs p-4 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 focus:outline-none focus:border-slate-600 font-mono leading-relaxed"
-                                                    />
-                                                </div>
-                                            )}
+                                            <div className="relative">
+                                                <textarea 
+                                                    readOnly
+                                                    value={awardEmail}
+                                                    className="w-full h-48 text-sm p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 focus:outline-none font-mono leading-relaxed resize-none"
+                                                />
+                                            </div>
                                         </div>
                                     )}
                                 </div>
