@@ -1,5 +1,5 @@
-
 import React, { useState } from 'react';
+import LZString from 'lz-string';
 import { Rfq, Quote, Language } from '../types';
 import { t } from '../utils/i18n';
 
@@ -20,6 +20,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
       validity: '',
       notes: ''
   });
+  const [submittedLink, setSubmittedLink] = useState<string | null>(null);
 
   // Standalone Page Layout Wrapper
   if (!rfq) {
@@ -65,11 +66,61 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
               lineTotal: (prices[item.line] || 0) * (item.quantity || 0)
           }))
       };
-      onSubmitQuote(quote);
+
+      // Generate Response Link
+      const jsonStr = JSON.stringify(quote);
+      const compressed = LZString.compressToEncodedURIComponent(jsonStr);
+      const url = `${window.location.origin}${window.location.pathname}?mode=quote_response&data=${compressed}`;
+      
+      setSubmittedLink(url);
+      onSubmitQuote(quote); // Optimistic local update
   };
 
+  const copyToClipboard = () => {
+      if (submittedLink) {
+          navigator.clipboard.writeText(submittedLink);
+          alert(t(lang, 'link_copied'));
+      }
+  };
+
+  if (submittedLink) {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+            <div className="bg-white max-w-lg w-full rounded-2xl p-8 shadow-xl text-center space-y-6 animate-in zoom-in-95">
+                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto">
+                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900">{t(lang, 'quote_submitted_title')}</h2>
+                <p className="text-slate-500 text-sm leading-relaxed">
+                    {t(lang, 'quote_submitted_desc')}
+                </p>
+                
+                <div className="bg-slate-100 p-4 rounded-xl break-all text-xs font-mono text-slate-600 border border-slate-200">
+                    {submittedLink}
+                </div>
+
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={copyToClipboard}
+                        className="w-full bg-accent hover:bg-accent/90 text-white font-medium py-3 rounded-xl transition shadow-lg shadow-accent/20 flex items-center justify-center gap-2"
+                    >
+                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                         {t(lang, 'copy_response_link')}
+                    </button>
+                    <button 
+                        onClick={onExit}
+                        className="text-slate-500 hover:text-slate-800 text-sm py-2"
+                    >
+                        {t(lang, 'close_window')}
+                    </button>
+                </div>
+            </div>
+        </div>
+      );
+  }
+
   return (
-    <div className="min-h-screen py-12 px-4">
+    <div className="min-h-screen py-12 px-4 bg-slate-50/50">
         <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
             {/* Header for Separate Page feel */}
@@ -93,7 +144,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
 
             {/* AI Summary Banner (If Exists) */}
             {rfq.ai_summary && (
-                <div className="bg-gradient-to-r from-accent/10 to-transparent p-5 rounded-2xl border border-accent/20 relative overflow-hidden">
+                <div className="bg-gradient-to-r from-accent/10 to-transparent p-5 rounded-2xl border border-accent/20 relative overflow-hidden bg-white">
                     <div className="absolute top-0 right-0 p-4 opacity-10">
                         <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1010 10A10 10 0 0012 2zm0 18a8 8 0 118-8 8 8 0 01-8 8z" /></svg>
                     </div>

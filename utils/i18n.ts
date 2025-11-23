@@ -64,6 +64,7 @@ export const translations = {
     delivery: "Delivery",
     select_to_award: "Select Quote to Award",
     generate_award: "Draft Award Email",
+    generate_po_pdf: "Generate Formal PO (PDF)",
     award_email_preview: "Award Email Preview",
     copy_email: "Copy Email",
     download_award_pdf: "Download Award PDF",
@@ -85,7 +86,7 @@ export const translations = {
     
     // EPC Features
     dashboard_title: "Procurement Dashboard",
-    action_chat_title: "Draft with AI",
+    action_chat_title: "AI 起草",
     action_chat_desc: "Chat or upload PDF/Images to extract specs",
     action_sample_title: "Load Piping Sample",
     action_sample_desc: "Pre-load complex pipe, flange & valve data",
@@ -100,7 +101,14 @@ export const translations = {
     req_mtr: "MTR Required (EN 10204 3.1)",
     req_avl: "Approved Vendor List Only",
     req_tpi: "Third Party Inspection",
-    warranty: "Warranty (Months)"
+    warranty: "Warranty (Months)",
+    
+    // Quote Response
+    quote_submitted_title: "Quote Submitted Successfully",
+    quote_submitted_desc: "Since this is a serverless application, you must send this secure link back to the Buyer so they can import your pricing.",
+    copy_response_link: "Copy Response Link",
+    close_window: "Close",
+    quote_imported_success: "Successfully imported quote from {supplier}!"
   },
   es: {
     welcome: "Bienvenido",
@@ -164,6 +172,7 @@ export const translations = {
     delivery: "Entrega",
     select_to_award: "Seleccionar para Adjudicar",
     generate_award: "Generar Email de Adjudicación",
+    generate_po_pdf: "Generar Orden de Compra (PDF)",
     award_email_preview: "Vista Previa Email",
     copy_email: "Copiar Email",
     download_award_pdf: "Descargar PDF Adjudicación",
@@ -199,7 +208,13 @@ export const translations = {
     req_mtr: "Requiere MTR (EN 10204 3.1)",
     req_avl: "Solo Proveedores Aprobados",
     req_tpi: "Inspección de Terceros",
-    warranty: "Garantía (Meses)"
+    warranty: "Garantía (Meses)",
+
+    quote_submitted_title: "Cotización Enviada",
+    quote_submitted_desc: "Al ser una aplicación sin servidor, debe enviar este enlace seguro al Comprador para que importe sus precios.",
+    copy_response_link: "Copiar Enlace de Respuesta",
+    close_window: "Cerrar",
+    quote_imported_success: "¡Cotización de {supplier} importada con éxito!"
   },
   zh: {
     welcome: "欢迎",
@@ -263,6 +278,7 @@ export const translations = {
     delivery: "交期",
     select_to_award: "选择授标",
     generate_award: "生成授标邮件",
+    generate_po_pdf: "生成正式采购订单 (PDF)",
     award_email_preview: "授标邮件预览",
     copy_email: "复制邮件",
     download_award_pdf: "下载授标 PDF",
@@ -298,7 +314,13 @@ export const translations = {
     req_mtr: "需要 MTR (EN 10204 3.1)",
     req_avl: "仅限批准的供应商",
     req_tpi: "第三方检验",
-    warranty: "保修期（月）"
+    warranty: "保修期（月）",
+
+    quote_submitted_title: "报价提交成功",
+    quote_submitted_desc: "由于这是一个无服务器应用程序，您必须将此安全链接发送回买家，以便他们导入您的价格。",
+    copy_response_link: "复制回复链接",
+    close_window: "关闭",
+    quote_imported_success: "成功导入来自 {supplier} 的报价！"
   }
 };
 

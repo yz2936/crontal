@@ -22,7 +22,7 @@ export default function App() {
         const mode = params.get('mode');
         const encodedData = params.get('data');
         
-        // 1. Supplier Mode with Data in URL (Serverless)
+        // 1. Supplier Mode: Loading an RFQ to quote on
         if (mode === 'supplier' && encodedData) {
             try {
                 const decompressed = LZString.decompressFromEncodedURIComponent(encodedData);
@@ -38,7 +38,37 @@ export default function App() {
             }
         }
 
-        // 2. Standard Auth Check
+        // 2. Buyer Mode: Loading a Quote Response from a Supplier
+        if (mode === 'quote_response' && encodedData) {
+            try {
+                const decompressed = LZString.decompressFromEncodedURIComponent(encodedData);
+                if (decompressed) {
+                    const incomingQuote: Quote = JSON.parse(decompressed);
+                    
+                    // Attempt to find the original RFQ in local storage to contextually load it
+                    const storedRfqStr = localStorage.getItem(`rfq_${incomingQuote.rfqId}`);
+                    
+                    if (storedRfqStr) {
+                        const originalRfq = JSON.parse(storedRfqStr);
+                        setRfq(originalRfq);
+                        setQuotes(prev => {
+                            // Deduplicate based on ID
+                            if (prev.some(q => q.id === incomingQuote.id)) return prev;
+                            return [...prev, incomingQuote];
+                        });
+                        alert(t('en', 'quote_imported_success', { supplier: incomingQuote.supplierName }));
+                    } else {
+                        alert("Quote received, but the original RFQ was not found on this device.");
+                    }
+                    
+                    // Proceed to normal auth check so buyer can log in and see the data
+                }
+            } catch (e) {
+                console.error("Failed to import quote", e);
+            }
+        }
+
+        // 3. Standard Auth Check
         const currentUser = authService.getCurrentUser();
         setUser(currentUser);
         setCheckingAuth(false);
@@ -69,14 +99,12 @@ export default function App() {
   };
 
   const handleQuoteSubmit = (newQuote: Quote) => {
-    // In a serverless demo, we can't easily push this back to the buyer without a DB.
-    // For now, we simulate success and maybe download the quote as a file.
+    // This is now handled inside SupplierView via link generation.
+    // This callback updates local state just for visual confirmation if needed.
     setQuotes(prev => [...prev, newQuote]);
-    alert("Quote generated! Since this is a serverless demo, please save the PDF or screenshot to send back to the buyer.");
   };
 
   const handleSupplierExit = () => {
-      // Clear URL params to return to "Home"
       window.location.href = window.location.pathname;
   };
 

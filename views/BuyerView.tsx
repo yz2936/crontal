@@ -286,7 +286,7 @@ Best regards,
     let yPos = 20;
     
     doc.setFontSize(18);
-    const title = selectedQuoteId ? "Award Letter" : "Request for Quotation";
+    const title = "Request for Quotation";
     doc.text(title, 14, yPos);
     yPos += 10;
     
@@ -329,6 +329,102 @@ Best regards,
     });
 
     doc.save(`RFQ-${rfq.id}.pdf`);
+  };
+
+  const handleGeneratePO = () => {
+      if (!selectedQuoteId || !rfq) return;
+      const quote = quotes.find(q => q.id === selectedQuoteId);
+      if (!quote) return;
+
+      const doc = new jsPDF();
+      
+      // Header
+      doc.setFillColor(50, 60, 80);
+      doc.rect(0, 0, 210, 40, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.text("PURCHASE ORDER", 14, 25);
+      
+      doc.setFontSize(10);
+      doc.text(`PO Number: PO-${Date.now().toString().slice(-6)}`, 150, 18);
+      doc.text(`Date: ${new Date().toLocaleDateString()}`, 150, 24);
+      doc.text(`RFQ Ref: ${rfq.id}`, 150, 30);
+
+      // Info Columns
+      doc.setTextColor(0, 0, 0);
+      let y = 55;
+      
+      // Buyer
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("BILL TO:", 14, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      y += 6;
+      doc.text("Crontal Demo Buyer Corp", 14, y); y += 5;
+      doc.text("123 Procurement Way", 14, y); y += 5;
+      doc.text(`${rfq.commercial.destination || "Destination Port"}`, 14, y);
+
+      // Supplier
+      y = 55;
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("VENDOR:", 120, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      y += 6;
+      doc.text(quote.supplierName, 120, y); y += 5;
+      doc.text(`Payment: ${quote.payment}`, 120, y); y += 5;
+      doc.text(`Lead Time: ${quote.leadTime} days`, 120, y);
+
+      // Line Items
+      const tableBody = quote.items.map(qItem => {
+          const rfqItem = rfq.line_items.find(i => i.line === qItem.line);
+          return [
+              qItem.line,
+              rfqItem?.description || "Item",
+              rfqItem?.material_grade || "",
+              qItem.quantity,
+              rfqItem?.uom || "",
+              `${quote.currency} ${qItem.unitPrice?.toFixed(2)}`,
+              `${quote.currency} ${qItem.lineTotal?.toFixed(2)}`
+          ];
+      });
+
+      autoTable(doc, {
+          startY: 90,
+          head: [['Line', 'Description', 'Grade', 'Qty', 'UOM', 'Unit Price', 'Total']],
+          body: tableBody,
+          theme: 'striped',
+          headStyles: { fillColor: [50, 60, 80] },
+          foot: [['', '', '', '', '', 'GRAND TOTAL:', `${quote.currency} ${quote.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`]]
+      });
+
+      // Footer / Terms
+      let finalY = (doc as any).lastAutoTable.finalY + 20;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Terms & Conditions:", 14, finalY);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      finalY += 6;
+      doc.text(`1. Incoterm: ${rfq.commercial.incoterm}`, 14, finalY); finalY += 5;
+      doc.text(`2. Warranty: ${rfq.commercial.warranty_months} months from delivery.`, 14, finalY); finalY += 5;
+      if (rfq.commercial.req_mtr) {
+          doc.text(`3. Material Test Reports (EN 10204 3.1) required with shipment.`, 14, finalY); finalY += 5;
+      }
+      
+      // Signature Box
+      finalY += 20;
+      doc.setDrawColor(0, 0, 0);
+      doc.line(14, finalY + 20, 90, finalY + 20); // Buyer Line
+      doc.text("Authorized Signature", 14, finalY + 26);
+      
+      doc.line(120, finalY + 20, 196, finalY + 20); // Supplier Line
+      doc.text("Vendor Acceptance", 120, finalY + 26);
+
+      doc.save(`PO_${quote.supplierName}_${rfq.id}.pdf`);
   };
 
   const steps = [
@@ -466,7 +562,7 @@ Best regards,
                             className="group flex items-center gap-1.5 text-[10px] font-medium bg-white border border-slate-200 hover:border-slate-300 text-slate-600 px-3 py-1.5 rounded-lg transition disabled:opacity-50"
                         >
                             <svg className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                            {selectedQuoteId ? t(lang, 'download_award_pdf') : t(lang, 'download_pdf')}
+                            {t(lang, 'download_pdf')}
                         </button>
                         <button 
                             onClick={handleShareLink}
@@ -827,13 +923,22 @@ Best regards,
                                                     </div>
                                                     
                                                     {isSelected && (
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleGenerateAwardEmail(); }}
-                                                            className="mt-4 w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-2 animate-in slide-in-from-bottom-2"
-                                                        >
-                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                                                            {t(lang, 'generate_award')}
-                                                        </button>
+                                                        <div className="mt-4 flex flex-col gap-2">
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); handleGenerateAwardEmail(); }}
+                                                                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-2 animate-in slide-in-from-bottom-2"
+                                                            >
+                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                                                {t(lang, 'generate_award')}
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleGeneratePO(); }}
+                                                                className="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium py-2 rounded-xl text-xs transition flex items-center justify-center gap-2"
+                                                            >
+                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                                                {t(lang, 'generate_po_pdf')}
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </div>
                                             );
