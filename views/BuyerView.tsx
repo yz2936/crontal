@@ -101,6 +101,11 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
           const newList = storageService.saveRfq(updated);
           setSavedRfqs(newList);
           setRfq(updated);
+          
+          // Switch sidebar to active so user sees the saved draft immediately
+          setSidebarTab('active');
+          if (!isSidebarOpen) setIsSidebarOpen(true);
+
           alert(t(lang, 'save_success'));
       }
   };
@@ -336,24 +341,35 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       }
   };
 
-  const handleShareLink = () => {
+  const handleShareLink = async () => {
     if (!rfq) return;
     
-    // Mark as sent when shared
-    const sentRfq = { ...rfq, status: 'sent' as const };
-    setRfq(sentRfq);
-    storageService.saveRfq(sentRfq);
-    setSavedRfqs(storageService.getRfqs());
+    try {
+        // Mark as sent when shared
+        const sentRfq = { ...rfq, status: 'sent' as const };
+        setRfq(sentRfq);
+        storageService.saveRfq(sentRfq);
+        setSavedRfqs(storageService.getRfqs());
 
-    const jsonStr = JSON.stringify(sentRfq);
-    const compressed = LZString.compressToEncodedURIComponent(jsonStr);
-    
-    const url = new URL(window.location.href);
-    url.searchParams.set('mode', 'supplier');
-    url.searchParams.set('data', compressed);
-    
-    navigator.clipboard.writeText(url.toString());
-    alert(t(lang, 'link_copied'));
+        const jsonStr = JSON.stringify(sentRfq);
+        const compressed = LZString.compressToEncodedURIComponent(jsonStr);
+        
+        // Robust URL generation (clean base)
+        const baseUrl = `${window.location.origin}${window.location.pathname}`;
+        const shareUrl = `${baseUrl}?mode=supplier&data=${compressed}`;
+        
+        // Attempt to copy
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(shareUrl);
+            alert(t(lang, 'link_copied'));
+        } else {
+            // Fallback for non-secure contexts (e.g. dev)
+            prompt("Copy this link to share with suppliers:", shareUrl);
+        }
+    } catch (e) {
+        console.error("Share failed", e);
+        alert("Could not create link.");
+    }
   };
 
   const getSortedQuotes = () => {
@@ -458,7 +474,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       const doc = new jsPDF();
       
       // Logo (Simulated)
-      doc.setFillColor(20, 30, 80); // Dark Blue like Brava
+      doc.setFillColor(11, 17, 33); // Crontal Navy
       doc.ellipse(30, 20, 20, 8, 'F');
       doc.setFont("helvetica", "bold");
       doc.setTextColor(255, 255, 255);

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { authService } from '../services/authService';
 import { User } from '../types';
@@ -34,13 +35,16 @@ export default function AuthView({ onLogin }: AuthViewProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
         <div className="p-8">
           <div className="flex justify-center mb-6">
-            <div className="h-12 w-12 rounded-2xl bg-accent/10 border border-accent flex items-center justify-center">
-              <span className="text-accent font-bold text-2xl">C</span>
-            </div>
+            <svg viewBox="0 0 40 40" fill="none" className="h-12 w-12 rounded-xl">
+                <rect width="40" height="40" rx="8" fill="#0B1121"/>
+                <path d="M12 20C12 15.5817 15.5817 12 20 12C22.25 12 24.28 12.93 25.76 14.43" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+                <path d="M12 20C12 24.4183 15.5817 28 20 28C22.25 28 24.28 27.07 25.76 25.57" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+                <path d="M22 20H32M32 20L28 16M32 20L28 24" stroke="#F97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </div>
           
           <h2 className="text-2xl font-bold text-center text-slate-900 mb-2">
@@ -95,7 +99,7 @@ export default function AuthView({ onLogin }: AuthViewProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition shadow-lg shadow-accent/20 disabled:opacity-70"
+              className="w-full bg-accent hover:bg-slate-800 text-white font-semibold py-2.5 rounded-xl transition shadow-lg disabled:opacity-70"
             >
               {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Sign Up')}
             </button>
@@ -104,7 +108,7 @@ export default function AuthView({ onLogin }: AuthViewProps) {
           <div className="mt-6 text-center">
             <button
               onClick={() => setIsLogin(!isLogin)}
-              className="text-sm text-slate-500 hover:text-accent transition"
+              className="text-sm text-slate-500 hover:text-brandOrange transition"
             >
               {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
             </button>

@@ -91,7 +91,7 @@ export interface Dimension {
     name: string;
   }
   
-  export type ViewMode = 'HOME' | 'BUYER' | 'SUPPLIER';
+  export type ViewMode = 'HOME' | 'BUYER' | 'SUPPLIER' | 'TECH' | 'ABOUT' | 'ROI' | 'SUPPLIER_LANDING';
   
   export interface TourStep {
     selector: string;

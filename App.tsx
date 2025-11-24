@@ -1,9 +1,15 @@
+
 import React, { useState, useEffect } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, ViewMode, Language, User } from './types';
 import BuyerView from './views/BuyerView';
 import SupplierView from './views/SupplierView';
 import AuthView from './views/AuthView';
+import LandingPage from './views/LandingPage';
+import TechCapabilities from './views/TechCapabilities';
+import About from './views/About';
+import RoiPage from './views/RoiPage';
+import SupplierLandingPage from './views/SupplierLandingPage';
 import { Layout } from './components/Layout';
 import { authService } from './services/authService';
 import { t } from './utils/i18n';
@@ -60,8 +66,6 @@ export default function App() {
                     } else {
                         alert("Quote received, but the original RFQ was not found on this device.");
                     }
-                    
-                    // Proceed to normal auth check so buyer can log in and see the data
                 }
             } catch (e) {
                 console.error("Failed to import quote", e);
@@ -99,8 +103,6 @@ export default function App() {
   };
 
   const handleQuoteSubmit = (newQuote: Quote) => {
-    // This is now handled inside SupplierView via link generation.
-    // This callback updates local state just for visual confirmation if needed.
     setQuotes(prev => [...prev, newQuote]);
   };
 
@@ -110,6 +112,23 @@ export default function App() {
 
   if (checkingAuth) {
       return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400 text-sm">Loading Crontal...</div>;
+  }
+
+  // Standalone Views
+  if (view === 'TECH') {
+      return <TechCapabilities onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
+  }
+
+  if (view === 'ABOUT') {
+      return <About onBack={() => setView('HOME')} onStart={() => setView('BUYER')} />;
+  }
+
+  if (view === 'ROI') {
+      return <RoiPage onBack={() => setView('HOME')} onStart={() => setView('BUYER')} />;
+  }
+
+  if (view === 'SUPPLIER_LANDING') {
+      return <SupplierLandingPage onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
   }
 
   if (view === 'SUPPLIER') {
@@ -122,11 +141,26 @@ export default function App() {
           />
       );
   }
+  
+  if (view === 'HOME' && !user) {
+      return (
+        <LandingPage 
+            onStart={() => setView('BUYER')} 
+            onTechDemo={() => setView('TECH')} 
+            onAbout={() => setView('ABOUT')}
+            onRoi={() => setView('ROI')}
+            onSupplierPage={() => setView('SUPPLIER_LANDING')}
+            lang={lang} 
+        />
+      );
+  }
 
-  if (!user) {
+  // Auth View 
+  if (view === 'BUYER' && !user) {
     return <AuthView onLogin={handleLogin} />;
   }
 
+  // Main App Layout (Logged in or viewing Buyer Demo)
   return (
     <Layout 
       view={view} 
@@ -136,17 +170,14 @@ export default function App() {
       user={user}
       onLogout={handleLogout}
     >
-      {view === 'HOME' && (
-        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-in fade-in duration-700">
+      {view === 'HOME' && user && (
+         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-in fade-in duration-700">
           <div className="h-20 w-20 rounded-2xl bg-accent/10 border border-accent flex items-center justify-center mb-4">
             <span className="text-accent font-bold text-4xl">C</span>
           </div>
           <h1 className="text-4xl font-bold tracking-tight text-slate-900">
             {t(lang, 'home_welcome', { name: user.name })}
           </h1>
-          <p className="max-w-md text-slate-500 text-lg">
-            {t(lang, 'home_subtitle')}
-          </p>
           <div className="flex gap-4 mt-8">
             <button 
               onClick={() => setView('BUYER')}
@@ -155,7 +186,6 @@ export default function App() {
               {t(lang, 'start_rfq')}
             </button>
           </div>
-          <p className="text-xs text-slate-400 mt-8">{t(lang, 'powered_by')}</p>
         </div>
       )}
 
