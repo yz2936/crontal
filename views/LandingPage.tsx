@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Language } from '../types';
 import { AutoDemo } from '../components/AutoDemo';
 
@@ -9,15 +9,146 @@ interface LandingPageProps {
   onAbout: () => void;
   onRoi: () => void;
   onSupplierPage: () => void;
+  onQuality: () => void;
+  onPrivacy: () => void;
+  onTerms: () => void;
   lang: Language;
 }
 
-export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSupplierPage, lang }: LandingPageProps) {
+// --- Background Network Animation Component ---
+const NetworkBackground = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let width = canvas.width = window.innerWidth;
+    let height = canvas.height = window.innerHeight;
+    
+    // Configuration
+    const particleCount = Math.min(Math.floor(window.innerWidth / 15), 60); // Don't overcrowd
+    const connectionDistance = 180; // Increased slightly for bigger nodes
+    const moveSpeed = 0.3;
+
+    interface Particle {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      size: number;
+      isSpecial: boolean; // Represents an active transaction (Orange)
+    }
+
+    const particles: Particle[] = [];
+
+    // Initialize Particles
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * moveSpeed,
+        vy: (Math.random() - 0.5) * moveSpeed,
+        size: Math.random() * 4 + 2, // INCREASED SIZE: Range 2px to 6px
+        isSpecial: Math.random() > 0.9 // 10% chance to be an "Active Deal" (Orange)
+      });
+    }
+
+    const animate = () => {
+      ctx.clearRect(0, 0, width, height);
+      
+      // Update and Draw Particles
+      particles.forEach((p, i) => {
+        // Move
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Bounce off edges
+        if (p.x < 0 || p.x > width) p.vx *= -1;
+        if (p.y < 0 || p.y > height) p.vy *= -1;
+
+        // Draw Dot
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.isSpecial ? '#F97316' : '#cbd5e1'; // Orange or Slate-300
+        ctx.fill();
+
+        // Draw Connections
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dx = p.x - p2.x;
+          const dy = p.y - p2.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance < connectionDistance) {
+            ctx.beginPath();
+            ctx.strokeStyle = p.isSpecial || p2.isSpecial 
+              ? `rgba(249, 115, 22, ${0.2 * (1 - distance / connectionDistance)})` // Faint Orange line
+              : `rgba(203, 213, 225, ${0.3 * (1 - distance / connectionDistance)})`; // Faint Slate line
+            ctx.lineWidth = 1;
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          }
+        }
+      });
+
+      requestAnimationFrame(animate);
+    };
+
+    const handleResize = () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+
+    window.addEventListener('resize', handleResize);
+    const animId = requestAnimationFrame(animate);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animId);
+    };
+  }, []);
+
   return (
-    <div className="bg-white text-slate-900 font-sans">
+    <canvas 
+      ref={canvasRef} 
+      className="absolute inset-0 pointer-events-none z-0 opacity-60"
+    />
+  );
+};
+// ----------------------------------------------
+
+export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSupplierPage, onQuality, onPrivacy, onTerms, lang }: LandingPageProps) {
+  
+  // Intersection Observer for scroll animations
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  useEffect(() => {
+    observerRef.current = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('animate-fade-up');
+          entry.target.classList.remove('opacity-0', 'translate-y-10');
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.reveal-on-scroll').forEach(el => {
+      el.classList.add('opacity-0', 'translate-y-10', 'transition-all', 'duration-700');
+      observerRef.current?.observe(el);
+    });
+
+    return () => observerRef.current?.disconnect();
+  }, []);
+
+  return (
+    <div className="bg-white text-slate-900 font-sans overflow-x-hidden">
       
       {/* Navigation */}
-      <nav className="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center relative z-50">
+      <nav className="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center relative z-50 bg-white/80 backdrop-blur-sm sticky top-0">
         <div className="flex items-center gap-2">
           {/* CRONTAL LOGO SVG */}
           <svg viewBox="0 0 40 40" fill="none" className="h-10 w-10 shadow-lg rounded-lg">
@@ -28,14 +159,17 @@ export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSup
           </svg>
           <span className="text-xl font-bold tracking-tight text-slate-900">Crontal</span>
         </div>
-        <div className="hidden md:flex gap-8 text-sm font-medium text-slate-600">
+        <div className="hidden md:flex gap-6 text-sm font-medium text-slate-600">
           <button onClick={onAbout} className="hover:text-brandOrange transition">About</button>
           <button onClick={onTechDemo} className="hover:text-brandOrange transition flex items-center gap-1">
              Technology
-             <span className="bg-blue-100 text-blue-700 text-[9px] px-1.5 py-0.5 rounded font-bold">NEW</span>
+             <span className="bg-blue-100 text-blue-700 text-[9px] px-1.5 py-0.5 rounded font-bold">V2.5</span>
+          </button>
+           <button onClick={onQuality} className="hover:text-brandOrange transition flex items-center gap-1">
+             Quality & Compliance
           </button>
           <button onClick={onSupplierPage} className="hover:text-brandOrange transition">For Suppliers</button>
-          <button onClick={onRoi} className="hover:text-brandOrange transition">ROI Calculator</button>
+          <button onClick={onRoi} className="hover:text-brandOrange transition">ROI</button>
         </div>
         <button 
           onClick={onStart}
@@ -47,23 +181,27 @@ export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSup
 
       {/* Hero Section */}
       <section className="relative pt-12 pb-24 lg:pt-24 lg:pb-32 overflow-hidden">
-        {/* Subtle Background Elements */}
-        <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-brandOrange/5 rounded-full blur-3xl -z-10 opacity-50 translate-x-1/2 -translate-y-1/2"></div>
-        <div className="absolute top-40 left-0 w-[600px] h-[600px] bg-accent/5 rounded-full blur-3xl -z-10 opacity-50 -translate-x-1/2"></div>
+        
+        {/* --- Animated Network Background --- */}
+        <NetworkBackground />
+        
+        {/* Subtle Static Blurs */}
+        <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-brandOrange/5 rounded-full blur-3xl -z-10 opacity-40 translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute top-40 left-0 w-[600px] h-[600px] bg-accent/5 rounded-full blur-3xl -z-10 opacity-40 -translate-x-1/2"></div>
 
-        <div className="max-w-7xl mx-auto px-6 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-600 text-xs font-bold uppercase tracking-wider mb-8 animate-in fade-in slide-in-from-bottom-4">
+        <div className="max-w-7xl mx-auto px-6 text-center relative z-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/80 border border-slate-200 text-slate-600 text-xs font-bold uppercase tracking-wider mb-8 animate-in fade-in slide-in-from-bottom-4 backdrop-blur-sm shadow-sm">
             <span className="w-2 h-2 rounded-full bg-brandOrange animate-pulse"></span>
             The Future of Industrial Procurement
           </div>
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-slate-900 mb-6 max-w-4xl mx-auto leading-tight">
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-slate-900 mb-6 max-w-5xl mx-auto leading-tight reveal-on-scroll">
             Industrial Sourcing, <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-slate-600">Autopilot Engaged.</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent via-blue-600 to-accent animate-gradient-x">Autopilot Engaged.</span>
           </h1>
-          <p className="text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed">
+          <p className="text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed reveal-on-scroll" style={{transitionDelay: '100ms'}}>
             From messy PDF drawings to a formal Purchase Order in minutes. Experience the first procurement platform that actually understands engineering physics.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12 relative z-20">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12 relative z-20 reveal-on-scroll" style={{transitionDelay: '200ms'}}>
             <button 
               onClick={onStart}
               className="px-8 py-4 bg-brandOrange text-white rounded-xl text-lg font-bold hover:bg-orange-600 transition shadow-xl shadow-orange-200 w-full sm:w-auto flex items-center justify-center gap-2 transform hover:scale-105 active:scale-100 duration-200"
@@ -71,22 +209,36 @@ export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSup
               Start Free Demo
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
             </button>
-            <button onClick={onTechDemo} className="px-8 py-4 bg-white text-slate-700 border border-slate-200 rounded-xl text-lg font-semibold hover:bg-slate-50 transition w-full sm:w-auto">
+            <button onClick={onTechDemo} className="px-8 py-4 bg-white text-slate-700 border border-slate-200 rounded-xl text-lg font-semibold hover:bg-slate-50 transition w-full sm:w-auto shadow-sm">
               See The Tech
             </button>
           </div>
           
-          {/* Hero Visual Mockup - Added Spacing here */}
-          <div className="relative mx-auto max-w-5xl z-10 mt-40">
+          {/* Hero Visual Mockup */}
+          <div className="relative mx-auto max-w-5xl z-10 mt-40 reveal-on-scroll" style={{transitionDelay: '300ms'}}>
             <AutoDemo />
           </div>
         </div>
       </section>
 
-      {/* Trusted By / Stats */}
-      <section className="py-16 border-y border-slate-100 bg-slate-50/50">
+      {/* Infinite Standards Ticker */}
+      <section className="bg-slate-900 text-white py-6 overflow-hidden border-y border-slate-800 relative z-20">
+        <div className="flex gap-16 animate-scroll w-max opacity-60 hover:opacity-100 transition-opacity">
+            {/* Doubled for seamless loop */}
+            {[...Array(2)].map((_, i) => (
+                <div key={i} className="flex gap-16 font-mono text-sm font-bold tracking-wider">
+                    <span>ASTM A106</span><span>API 5L</span><span>ASME B16.5</span><span>DIN 2633</span>
+                    <span>NACE MR0175</span><span>EN 10204 3.1</span><span>ISO 9001</span><span>ASTM A105</span>
+                    <span>MSS SP-75</span><span>JIS G3454</span><span>BS 3601</span>
+                </div>
+            ))}
+        </div>
+      </section>
+
+      {/* Stats Section */}
+      <section className="py-16 bg-slate-50/50 relative z-10">
         <div className="max-w-7xl mx-auto px-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center reveal-on-scroll">
                 <div>
                     <p className="text-4xl font-bold text-accent mb-1">90%</p>
                     <p className="text-sm font-medium text-slate-500 uppercase tracking-wide">Reduction in Data Entry</p>
@@ -108,15 +260,15 @@ export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSup
       </section>
 
       {/* Problem/Solution Section */}
-      <section id="value" className="py-24 max-w-7xl mx-auto px-6">
-        <div className="text-center mb-16">
+      <section id="value" className="py-24 max-w-7xl mx-auto px-6 relative z-10">
+        <div className="text-center mb-16 reveal-on-scroll">
             <h2 className="text-3xl font-bold text-slate-900 mb-4">Why EPC Firms Choose Crontal</h2>
             <p className="text-lg text-slate-500 max-w-2xl mx-auto">Traditional procurement is slow, error-prone, and labor-intensive. We fixed it.</p>
         </div>
         
         <div className="grid md:grid-cols-3 gap-12">
             {/* Value 1 */}
-            <div className="group hover:bg-slate-50 p-6 rounded-2xl transition-all duration-300 border border-transparent hover:border-slate-100">
+            <div className="group hover:bg-slate-50 p-6 rounded-2xl transition-all duration-300 border border-transparent hover:border-slate-100 reveal-on-scroll">
                 <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-accent mb-6 group-hover:scale-110 transition-transform">
                     <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                 </div>
@@ -127,7 +279,7 @@ export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSup
             </div>
 
             {/* Value 2 */}
-            <div className="group hover:bg-slate-50 p-6 rounded-2xl transition-all duration-300 border border-transparent hover:border-slate-100">
+            <div className="group hover:bg-slate-50 p-6 rounded-2xl transition-all duration-300 border border-transparent hover:border-slate-100 reveal-on-scroll" style={{transitionDelay: '100ms'}}>
                 <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center text-brandOrange mb-6 group-hover:scale-110 transition-transform">
                     <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
@@ -138,7 +290,7 @@ export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSup
             </div>
 
             {/* Value 3 */}
-            <div className="group hover:bg-slate-50 p-6 rounded-2xl transition-all duration-300 border border-transparent hover:border-slate-100">
+            <div className="group hover:bg-slate-50 p-6 rounded-2xl transition-all duration-300 border border-transparent hover:border-slate-100 reveal-on-scroll" style={{transitionDelay: '200ms'}}>
                 <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center text-green-600 mb-6 group-hover:scale-110 transition-transform">
                     <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 </div>
@@ -151,8 +303,8 @@ export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSup
       </section>
 
       {/* CTA */}
-      <section className="py-24 text-center bg-slate-900 text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brandOrange/10 rounded-full blur-3xl"></div>
+      <section className="py-24 text-center bg-slate-900 text-white relative overflow-hidden reveal-on-scroll z-10">
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brandOrange/10 rounded-full blur-3xl animate-pulse"></div>
         <div className="max-w-3xl mx-auto px-6 relative z-10">
             <h2 className="text-4xl font-bold mb-6">Ready to upgrade your procurement?</h2>
             <p className="text-lg text-slate-300 mb-10">Join the forward-thinking EPC firms who are saving 20+ hours per week on sourcing.</p>
@@ -167,7 +319,7 @@ export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSup
       </section>
 
       {/* Footer */}
-      <footer className="bg-slate-50 border-t border-slate-200 py-12">
+      <footer className="bg-slate-50 border-t border-slate-200 py-12 relative z-10">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
             <div className="flex items-center gap-2">
                  <div className="h-6 w-6 rounded bg-accent flex items-center justify-center">
@@ -177,9 +329,9 @@ export default function LandingPage({ onStart, onTechDemo, onAbout, onRoi, onSup
             </div>
             <p className="text-slate-400 text-sm">© 2024 Crontal Inc. All rights reserved.</p>
             <div className="flex gap-6 text-slate-400">
-                <a href="#" className="hover:text-slate-900">Privacy</a>
-                <a href="#" className="hover:text-slate-900">Terms</a>
-                <a href="#" className="hover:text-slate-900">Contact</a>
+                <button onClick={onPrivacy} className="hover:text-slate-900 transition">Privacy Policy</button>
+                <button onClick={onTerms} className="hover:text-slate-900 transition">Terms of Service</button>
+                <button onClick={onAbout} className="hover:text-slate-900 transition">Contact</button>
             </div>
         </div>
       </footer>

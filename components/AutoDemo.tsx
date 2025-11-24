@@ -8,7 +8,7 @@ export const AutoDemo: React.FC = () => {
   const fullText = "Need 500m of 6\" Sch40 Smls Pipe & 20 WN Flanges #150.";
   
   useEffect(() => {
-    let timeout: NodeJS.Timeout;
+    let timeout: ReturnType<typeof setTimeout>;
 
     const runSequence = async () => {
       // Phase 0: Typing

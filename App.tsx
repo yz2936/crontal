@@ -7,9 +7,12 @@ import SupplierView from './views/SupplierView';
 import AuthView from './views/AuthView';
 import LandingPage from './views/LandingPage';
 import TechCapabilities from './views/TechCapabilities';
+import QualityStandards from './views/QualityStandards';
 import About from './views/About';
 import RoiPage from './views/RoiPage';
 import SupplierLandingPage from './views/SupplierLandingPage';
+import PrivacyPolicy from './views/PrivacyPolicy';
+import TermsOfService from './views/TermsOfService';
 import { Layout } from './components/Layout';
 import { authService } from './services/authService';
 import { t } from './utils/i18n';
@@ -119,6 +122,10 @@ export default function App() {
       return <TechCapabilities onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
   }
 
+  if (view === 'QUALITY') {
+      return <QualityStandards onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
+  }
+
   if (view === 'ABOUT') {
       return <About onBack={() => setView('HOME')} onStart={() => setView('BUYER')} />;
   }
@@ -129,6 +136,14 @@ export default function App() {
 
   if (view === 'SUPPLIER_LANDING') {
       return <SupplierLandingPage onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
+  }
+
+  if (view === 'PRIVACY') {
+      return <PrivacyPolicy onBack={() => setView('HOME')} />;
+  }
+
+  if (view === 'TERMS') {
+      return <TermsOfService onBack={() => setView('HOME')} />;
   }
 
   if (view === 'SUPPLIER') {
@@ -147,9 +162,12 @@ export default function App() {
         <LandingPage 
             onStart={() => setView('BUYER')} 
             onTechDemo={() => setView('TECH')} 
+            onQuality={() => setView('QUALITY')}
             onAbout={() => setView('ABOUT')}
             onRoi={() => setView('ROI')}
             onSupplierPage={() => setView('SUPPLIER_LANDING')}
+            onPrivacy={() => setView('PRIVACY')}
+            onTerms={() => setView('TERMS')}
             lang={lang} 
         />
       );
