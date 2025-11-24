@@ -175,7 +175,7 @@ export default function App() {
 
   // Auth View 
   if (view === 'BUYER' && !user) {
-    return <AuthView onLogin={handleLogin} />;
+    return <AuthView onLogin={handleLogin} onBack={() => setView('HOME')} />;
   }
 
   // Main App Layout (Logged in or viewing Buyer Demo)
