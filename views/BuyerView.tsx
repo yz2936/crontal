@@ -1,5 +1,3 @@
-
-
 import React, { useState, useRef, useEffect } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, ChatMessage, Language, LineItem, FileAttachment, Size } from '../types';
@@ -567,6 +565,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-200/50 overflow-hidden flex flex-col h-full" id="chat-box">
                     <div className="p-3 border-b border-slate-100 bg-white flex justify-between items-center sticky top-0 z-10">
                         <div className="flex items-center gap-2">
+                             {/* STEP 1 BADGE */}
+                            <div className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold">1</div>
                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                             <span className="text-xs font-bold uppercase tracking-wider text-slate-700">{t(lang, 'drafting_assistant')}</span>
                         </div>
@@ -665,6 +665,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-200/50 overflow-hidden flex flex-col">
                     <div className="px-4 py-3 border-b border-slate-100 bg-white flex justify-between items-center h-14" id="action-bar">
                         <div className="flex items-center gap-2">
+                             {/* STEP 2 BADGE */}
+                             <div className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold">2</div>
                              {/* Show Project Name in Header if Info is Hidden */}
                              {!isInfoVisible && rfq && (
                                 <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
@@ -983,6 +985,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                     <div id="quote-comparison" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pt-2 pb-20">
                                         <div className="flex justify-between items-center px-1">
                                             <div className="flex items-center gap-2">
+                                                {/* STEP 3 BADGE */}
+                                                <div className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold">3</div>
                                                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">{t(lang, 'received_quotes')}</h3>
                                                 <span className="bg-accent text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{quotes.length}</span>
                                             </div>
