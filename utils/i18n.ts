@@ -1,5 +1,4 @@
 
-
 import { Language } from '../types';
 
 export const translations = {
@@ -90,13 +89,17 @@ export const translations = {
     nav_drafts: "Saved Drafts",
     nav_history: "Quote History",
     nav_active: "Active Request",
+    nav_archived: "Archived",
     save_draft: "Save Draft",
     save_success: "Project saved successfully!",
+    archive_project: "Archive",
+    restore_project: "Restore",
     created: "Created",
     status: "Status",
     status_draft: "Draft",
     status_sent: "Sent",
     status_awarded: "Awarded",
+    status_archived: "Archived",
     view: "View",
     
     // EPC Features
@@ -126,7 +129,12 @@ export const translations = {
     quote_imported_success: "Successfully imported quote from {supplier}!",
     
     expand_details: "Expand Details",
-    collapse_details: "Collapse Details"
+    collapse_details: "Collapse Details",
+    toggle_info: "Toggle Project Info",
+    show_info: "Show Info",
+    hide_info: "Hide Info",
+    show_sidebar: "Show Sidebar",
+    hide_sidebar: "Hide Sidebar"
   },
   es: {
     welcome: "Bienvenido",
@@ -214,13 +222,17 @@ export const translations = {
     nav_drafts: "Borradores",
     nav_history: "Historial",
     nav_active: "Solicitud Activa",
+    nav_archived: "Archivados",
     save_draft: "Guardar",
     save_success: "¡Proyecto guardado con éxito!",
+    archive_project: "Archivar",
+    restore_project: "Restaurar",
     created: "Creado",
     status: "Estado",
     status_draft: "Borrador",
     status_sent: "Enviado",
     status_awarded: "Adjudicado",
+    status_archived: "Archivado",
     view: "Ver",
 
     dashboard_title: "Panel de Adquisiciones",
@@ -248,7 +260,12 @@ export const translations = {
     quote_imported_success: "¡Cotización de {supplier} importada con éxito!",
 
     expand_details: "Expandir Detalles",
-    collapse_details: "Contraer Detalles"
+    collapse_details: "Contraer Detalles",
+    toggle_info: "Alternar Info Proyecto",
+    show_info: "Mostrar Info",
+    hide_info: "Ocultar Info",
+    show_sidebar: "Mostrar Barra Lateral",
+    hide_sidebar: "Ocultar Barra Lateral"
   },
   zh: {
     welcome: "欢迎",
@@ -336,13 +353,17 @@ export const translations = {
     nav_drafts: "保存的草稿",
     nav_history: "报价历史",
     nav_active: "当前请求",
+    nav_archived: "已归档",
     save_draft: "保存草稿",
     save_success: "项目保存成功！",
+    archive_project: "归档",
+    restore_project: "还原",
     created: "创建时间",
     status: "状态",
     status_draft: "草稿",
     status_sent: "已发送",
     status_awarded: "已授标",
+    status_archived: "已归档",
     view: "查看",
 
     dashboard_title: "采购仪表板",
@@ -368,9 +389,14 @@ export const translations = {
     copy_response_link: "复制回复链接",
     close_window: "关闭",
     quote_imported_success: "成功导入来自 {supplier} 的报价！",
-    
+
     expand_details: "展开详情",
-    collapse_details: "收起详情"
+    collapse_details: "收起详情",
+    toggle_info: "切换项目信息",
+    show_info: "显示信息",
+    hide_info: "隐藏信息",
+    show_sidebar: "显示侧边栏",
+    hide_sidebar: "隐藏侧边栏"
   }
 };
 

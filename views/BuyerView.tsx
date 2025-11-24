@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, ChatMessage, Language, LineItem, FileAttachment, Size } from '../types';
@@ -30,10 +31,11 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'price' | 'leadTime'>('price');
   const [awardEmail, setAwardEmail] = useState('');
-  const [isInfoCollapsed, setIsInfoCollapsed] = useState(false); // New state for collapsing
+  const [isInfoVisible, setIsInfoVisible] = useState(true); // Default visible
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Default Sidebar Open
 
   // Navigation State
-  const [showNav, setShowNav] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState<'active' | 'archived'>('active');
   const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -93,11 +95,40 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
   const handleSaveDraft = () => {
       if (rfq) {
-          const updated = { ...rfq, status: 'draft' as const };
+          const updated = { ...rfq };
+          // Preserve status if it was sent or awarded
+          if (!updated.status) updated.status = 'draft'; 
+          
           const newList = storageService.saveRfq(updated);
           setSavedRfqs(newList);
           setRfq(updated);
           alert(t(lang, 'save_success'));
+      }
+  };
+
+  const handleArchiveProject = (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      const target = savedRfqs.find(r => r.id === id);
+      if (target) {
+          const updated = { ...target, status: 'archived' as const };
+          storageService.saveRfq(updated);
+          setSavedRfqs(storageService.getRfqs());
+          if (rfq?.id === id) {
+             setRfq(updated);
+          }
+      }
+  };
+
+  const handleRestoreProject = (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      const target = savedRfqs.find(r => r.id === id);
+      if (target) {
+          const updated = { ...target, status: 'draft' as const };
+          storageService.saveRfq(updated);
+          setSavedRfqs(storageService.getRfqs());
+          if (rfq?.id === id) {
+              setRfq(updated);
+          }
       }
   };
 
@@ -107,14 +138,14 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
           setRfq(target);
           setMessages([{ role: 'assistant', content: t(lang, 'clarify_default_response') }]);
           // Auto expand info when loading
-          setIsInfoCollapsed(false);
+          setIsInfoVisible(true);
       }
   };
 
   const handleNewProject = () => {
       setRfq(null);
       setMessages([{ role: 'assistant', content: t(lang, 'initial_greeting') }]);
-      setIsInfoCollapsed(false);
+      setIsInfoVisible(true);
   };
 
   const handleDeleteProject = (e: React.MouseEvent, id: string) => {
@@ -239,7 +270,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     }
   };
 
-  // ... (Keep existing helpers: handleUpdateLineItem, handleDeleteItem, handleUpdateDimension, handleUpdateCommercial)
+  // ... (Helpers)
   const handleUpdateLineItem = (index: number, field: keyof LineItem, value: any) => {
       if (!rfq) return;
       const updatedItems = [...rfq.line_items];
@@ -337,27 +368,12 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       const quote = quotes.find(q => q.id === selectedQuoteId);
       if (!quote) return;
 
-      // Update status to awarded
       const awardedRfq = { ...rfq, status: 'awarded' as const };
       setRfq(awardedRfq);
       storageService.saveRfq(awardedRfq);
       setSavedRfqs(storageService.getRfqs());
 
-      const emailBody = `Subject: Award Notification - RFQ ${rfq.id} - ${rfq.project_name}
-
-Dear ${quote.supplierName},
-
-We are pleased to inform you that your quotation for RFQ ${rfq.id} has been accepted. 
-
-Award Details:
-- Total Value: ${quote.currency} ${quote.total.toLocaleString()}
-- Lead Time: ${quote.leadTime} days
-- Payment Terms: ${quote.payment}
-
-Please proceed with the order confirmation.
-
-Best regards,
-[Your Name]`;
+      const emailBody = `Subject: Award Notification - RFQ ${rfq.id} - ${rfq.project_name}\n\nDear ${quote.supplierName},\n\nWe are pleased to inform you that your quotation for RFQ ${rfq.id} has been accepted.\n\nAward Details:\n- Total Value: ${quote.currency} ${quote.total.toLocaleString()}\n- Lead Time: ${quote.leadTime} days\n- Payment Terms: ${quote.payment}\n\nPlease proceed with the order confirmation.\n\nBest regards,\n[Your Name]`;
       setAwardEmail(emailBody);
   };
 
@@ -367,8 +383,7 @@ Best regards,
     let yPos = 20;
     
     doc.setFontSize(18);
-    const title = "Request for Quotation";
-    doc.text(title, 14, yPos);
+    doc.text("Request for Quotation", 14, yPos);
     yPos += 10;
     
     doc.setFontSize(10);
@@ -381,19 +396,7 @@ Best regards,
     }
     
     doc.text(`Destination: ${rfq.commercial.destination}`, 14, yPos); yPos += 6;
-    doc.text(`Incoterm: ${rfq.commercial.incoterm}`, 14, yPos); yPos += 6;
-    doc.text(`Payment: ${rfq.commercial.paymentTerm}`, 14, yPos); yPos += 6;
     
-    const reqs = [];
-    if(rfq.commercial.req_mtr) reqs.push("MTR Required");
-    if(rfq.commercial.req_avl) reqs.push("AVL Only");
-    if(reqs.length > 0) {
-        doc.text(`Requirements: ${reqs.join(', ')}`, 14, yPos);
-        yPos += 10;
-    } else {
-        yPos += 4;
-    }
-
     const tableData = rfq.line_items.map(item => [
         item.line,
         item.description,
@@ -418,7 +421,6 @@ Best regards,
       if (!quote) return;
 
       const doc = new jsPDF();
-      // ... (Keep PO generation logic same as before)
       doc.text("PURCHASE ORDER", 14, 25);
       doc.save(`PO_${quote.supplierName}_${rfq.id}.pdf`);
   };
@@ -429,12 +431,21 @@ Best regards,
       { selector: '#quote-comparison', text: t(lang, 'step3') }
   ];
 
+  const filteredRfqs = savedRfqs.filter(r => 
+      sidebarTab === 'active' 
+          ? (!r.status || r.status === 'draft' || r.status === 'sent' || r.status === 'awarded') 
+          : r.status === 'archived'
+  );
+
   return (
-    <div className="flex flex-col md:flex-row gap-6 relative min-h-[80vh]">
+    <div className={`flex flex-col md:flex-row transition-all duration-300 relative min-h-[80vh] ${isSidebarOpen ? 'gap-6' : 'gap-0'}`}>
       <Walkthrough steps={steps} isActive={isTourActive} onClose={() => setIsTourActive(false)} lang={lang} />
       
       {/* Sidebar Navigation */}
-      <div className="md:w-64 flex-shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-fit sticky top-4">
+      <div className={`
+          flex-shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-fit sticky top-4 max-h-[calc(100vh-100px)] transition-all duration-300
+          ${isSidebarOpen ? 'md:w-64 opacity-100 translate-x-0' : 'w-0 md:w-0 opacity-0 -translate-x-full border-0 p-0 m-0 pointer-events-none'}
+      `}>
           <div className="p-4 border-b border-slate-100">
               <button 
                   onClick={handleNewProject}
@@ -444,12 +455,27 @@ Best regards,
                   {t(lang, 'nav_new_project')}
               </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1 max-h-[calc(100vh-200px)]">
-              <h3 className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t(lang, 'nav_drafts')}</h3>
-              {savedRfqs.length === 0 && (
-                  <p className="px-3 text-xs text-slate-400 italic">No saved projects</p>
+          
+          <div className="flex border-b border-slate-100">
+              <button 
+                onClick={() => setSidebarTab('active')}
+                className={`flex-1 py-2 text-xs font-medium text-center transition ${sidebarTab === 'active' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-slate-500 hover:bg-slate-50'}`}
+              >
+                {t(lang, 'nav_active')}
+              </button>
+              <button 
+                onClick={() => setSidebarTab('archived')}
+                className={`flex-1 py-2 text-xs font-medium text-center transition ${sidebarTab === 'archived' ? 'text-accent border-b-2 border-accent bg-accent/5' : 'text-slate-500 hover:bg-slate-50'}`}
+              >
+                {t(lang, 'nav_archived')}
+              </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-[300px]">
+              {filteredRfqs.length === 0 && (
+                  <p className="px-3 py-4 text-xs text-slate-400 italic text-center">No projects found</p>
               )}
-              {savedRfqs.map(item => (
+              {filteredRfqs.map(item => (
                   <div 
                     key={item.id}
                     onClick={() => handleLoadRfq(item.id)}
@@ -457,52 +483,89 @@ Best regards,
                         rfq?.id === item.id ? 'bg-accent/10 text-accent font-medium' : 'text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                      <div className="truncate">
+                      <div className="truncate flex-1 min-w-0 pr-2">
                           <div className="truncate">{item.project_name || "Untitled"}</div>
                           <div className="text-[10px] text-slate-400">{new Date(item.created_at).toLocaleDateString()} • {item.status || 'draft'}</div>
                       </div>
-                      <button 
-                        onClick={(e) => handleDeleteProject(e, item.id)}
-                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition"
-                      >
-                          ×
-                      </button>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                         {sidebarTab === 'active' ? (
+                            <button 
+                                onClick={(e) => handleArchiveProject(e, item.id)}
+                                title={t(lang, 'archive_project')}
+                                className="text-slate-400 hover:text-orange-500 p-1"
+                            >
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                            </button>
+                         ) : (
+                             <button 
+                                onClick={(e) => handleRestoreProject(e, item.id)}
+                                title={t(lang, 'restore_project')}
+                                className="text-slate-400 hover:text-green-500 p-1"
+                            >
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                            </button>
+                         )}
+                          <button 
+                            onClick={(e) => handleDeleteProject(e, item.id)}
+                            className="text-slate-400 hover:text-red-500 p-1"
+                          >
+                             ×
+                          </button>
+                      </div>
                   </div>
               ))}
           </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 space-y-6">
+      <div className="flex-1 space-y-4 min-w-0">
         
-        {/* Progress Stepper */}
-        {rfq && (
-            <div className="flex items-center justify-center gap-2 mb-2">
-                {[1, 2, 3].map((step) => (
-                    <div key={step} className="flex items-center">
-                        <div className={`flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-medium transition-all shadow-sm ${
-                            activeStep === step 
-                            ? 'bg-white border-accent text-accent ring-2 ring-accent/10' 
-                            : activeStep > step 
-                                ? 'bg-slate-50 border-slate-200 text-slate-500' 
-                                : 'bg-white border-slate-100 text-slate-300'
-                        }`}>
-                            <span className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] ${activeStep === step ? 'bg-accent text-white' : activeStep > step ? 'bg-green-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                                {activeStep > step ? '✓' : step}
-                            </span>
-                            <span>{t(lang, `step${step}` as any)}</span>
-                        </div>
-                        {step < 3 && <div className={`w-8 h-[2px] mx-2 rounded-full ${activeStep > step ? 'bg-green-500' : 'bg-slate-200'}`} />}
+        {/* Header Bar with Toggle & Steps */}
+        <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+                 <button 
+                    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                    className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition border border-transparent hover:border-slate-200"
+                    title={isSidebarOpen ? t(lang, 'hide_sidebar') : t(lang, 'show_sidebar')}
+                >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                        {isSidebarOpen ? (
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" className="hidden" />
+                        ) : (
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" className="hidden" />
+                        )}
+                    </svg>
+                </button>
+                {rfq && isInfoVisible && (
+                    <div className="flex items-center gap-2">
+                        {[1, 2, 3].map((step) => (
+                            <div key={step} className="flex items-center hidden sm:flex">
+                                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-medium transition-all shadow-sm ${
+                                    activeStep === step 
+                                    ? 'bg-white border-accent text-accent ring-2 ring-accent/10' 
+                                    : activeStep > step 
+                                        ? 'bg-slate-50 border-slate-200 text-slate-500' 
+                                        : 'bg-white border-slate-100 text-slate-300'
+                                }`}>
+                                    <span className={`flex items-center justify-center w-4 h-4 rounded-full text-[9px] ${activeStep === step ? 'bg-accent text-white' : activeStep > step ? 'bg-green-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                        {activeStep > step ? '✓' : step}
+                                    </span>
+                                    <span>{t(lang, `step${step}` as any)}</span>
+                                </div>
+                                {step < 3 && <div className={`w-6 h-[2px] mx-1 rounded-full ${activeStep > step ? 'bg-green-500' : 'bg-slate-200'}`} />}
+                            </div>
+                        ))}
                     </div>
-                ))}
+                )}
             </div>
-        )}
+        </div>
 
         <div className="grid md:grid-cols-12 gap-6 items-start">
             {/* Left Col: Chat (4 cols) */}
-            <div className="md:col-span-4 flex flex-col h-[600px] sticky top-4">
+            <div className="md:col-span-4 flex flex-col sticky top-4" style={{ height: 'calc(100vh - 120px)' }}>
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-200/50 overflow-hidden flex flex-col h-full" id="chat-box">
-                    <div className="p-4 border-b border-slate-100 bg-white flex justify-between items-center sticky top-0 z-10">
+                    <div className="p-3 border-b border-slate-100 bg-white flex justify-between items-center sticky top-0 z-10">
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                             <span className="text-xs font-bold uppercase tracking-wider text-slate-700">{t(lang, 'drafting_assistant')}</span>
@@ -513,7 +576,7 @@ Best regards,
                     <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/30">
                         {messages.map((m, i) => (
                             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[85%] relative group ${m.role === 'user' ? 'items-end' : 'items-start'} flex flex-col`}>
+                                <div className={`max-w-[90%] relative group ${m.role === 'user' ? 'items-end' : 'items-start'} flex flex-col`}>
                                     <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
                                         m.role === 'user' 
                                         ? 'bg-slate-900 text-white rounded-br-sm' 
@@ -551,23 +614,8 @@ Best regards,
                     )}
 
                     <div className="p-3 bg-white border-t border-slate-100">
-                        <div className="flex gap-2 relative items-end">
-                            <input 
-                                type="file" 
-                                multiple 
-                                ref={fileInputRef} 
-                                onChange={handleFileSelect} 
-                                className="hidden" 
-                                accept="image/*,application/pdf"
-                            />
-                            <button 
-                                onClick={() => fileInputRef.current?.click()}
-                                className="text-slate-400 hover:text-accent hover:bg-accent/5 p-2 rounded-xl transition h-10 w-10 flex items-center justify-center"
-                                title={t(lang, 'upload_file')}
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                            </button>
-                            <textarea
+                        <div className="flex flex-col gap-2">
+                             <textarea
                                 ref={textareaRef}
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
@@ -578,16 +626,35 @@ Best regards,
                                     }
                                 }}
                                 placeholder={t(lang, 'chat_placeholder')}
-                                className="flex-1 bg-slate-50 rounded-xl border-0 px-4 py-2 text-sm focus:ring-2 focus:ring-accent/20 focus:bg-white transition placeholder-slate-400 min-h-[40px] max-h-[150px] resize-none leading-relaxed"
-                                rows={1}
+                                className="w-full bg-slate-50 rounded-xl border-0 px-4 py-3 text-sm focus:ring-2 focus:ring-accent/20 focus:bg-white transition placeholder-slate-400 min-h-[80px] max-h-[200px] resize-none leading-relaxed"
+                                rows={3}
                             />
-                            <button 
-                                onClick={handleSend}
-                                disabled={isProcessing || (!input && attachedFiles.length === 0)}
-                                className="bg-accent hover:bg-accent/90 text-white rounded-xl h-10 w-10 flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-accent/20"
-                            >
-                                <svg className="w-4 h-4 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                            </button>
+                            <div className="flex justify-between items-center">
+                                <input 
+                                    type="file" 
+                                    multiple 
+                                    ref={fileInputRef} 
+                                    onChange={handleFileSelect} 
+                                    className="hidden" 
+                                    accept="image/*,application/pdf"
+                                />
+                                <button 
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="text-slate-400 hover:text-accent hover:bg-accent/5 px-2 py-1.5 rounded-lg transition text-xs flex items-center gap-1"
+                                    title={t(lang, 'upload_file')}
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                    <span className="hidden sm:inline">Attach</span>
+                                </button>
+                                <button 
+                                    onClick={handleSend}
+                                    disabled={isProcessing || (!input && attachedFiles.length === 0)}
+                                    className="bg-accent hover:bg-accent/90 text-white rounded-xl px-4 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-accent/20 flex items-center gap-2"
+                                >
+                                    <span>{t(lang, 'send')}</span>
+                                    <svg className="w-3 h-3 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -596,25 +663,35 @@ Best regards,
             {/* Right Col: RFQ Data */}
             <div className="md:col-span-8 flex flex-col">
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-200/50 overflow-hidden flex flex-col">
-                    <div className="px-6 py-4 border-b border-slate-100 bg-white flex justify-between items-center" id="action-bar">
-                        <div>
-                            <span className="text-xs font-bold uppercase tracking-wider text-slate-700">{t(lang, 'live_preview')}</span>
-                            {rfq && <span className="ml-2 text-[10px] text-slate-400 font-mono">#{rfq.id}</span>}
+                    <div className="px-4 py-3 border-b border-slate-100 bg-white flex justify-between items-center h-14" id="action-bar">
+                        <div className="flex items-center gap-2">
+                             {/* Show Project Name in Header if Info is Hidden */}
+                             {!isInfoVisible && rfq && (
+                                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
+                                     <span className="text-sm font-bold text-slate-800">{rfq.project_name || "Untitled Project"}</span>
+                                     <span className={`text-[10px] px-2 py-0.5 rounded-full border ${rfq.status === 'awarded' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-200 text-slate-600 border-slate-300'}`}>
+                                        {rfq.status || 'draft'}
+                                     </span>
+                                     <div className="h-4 w-[1px] bg-slate-300 mx-1"></div>
+                                </div>
+                             )}
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{t(lang, 'live_preview')}</span>
                         </div>
                         <div className="flex gap-2">
+                            {rfq && (
+                                <button
+                                    onClick={() => setIsInfoVisible(!isInfoVisible)}
+                                    className={`text-[10px] font-medium px-3 py-1.5 border rounded-lg transition flex items-center gap-1 ${isInfoVisible ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-accent/10 text-accent border-accent/20'}`}
+                                >
+                                    {isInfoVisible ? t(lang, 'hide_info') : t(lang, 'show_info')}
+                                </button>
+                            )}
                             <button
                                 onClick={handleSaveDraft}
                                 disabled={!rfq}
                                 className="text-[10px] font-medium text-slate-600 hover:text-accent transition px-3 py-1.5 border border-slate-200 rounded-lg disabled:opacity-50"
                             >
                                 {t(lang, 'save_draft')}
-                            </button>
-                            <button 
-                                onClick={handleGeneratePdf}
-                                disabled={!rfq}
-                                className="group flex items-center gap-1.5 text-[10px] font-medium bg-white border border-slate-200 hover:border-slate-300 text-slate-600 px-3 py-1.5 rounded-lg transition disabled:opacity-50"
-                            >
-                                {t(lang, 'download_pdf')}
                             </button>
                             <button 
                                 onClick={handleShareLink}
@@ -626,7 +703,7 @@ Best regards,
                         </div>
                     </div>
                     
-                    <div className="p-6 space-y-8" id="rfq-table">
+                    <div className="p-4 space-y-4" id="rfq-table">
                         {!rfq ? (
                             <div className="min-h-[400px] flex flex-col justify-center gap-6">
                                 <div className="text-center mb-4">
@@ -668,65 +745,28 @@ Best regards,
                         ) : (
                             <>
                                 {/* Collapsible Project Info Section */}
-                                <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden transition-all duration-300 ease-in-out">
-                                    {/* Info Header / Toggle Bar */}
-                                    <div 
-                                        onClick={() => setIsInfoCollapsed(!isInfoCollapsed)}
-                                        className="px-4 py-3 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-3">
+                                {isInfoVisible && (
+                                    <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                                        <div className="px-4 py-2 border-b border-slate-100 bg-slate-100/50 flex justify-between items-center">
                                             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">{t(lang, 'project_info')}</h3>
-                                            
-                                            {/* Summary View when collapsed */}
-                                            {isInfoCollapsed && (
-                                                <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2">
-                                                     <div className="h-4 w-[1px] bg-slate-300"></div>
-                                                     <span className="text-sm font-semibold text-slate-900">{rfq.project_name || "Untitled Project"}</span>
-                                                     <span className={`text-[10px] px-2 py-0.5 rounded-full border ${rfq.status === 'awarded' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-200 text-slate-600 border-slate-300'}`}>
-                                                        {rfq.status || 'draft'}
-                                                     </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        
-                                        <div className="flex items-center gap-3">
-                                             {/* Only show actions in header when collapsed to save space */}
-                                            {isInfoCollapsed && (
-                                                 <div className="flex gap-2 mr-2" onClick={(e) => e.stopPropagation()}>
-                                                    <button onClick={handleGenerateSummary} className="text-[10px] text-accent hover:underline">{t(lang, 'generate_summary')}</button>
-                                                 </div>
-                                            )}
-
-                                            <button className="text-slate-400 hover:text-slate-600 transition p-1">
-                                                {isInfoCollapsed ? (
-                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                                ) : (
-                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
-                                                )}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Expanded Content */}
-                                    <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isInfoCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1000px] opacity-100'}`}>
-                                        <div className="p-4 space-y-4 pt-0">
-                                            <div className="flex justify-end gap-2 mb-2">
+                                            <div className="flex gap-2">
                                                 <button 
                                                     onClick={handleAudit}
                                                     disabled={isAuditing}
-                                                    className="text-[10px] text-orange-600 hover:text-white hover:bg-orange-500 font-medium flex items-center gap-1 bg-white border border-orange-200 px-2 py-1 rounded transition disabled:opacity-50"
+                                                    className="text-[10px] text-orange-600 hover:text-white hover:bg-orange-500 font-medium flex items-center gap-1 bg-white border border-orange-200 px-2 py-0.5 rounded transition disabled:opacity-50"
                                                 >
                                                     {isAuditing ? t(lang, 'audit_running') : t(lang, 'audit_specs')}
                                                 </button>
                                                 <button 
                                                     onClick={handleGenerateSummary}
                                                     disabled={isGeneratingSummary}
-                                                    className="text-[10px] text-accent hover:text-white hover:bg-accent font-medium flex items-center gap-1 bg-white border border-accent/20 px-2 py-1 rounded transition disabled:opacity-50"
+                                                    className="text-[10px] text-accent hover:text-white hover:bg-accent font-medium flex items-center gap-1 bg-white border border-accent/20 px-2 py-0.5 rounded transition disabled:opacity-50"
                                                 >
                                                     {isGeneratingSummary ? '...' : t(lang, 'generate_summary')}
                                                 </button>
                                             </div>
-
+                                        </div>
+                                        <div className="p-4 space-y-4">
                                             <div className="grid md:grid-cols-1 gap-4">
                                                 <div className="group">
                                                     <label className="block text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">{t(lang, 'project_name')}</label>
@@ -818,25 +858,26 @@ Best regards,
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                )}
 
-                                {/* Editable Items Table (Keeping as is) */}
-                                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                {/* Editable Items Table */}
+                                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm flex-1">
                                     <div className="text-[10px] font-medium text-slate-500 p-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                                         <span>{t(lang, 'edit_mode_hint')}</span>
+                                        <span className="text-accent">{rfq.line_items.length} items</span>
                                     </div>
-                                    <div className="overflow-x-auto">
+                                    <div className="overflow-x-auto max-h-[600px]">
                                     <table className="w-full text-xs text-left whitespace-nowrap">
-                                        <thead className="bg-white text-slate-500 font-semibold border-b border-slate-200">
+                                        <thead className="bg-white text-slate-500 font-semibold border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                                             <tr>
-                                                <th className="px-4 py-3 w-10 text-center bg-slate-50/50">{t(lang, 'line')}</th>
-                                                <th className="px-4 py-3">{t(lang, 'desc')}</th>
-                                                <th className="px-4 py-3">{t(lang, 'grade')}</th>
-                                                <th className="px-4 py-3 bg-slate-50/30 border-x border-slate-100 text-center" colSpan={2}>{t(lang, 'od')}</th>
-                                                <th className="px-4 py-3 bg-slate-50/30 border-r border-slate-100 text-center" colSpan={2}>{t(lang, 'wt')}</th>
-                                                <th className="px-4 py-3 bg-slate-50/30 border-r border-slate-100 text-center" colSpan={2}>{t(lang, 'length')}</th>
-                                                <th className="px-4 py-3 text-right w-20">{t(lang, 'qty')}</th>
-                                                <th className="px-4 py-3 text-center w-10"></th>
+                                                <th className="px-4 py-3 w-10 text-center bg-slate-50/95 backdrop-blur">{t(lang, 'line')}</th>
+                                                <th className="px-4 py-3 bg-white/95 backdrop-blur">{t(lang, 'desc')}</th>
+                                                <th className="px-4 py-3 bg-white/95 backdrop-blur">{t(lang, 'grade')}</th>
+                                                <th className="px-4 py-3 bg-slate-50/95 backdrop-blur border-x border-slate-100 text-center" colSpan={2}>{t(lang, 'od')}</th>
+                                                <th className="px-4 py-3 bg-slate-50/95 backdrop-blur border-r border-slate-100 text-center" colSpan={2}>{t(lang, 'wt')}</th>
+                                                <th className="px-4 py-3 bg-slate-50/95 backdrop-blur border-r border-slate-100 text-center" colSpan={2}>{t(lang, 'length')}</th>
+                                                <th className="px-4 py-3 text-right w-20 bg-white/95 backdrop-blur">{t(lang, 'qty')}</th>
+                                                <th className="px-4 py-3 text-center w-10 bg-white/95 backdrop-blur"></th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 bg-white">
@@ -940,13 +981,22 @@ Best regards,
                                 {/* Comparison Section */}
                                 {quotes.length > 0 && (
                                     <div id="quote-comparison" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pt-2 pb-20">
-                                        {/* ... (Same comparison code as before) */}
                                         <div className="flex justify-between items-center px-1">
                                             <div className="flex items-center gap-2">
                                                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800">{t(lang, 'received_quotes')}</h3>
                                                 <span className="bg-accent text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{quotes.length}</span>
                                             </div>
-                                            {/* ... sort controls ... */}
+                                            <div className="flex items-center gap-2 text-xs">
+                                                <span className="text-slate-500">{t(lang, 'sort_by')}</span>
+                                                <select 
+                                                    value={sortBy} 
+                                                    onChange={(e) => setSortBy(e.target.value as 'price' | 'leadTime')}
+                                                    className="border-none bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer"
+                                                >
+                                                    <option value="price">{t(lang, 'price')}</option>
+                                                    <option value="leadTime">{t(lang, 'delivery')}</option>
+                                                </select>
+                                            </div>
                                         </div>
                                         
                                         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -962,7 +1012,17 @@ Best regards,
                                                             : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-lg'
                                                         }`}
                                                     >
-                                                        {/* ... quote card content ... */}
+                                                        {idx === 0 && sortBy === 'price' && (
+                                                            <div className="absolute -top-3 left-6 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md">
+                                                                {t(lang, 'best_offer')}
+                                                            </div>
+                                                        )}
+                                                        {idx === 0 && sortBy === 'leadTime' && (
+                                                            <div className="absolute -top-3 left-6 bg-blue-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md">
+                                                                {t(lang, 'fastest_delivery')}
+                                                            </div>
+                                                        )}
+
                                                         <div className="flex justify-between items-start mt-2">
                                                             <div className="flex items-center gap-3">
                                                                 <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${isSelected ? 'border-accent bg-accent/10 text-accent' : 'border-slate-100 bg-slate-50 text-slate-400'}`}>

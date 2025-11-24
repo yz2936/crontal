@@ -43,7 +43,7 @@ export interface Dimension {
   
   export interface Rfq {
     id: string;
-    status?: 'draft' | 'sent' | 'awarded';
+    status?: 'draft' | 'sent' | 'awarded' | 'archived';
     project_name: string | null;
     project_description?: string; 
     ai_summary?: string;
