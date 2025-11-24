@@ -3,8 +3,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Rfq, LineItem, FileAttachment, Language } from "../types";
 
 // Initialize Gemini Client
-// In a real deployment, this runs on a server or edge function to protect the API key.
-// For this client-side demo, we access the key from the environment.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const MODEL_FAST = "gemini-2.5-flash";

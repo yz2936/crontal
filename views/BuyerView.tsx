@@ -456,15 +456,166 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       if (!quote) return;
 
       const doc = new jsPDF();
-      doc.setFontSize(22);
-      doc.text("PURCHASE ORDER", 14, 25);
       
+      // Logo (Simulated)
+      doc.setFillColor(20, 30, 80); // Dark Blue like Brava
+      doc.ellipse(30, 20, 20, 8, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.text("CRONTAL", 16, 22);
+
+      // Title & Order Info
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(18);
+      doc.text("Purchase Order", 120, 20); // Aligned right-ish
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Order Number: ${rfq.id.split('-').pop()}`, 65, 30);
+      doc.text(`Date: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric'})}`, 130, 30);
+      doc.text(`Page 1 of 1`, 180, 30);
+
+      // Addresses (Left: Buyer, Right: Delivery To)
+      const leftX = 14;
+      const rightX = 110;
+      let y = 45;
+
+      // Buyer
+      doc.setFont("helvetica", "bold");
+      doc.text(`Buyer: CRONTAL INC`, leftX, y); y += 6;
+      doc.text(`Contact: John Buyer`, leftX, y); y += 6;
+      doc.text(`Phone: (555) 123-4567`, leftX, y); y += 6;
+      doc.text(`Fax: (555) 123-4568`, leftX, y); y += 6;
+      doc.text(`Email: buyer@crontal.com`, leftX, y);
+
+      // Delivery To (Reset Y)
+      y = 45;
+      doc.text("Delivery To:", rightX, y); y += 6;
+      doc.setFont("helvetica", "normal");
+      doc.text(`${rfq.commercial.destination || "Designated Port"}`, rightX, y, { maxWidth: 80 });
+      // Add mock address details if simple string
+      y += 10;
+
+      // Product Description
+      y = 80;
+      doc.setFont("helvetica", "bold");
+      doc.text("Product Description:", leftX, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${rfq.project_name}: ${rfq.project_description || "See detailed items below."}`, leftX, y + 6);
+      
+      doc.text("Currency: " + quote.currency, 160, y + 14);
+
+      // Table construction similar to Screenshot
+      const headers = [['Size\n(OD*WT*L)', 'OD\n(mm)', 'WT\n(mm)', 'L\n(mm)', 'Quantity', 'N.W\n(Kgs)', 'PCS', 'Price', 'Amount']];
+      
+      const tableData = rfq.line_items.map((item, i) => {
+          // Quote item mapping
+          const qItem = quote.items.find(qi => qi.line === item.line);
+          const price = qItem?.unitPrice || 0;
+          const total = qItem?.lineTotal || 0;
+
+          // Dimensions
+          const od = item.size.outer_diameter.value || '-';
+          const wt = item.size.wall_thickness.value || '-';
+          const len = item.size.length.value || '-';
+          
+          // Formatted Size String
+          const odU = item.size.outer_diameter.unit === 'in' ? '"' : '';
+          const wtU = item.size.wall_thickness.unit === 'in' ? '"' : '';
+          const sizeStr = `${od}${odU} x ${wt}${wtU} x ${len}`;
+
+          return [
+              sizeStr,
+              od.toString(),
+              wt.toString(),
+              len.toString(),
+              `${item.quantity} ${item.uom}`,
+              "-", // N.W Placeholder
+              item.uom === 'pcs' ? item.quantity : "-", // PCS
+              price.toFixed(2),
+              total.toFixed(2)
+          ];
+      });
+
+      // Add Total Row
+      tableData.push([
+          "", "", "", "Total", 
+          rfq.line_items.reduce((acc, i) => acc + (i.quantity || 0), 0).toString(), 
+          "-", "-", "", 
+          quote.total.toFixed(2)
+      ]);
+
+      autoTable(doc, {
+          startY: y + 18,
+          head: headers,
+          body: tableData,
+          theme: 'plain', // Clean look
+          styles: { 
+              fontSize: 8, 
+              cellPadding: 2, 
+              lineColor: [0, 0, 0], // Black borders
+              lineWidth: 0.1,
+              valign: 'middle',
+              halign: 'center'
+          },
+          headStyles: {
+              fillColor: [255, 255, 255],
+              textColor: [0, 0, 0],
+              fontStyle: 'bold',
+              lineWidth: 0.1
+          },
+          columnStyles: {
+              0: { halign: 'left', cellWidth: 40 }, // Size needs more width
+              8: { halign: 'right' } // Amount right align
+          }
+      });
+
+      let finalY = (doc as any).lastAutoTable.finalY + 10;
+
+      // Say Total (Simple Mock)
+      doc.setFont("helvetica", "bold");
+      doc.text(`SAY: ${quote.currency} ${quote.total.toLocaleString()} ONLY`, leftX, finalY);
+      finalY += 10;
+
+      // Footer Terms
+      const termsX = leftX;
+      const valX = leftX + 40;
+      
+      const addTerm = (label: string, value: string) => {
+          doc.setFont("helvetica", "bold");
+          doc.text(label, termsX, finalY);
+          doc.setFont("helvetica", "normal");
+          doc.text(value, valX, finalY);
+          finalY += 6;
+      };
+
+      addTerm("Delivery Condition:", "Standard Export Packing");
+      addTerm("Packing:", "Plywooden cases / Bundles");
+      addTerm("Delivery Timeline:", `${quote.leadTime} days from PO`);
+      addTerm("Payment:", quote.payment || "Net 30");
+      addTerm("Documents:", "Commercial Invoice, Packing List, MTC");
+      
+      finalY += 4;
+      // Instructions Box
+      doc.rect(termsX, finalY, 120, 15);
+      doc.setFont("helvetica", "bold");
+      doc.text("Delivery Instructions:", termsX + 2, finalY + 5);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Quality to comply with ${rfq.line_items[0]?.material_grade || "ASTM"} standards.`, termsX + 2, finalY + 10);
+
+      // Total Box right side
+      doc.rect(140, finalY, 50, 15);
       doc.setFontSize(12);
-      doc.text(`Vendor: ${quote.supplierName}`, 14, 40);
-      doc.text(`Project: ${rfq.project_name}`, 14, 48);
-      
-      doc.text(`Total Amount: ${quote.currency} ${quote.total.toLocaleString()}`, 14, 60);
-      
+      doc.setFont("helvetica", "bold");
+      doc.text("Total", 145, finalY + 10);
+      doc.text(quote.total.toFixed(2), 170, finalY + 10, { align: 'center' });
+
+      // Signature
+      finalY += 30;
+      doc.setFontSize(10);
+      doc.text("Brava Stainless Steel Inc .AUTHORIZED SIGNATURE _________________________", leftX, finalY);
+
       doc.save(`PO_${quote.supplierName}_${rfq.id}.pdf`);
   };
 
