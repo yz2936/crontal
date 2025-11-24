@@ -9,6 +9,14 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const MODEL_FAST = "gemini-2.5-flash";
 
+const getLanguageName = (lang: Language): string => {
+    switch (lang) {
+        case 'zh': return "Simplified Chinese (简体中文)";
+        case 'es': return "Spanish (Español)";
+        default: return "English";
+    }
+};
+
 export const parseRequest = async (
   text: string, 
   projectName: string | null, 
@@ -18,11 +26,13 @@ export const parseRequest = async (
 ): Promise<Partial<Rfq>> => {
   
   const isEditMode = currentLineItems.length > 0;
+  const targetLang = getLanguageName(lang);
 
   const systemInstruction = `
     You are Crontal's expert procurement AI. Your role is to extract or modify structured RFQ data.
 
     MODE: ${isEditMode ? "EDITING EXISTING LIST" : "CREATING NEW LIST"}
+    TARGET LANGUAGE FOR TEXT FIELDS: ${targetLang}
 
     YOUR TASKS:
     1. Analyze the text input and any files.
@@ -47,7 +57,7 @@ export const parseRequest = async (
 
     OUTPUT FORMAT:
     - Return ONLY valid JSON matching the schema.
-    - If inferring text, use language: "${lang}".
+    - If inferring description text or project names, write them in ${targetLang} unless the technical spec requires English.
   `;
 
   try {
@@ -167,15 +177,19 @@ export const parseRequest = async (
 };
 
 export const clarifyRequest = async (rfq: Rfq, userMessage: string, lang: Language = 'en'): Promise<string> => {
+    const targetLang = getLanguageName(lang);
     const systemInstruction = `
     You are Crontal's RFQ assistant.
     Goal: Confirm the user's action (edit/delete/add) and summarize the current state of the RFQ.
     
     Input Context: The table has ALREADY been updated by the parsing engine.
-    Your job is just to generate a polite confirmation message in "${lang}".
     
-    Example: "I've removed line 3 as requested." or "I've added the new specs."
-    Keep it short.
+    CRITICAL INSTRUCTION: You MUST write your response in ${targetLang}.
+    
+    Example (English): "I've removed line 3 as requested."
+    Example (Chinese): "我已经按要求删除了第3行。"
+    
+    Keep it short and professional.
     `;
 
     const rfqSummary = JSON.stringify({
@@ -189,13 +203,14 @@ export const clarifyRequest = async (rfq: Rfq, userMessage: string, lang: Langua
             contents: `Updated RFQ State: ${rfqSummary}\n\nUser Action: ${userMessage}`,
             config: { systemInstruction }
         });
-        return response.text || "I've updated the table. Please review the details.";
+        return response.text || (lang === 'zh' ? "表格已更新，请查看详情。" : "I've updated the table. Please review the details.");
     } catch (e) {
-        return "I've processed your request. Please check the table on the right.";
+        return lang === 'zh' ? "已处理您的请求，请查看右侧表格。" : "I've processed your request. Please check the table on the right.";
     }
 }
 
 export const generateRfqSummary = async (rfq: Rfq, lang: Language = 'en'): Promise<string> => {
+  const targetLang = getLanguageName(lang);
   const systemInstruction = `
     You are an expert Procurement Manager.
     Your task is to write a concise, professional Executive Summary for an RFQ (Request for Quotation) that will be sent to suppliers.
@@ -207,7 +222,7 @@ export const generateRfqSummary = async (rfq: Rfq, lang: Language = 'en'): Promi
     - Key Materials: ${Array.from(new Set(rfq.line_items.map(i => i.material_grade))).join(', ')}
     
     Requirements:
-    - Language: ${lang}
+    - Language: ${targetLang} (Strictly output in this language)
     - Length: Under 80 words.
     - Tone: Professional, Urgent, Clear.
     - Content: Summarize what is being bought, the scale of the project, and the urgency. Do NOT list every single item. Focus on the "Big Picture" for the supplier.
@@ -231,6 +246,7 @@ export const generateRfqSummary = async (rfq: Rfq, lang: Language = 'en'): Promi
 };
 
 export const auditRfqSpecs = async (rfq: Rfq, lang: Language = 'en'): Promise<string[]> => {
+    const targetLang = getLanguageName(lang);
     const systemInstruction = `
       You are an expert EPC Quality Assurance (QA) Engineer.
       Your job is to audit an RFQ for missing specifications that could lead to procurement errors.
@@ -246,9 +262,12 @@ export const auditRfqSpecs = async (rfq: Rfq, lang: Language = 'en'): Promise<st
 
       Output:
       Return a JSON array of strings. Each string is a warning message referencing the Line Number.
-      Example: ["Line 1: Missing Schedule (WT).", "Line 3: Flange Class not specified."]
+      The warning messages MUST be in ${targetLang}.
+      
+      Example (English): "Line 1: Missing Schedule (WT)."
+      Example (Chinese): "第1行：缺少壁厚（Schedule）。"
+      
       If perfect, return empty array [].
-      Language: ${lang}
     `;
   
     try {
