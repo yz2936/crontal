@@ -37,12 +37,14 @@ export const parseRequest = async (
     YOUR TASKS:
     1. Analyze the text input and any files.
     2. ${isEditMode 
-        ? `The user wants to MODIFY the "Current Line Items" provided.
+        ? `CRITICAL INSTRUCTION FOR EDITING:
+           - You have been provided a list of [CURRENT LINE ITEMS].
+           - Your goal is to RETURN THE FULL LIST including both unchanged items and modified/new items.
            - IF user says "Delete line X" or "Remove item X": Exclude it from the returned list.
-           - IF user says "Change quantity/grade/size...": Update the specific item.
-           - IF user provides new specs: Append them as new items.
-           - ALWAYS return the COMPLETE, valid list of items after applying changes.
-           - Preserve existing IDs for unchanged items.` 
+           - IF user says "Change quantity/grade/size...": Update the specific item in the list.
+           - IF user provides new specs: Append them as NEW items to the list.
+           - DO NOT return only the new items. You must merge them with the existing list.
+           - Preserve existing item_ids for unchanged items.` 
         : `Extract all line items from scratch.`}
     
     3. DIMENSION HANDLING:
@@ -66,7 +68,10 @@ export const parseRequest = async (
     let promptText = `USER REQUEST:\n"""${text}"""\n\nProject Name Context: ${projectName || "N/A"}\n`;
     
     if (isEditMode) {
-        promptText += `\n\n[CURRENT LINE ITEMS DATA - APPLY CHANGES TO THIS LIST]:\n${JSON.stringify(currentLineItems, null, 2)}\n`;
+        // We strip internal fields like 'line' to let the model re-index if needed, or we rely on ID.
+        // Sending a clean version of the list helps the model focus.
+        const cleanList = currentLineItems.map(({line, raw_description, ...rest}) => rest);
+        promptText += `\n\n[CURRENT LINE ITEMS DATA - APPLY CHANGES TO THIS LIST]:\n${JSON.stringify(cleanList, null, 2)}\n`;
     }
 
     // Add text prompt
@@ -144,6 +149,11 @@ export const parseRequest = async (
             grade: li.material_grade || "",
             product_type: li.product_type,
             material_grade: li.material_grade,
+            standard_or_spec: "",
+            delivery_location: "",
+            required_delivery_date: "",
+            incoterm: "",
+            payment_terms: "",
             size: {
                 outer_diameter: { value: li.size?.od_val, unit: li.size?.od_unit },
                 wall_thickness: { value: li.size?.wt_val, unit: li.size?.wt_unit },

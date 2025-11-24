@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, ChatMessage, Language, LineItem, FileAttachment, Size } from '../types';
@@ -246,7 +247,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             
             const updatedRfq = { ...rfq };
             
-            if (incremental.line_items) {
+            // Safe merge logic: if model returned items, use them (it should contain merged list now)
+            if (incremental.line_items && incremental.line_items.length > 0) {
                  updatedRfq.line_items = incremental.line_items as LineItem[];
             }
             if (incremental.commercial?.destination) updatedRfq.commercial.destination = incremental.commercial.destination;
@@ -378,36 +380,71 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
   const handleGeneratePdf = () => {
     if (!rfq) return;
     const doc = new jsPDF();
-    let yPos = 20;
     
-    doc.setFontSize(18);
-    doc.text("Request for Quotation", 14, yPos);
-    yPos += 10;
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(40, 50, 70);
+    doc.text("Request for Quotation", 14, 20);
     
+    // Meta Info
     doc.setFontSize(10);
-    doc.text(`RFQ ID: ${rfq.id}`, 14, yPos); yPos += 6;
-    doc.text(`Project: ${rfq.project_name || 'N/A'}`, 14, yPos); yPos += 6;
-    if (rfq.ai_summary) {
-        const splitSummary = doc.splitTextToSize(`Summary: ${rfq.ai_summary}`, 180);
-        doc.text(splitSummary, 14, yPos);
-        yPos += (splitSummary.length * 5) + 4;
+    doc.setTextColor(100);
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 28);
+    
+    // Divider
+    doc.setDrawColor(200);
+    doc.line(14, 32, 196, 32);
+    
+    // Project Info
+    doc.setTextColor(0);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Project: ${rfq.project_name || 'N/A'}`, 14, 42);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`RFQ ID: ${rfq.id}`, 14, 48);
+    
+    if (rfq.commercial.destination) {
+        doc.text(`Destination: ${rfq.commercial.destination}`, 14, 54);
+    }
+    if (rfq.commercial.incoterm) {
+        doc.text(`Incoterm: ${rfq.commercial.incoterm}`, 80, 54);
     }
     
-    doc.text(`Destination: ${rfq.commercial.destination}`, 14, yPos); yPos += 6;
+    // Table Construction
+    const headers = [['Line', 'Description', 'Material/Grade', 'Qty', 'Unit', 'Size (OD x WT x L)']];
     
-    const tableData = rfq.line_items.map(item => [
-        item.line,
-        item.description,
-        item.material_grade,
-        item.quantity,
-        item.uom,
-        `${item.size.outer_diameter.value || ''}${item.size.outer_diameter.unit || ''} x ${item.size.wall_thickness.value || ''}${item.size.wall_thickness.unit || ''}`
-    ]);
+    const data = rfq.line_items.map(item => {
+        const od = item.size?.outer_diameter?.value ? `${item.size.outer_diameter.value} ${item.size.outer_diameter.unit || ''}` : '-';
+        const wt = item.size?.wall_thickness?.value ? `${item.size.wall_thickness.value} ${item.size.wall_thickness.unit || ''}` : '-';
+        const len = item.size?.length?.value ? `${item.size.length.value} ${item.size.length.unit || ''}` : '-';
+        
+        return [
+            item.line.toString(),
+            item.description || '',
+            item.material_grade || '',
+            item.quantity?.toString() || '0',
+            item.uom || '',
+            `${od} x ${wt} x ${len}`
+        ];
+    });
 
     autoTable(doc, {
-        startY: yPos,
-        head: [['Line', 'Desc', 'Grade', 'Qty', 'UOM', 'Size']],
-        body: tableData,
+        startY: 62,
+        head: headers,
+        body: data,
+        theme: 'grid',
+        headStyles: { fillColor: [71, 85, 105], textColor: 255 }, // Slate-600
+        styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
+        columnStyles: {
+            0: { cellWidth: 15 }, // Line
+            1: { cellWidth: 'auto' }, // Desc
+            2: { cellWidth: 30 }, // Grade
+            3: { cellWidth: 20, halign: 'right' }, // Qty
+            4: { cellWidth: 15 }, // Unit
+            5: { cellWidth: 40 } // Size
+        }
     });
 
     doc.save(`RFQ-${rfq.id}.pdf`);
@@ -419,7 +456,15 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       if (!quote) return;
 
       const doc = new jsPDF();
+      doc.setFontSize(22);
       doc.text("PURCHASE ORDER", 14, 25);
+      
+      doc.setFontSize(12);
+      doc.text(`Vendor: ${quote.supplierName}`, 14, 40);
+      doc.text(`Project: ${rfq.project_name}`, 14, 48);
+      
+      doc.text(`Total Amount: ${quote.currency} ${quote.total.toLocaleString()}`, 14, 60);
+      
       doc.save(`PO_${quote.supplierName}_${rfq.id}.pdf`);
   };
 
@@ -535,7 +580,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                         )}
                     </svg>
                 </button>
-                {rfq && isInfoVisible && (
+                {rfq && (
                     <div className="flex items-center gap-2">
                         {[1, 2, 3].map((step) => (
                             <div key={step} className="flex items-center hidden sm:flex">
