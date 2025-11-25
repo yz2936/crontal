@@ -60,10 +60,10 @@ export default function App() {
                     if (storedRfqStr) {
                         const originalRfq = JSON.parse(storedRfqStr);
                         setRfq(originalRfq);
+                        // Append quote to list, deduplicating by ID
                         setQuotes(prev => {
-                            // Deduplicate based on ID
-                            if (prev.some(q => q.id === incomingQuote.id)) return prev;
-                            return [...prev, incomingQuote];
+                            const exists = prev.some(q => q.id === incomingQuote.id);
+                            return exists ? prev : [...prev, incomingQuote];
                         });
                         alert(t('en', 'quote_imported_success', { supplier: incomingQuote.supplierName }));
                     } else {

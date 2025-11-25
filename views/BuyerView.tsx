@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import LZString from 'lz-string';
-import { Rfq, Quote, ChatMessage, Language, LineItem, FileAttachment, Size } from '../types';
+import { Rfq, Quote, ChatMessage, Language, LineItem, FileAttachment, Size, ColumnConfig } from '../types';
 import { parseRequest, clarifyRequest, generateRfqSummary, auditRfqSpecs } from '../services/geminiService';
 import { storageService } from '../services/storageService';
 import { Walkthrough } from '../components/Walkthrough';
@@ -33,6 +33,22 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
   const [isInfoVisible, setIsInfoVisible] = useState(true); // Default visible
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Default Sidebar Open
   const [showCompareMatrix, setShowCompareMatrix] = useState(false); // Toggle for Matrix
+  
+  // Column Manager State
+  const [showColumnManager, setShowColumnManager] = useState(false);
+  const [newColumnName, setNewColumnName] = useState('');
+  const [tableConfig, setTableConfig] = useState<ColumnConfig[]>([
+      { id: 'line', label: t(lang, 'line'), visible: true, width: 'sm' },
+      { id: 'description', label: t(lang, 'desc'), visible: true, width: 'lg' },
+      { id: 'grade', label: t(lang, 'grade'), visible: true, width: 'md' },
+      { id: 'tolerance', label: t(lang, 'tolerance'), visible: true, width: 'sm' },
+      { id: 'tests', label: t(lang, 'tests'), visible: true, width: 'sm' },
+      { id: 'od', label: t(lang, 'od'), visible: true, width: 'sm' },
+      { id: 'wt', label: t(lang, 'wt'), visible: true, width: 'sm' },
+      { id: 'length', label: t(lang, 'length'), visible: true, width: 'sm' },
+      { id: 'qty', label: t(lang, 'qty'), visible: true, width: 'sm' },
+      { id: 'uom', label: t(lang, 'uom'), visible: true, width: 'sm' }
+  ]);
 
   // Navigation State
   const [sidebarTab, setSidebarTab] = useState<'active' | 'archived'>('active');
@@ -47,6 +63,15 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     if (messages.length === 0 || (messages.length === 1 && messages[0].role === 'assistant')) {
         setMessages([{ role: 'assistant', content: t(lang, 'initial_greeting') }]);
     }
+  }, [lang]);
+
+  // Update config labels when lang changes
+  useEffect(() => {
+      setTableConfig(prev => prev.map(col => {
+          if (col.isCustom) return col;
+          const key = col.id === 'description' ? 'desc' : col.id;
+          return { ...col, label: t(lang, key as any) || col.label };
+      }));
   }, [lang]);
 
   // Auto-resize textarea
@@ -286,6 +311,17 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       setRfq({ ...rfq, line_items: updatedItems });
   };
 
+  const handleUpdateCustomField = (index: number, key: string, value: string) => {
+      if (!rfq) return;
+      const updatedItems = [...rfq.line_items];
+      const currentCustom = updatedItems[index].custom_fields || {};
+      updatedItems[index] = { 
+          ...updatedItems[index], 
+          custom_fields: { ...currentCustom, [key]: value }
+      };
+      setRfq({ ...rfq, line_items: updatedItems });
+  };
+
   const handleDeleteItem = (index: number) => {
       if (!rfq) return;
       const updatedItems = rfq.line_items.filter((_, i) => i !== index);
@@ -357,9 +393,10 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         const jsonStr = JSON.stringify(sentRfq);
         const compressed = LZString.compressToEncodedURIComponent(jsonStr);
         
-        // Robust URL generation (clean base)
+        // Robust URL generation (clean base) with Unique ID
         const baseUrl = `${window.location.origin}${window.location.pathname}`;
-        const shareUrl = `${baseUrl}?mode=supplier&data=${compressed}`;
+        // Append unique share ID to ensure distinction
+        const shareUrl = `${baseUrl}?mode=supplier&data=${compressed}&share_id=${Date.now()}`;
         
         // Attempt to copy
         if (navigator.clipboard && window.isSecureContext) {
@@ -373,6 +410,30 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         console.error("Share failed", e);
         alert("Could not create link.");
     }
+  };
+
+  const handleAddColumn = () => {
+      if (newColumnName.trim()) {
+          const id = newColumnName.toLowerCase().replace(/\s+/g, '_');
+          if (!tableConfig.find(c => c.id === id)) {
+              setTableConfig(prev => [...prev, { 
+                  id, 
+                  label: newColumnName, 
+                  visible: true, 
+                  width: 'md', 
+                  isCustom: true 
+              }]);
+              setNewColumnName('');
+          }
+      }
+  };
+
+  const toggleColumnVisibility = (id: string) => {
+      setTableConfig(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c));
+  };
+
+  const changeColumnWidth = (id: string, width: 'sm' | 'md' | 'lg') => {
+      setTableConfig(prev => prev.map(c => c.id === id ? { ...c, width } : c));
   };
 
   const getSortedQuotes = () => {
@@ -684,6 +745,16 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
           : r.status === 'archived'
   );
 
+  // Helper to get width class
+  const getWidthClass = (width: 'sm' | 'md' | 'lg') => {
+      switch(width) {
+          case 'sm': return 'w-20';
+          case 'md': return 'w-32';
+          case 'lg': return 'w-64';
+          default: return 'w-32';
+      }
+  };
+
   return (
     <div className={`flex flex-col md:flex-row transition-all duration-300 relative min-h-[80vh] ${isSidebarOpen ? 'gap-6' : 'gap-0'}`}>
       <Walkthrough steps={steps} isActive={isTourActive} onClose={() => setIsTourActive(false)} lang={lang} />
@@ -912,7 +983,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             {/* Right Col: RFQ Data */}
             <div className="md:col-span-8 flex flex-col">
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-200/50 overflow-hidden flex flex-col">
-                    {/* ... (Keep Action Bar and Dashboard logic) ... */}
+                    {/* Action Bar */}
                     <div className="px-4 py-3 border-b border-slate-100 bg-white flex justify-between items-center h-14" id="action-bar">
                         <div className="flex items-center gap-2">
                              {/* STEP 2 BADGE */}
@@ -958,7 +1029,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                     <div className="p-4 space-y-4" id="rfq-table">
                         {!rfq ? (
                             <div className="min-h-[400px] flex flex-col justify-center gap-6">
-                                {/* ... (Keep Empty State Dashboard) ... */}
+                                {/* Empty State Dashboard */}
                                 <div className="text-center mb-4">
                                     <h3 className="text-lg font-bold text-slate-900 mb-1">{t(lang, 'dashboard_title')}</h3>
                                     <p className="text-sm text-slate-500">Select an option to begin your procurement process.</p>
@@ -997,7 +1068,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                             </div>
                         ) : (
                             <>
-                                {/* ... (Keep Project Info Section) ... */}
+                                {/* Project Info Section */}
                                 {isInfoVisible && (
                                     <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-2">
                                         <div className="px-4 py-2 border-b border-slate-100 bg-slate-100/50 flex justify-between items-center">
@@ -1114,126 +1185,101 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                 )}
 
                                 {/* Editable Items Table */}
-                                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm flex-1">
-                                    {/* ... (Keep Table Head and Body) ... */}
+                                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm flex-1 relative">
                                     <div className="text-[10px] font-medium text-slate-500 p-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                                         <span>{t(lang, 'edit_mode_hint')}</span>
-                                        <span className="text-accent">{rfq.line_items.length} items</span>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-accent">{rfq.line_items.length} items</span>
+                                            {/* Column Manager Button */}
+                                            <button 
+                                                onClick={() => setShowColumnManager(!showColumnManager)}
+                                                className="text-slate-400 hover:text-accent transition p-1 rounded hover:bg-slate-100 relative"
+                                                title={t(lang, 'column_settings')}
+                                            >
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                            </button>
+                                        </div>
                                     </div>
+
+                                    {/* Column Manager Popover */}
+                                    {showColumnManager && (
+                                        <div className="absolute right-2 top-10 z-50 bg-white border border-slate-200 shadow-xl rounded-xl w-64 p-3 animate-in fade-in zoom-in-95 duration-200">
+                                            <h4 className="text-xs font-bold text-slate-700 uppercase mb-2 border-b border-slate-100 pb-1">{t(lang, 'column_settings')}</h4>
+                                            <div className="max-h-64 overflow-y-auto space-y-2">
+                                                {tableConfig.map(col => (
+                                                    <div key={col.id} className="flex items-center justify-between">
+                                                        <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={col.visible} 
+                                                                onChange={() => toggleColumnVisibility(col.id)}
+                                                                className="rounded border-slate-300 text-accent focus:ring-accent"
+                                                            />
+                                                            {col.label}
+                                                        </label>
+                                                        <div className="flex gap-1 bg-slate-100 rounded p-0.5">
+                                                            <button onClick={() => changeColumnWidth(col.id, 'sm')} className={`text-[8px] px-1.5 rounded ${col.width === 'sm' ? 'bg-white shadow text-accent' : 'text-slate-400'}`}>S</button>
+                                                            <button onClick={() => changeColumnWidth(col.id, 'md')} className={`text-[8px] px-1.5 rounded ${col.width === 'md' ? 'bg-white shadow text-accent' : 'text-slate-400'}`}>M</button>
+                                                            <button onClick={() => changeColumnWidth(col.id, 'lg')} className={`text-[8px] px-1.5 rounded ${col.width === 'lg' ? 'bg-white shadow text-accent' : 'text-slate-400'}`}>L</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="mt-3 pt-3 border-t border-slate-100">
+                                                <label className="block text-[10px] text-slate-500 mb-1">{t(lang, 'add_column')}</label>
+                                                <div className="flex gap-2">
+                                                    <input 
+                                                        value={newColumnName}
+                                                        onChange={e => setNewColumnName(e.target.value)}
+                                                        placeholder={t(lang, 'enter_col_name')}
+                                                        className="text-xs border border-slate-200 rounded px-2 py-1 flex-1 focus:outline-none focus:border-accent"
+                                                    />
+                                                    <button 
+                                                        onClick={handleAddColumn}
+                                                        className="bg-accent text-white text-xs px-2 py-1 rounded hover:bg-accent/90"
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={() => setShowColumnManager(false)}
+                                                className="mt-3 w-full bg-slate-100 text-slate-600 text-xs py-1.5 rounded hover:bg-slate-200"
+                                            >
+                                                {t(lang, 'close_window')}
+                                            </button>
+                                        </div>
+                                    )}
+
                                     <div className="overflow-x-auto max-h-[600px]">
                                     <table className="w-full text-xs text-left whitespace-nowrap">
                                         <thead className="bg-white text-slate-500 font-semibold border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                                             <tr>
-                                                <th className="px-4 py-3 w-10 text-center bg-slate-50/95 backdrop-blur">{t(lang, 'line')}</th>
-                                                <th className="px-4 py-3 bg-white/95 backdrop-blur">{t(lang, 'desc')}</th>
-                                                <th className="px-4 py-3 bg-white/95 backdrop-blur">{t(lang, 'grade')}</th>
-                                                <th className="px-4 py-3 bg-white/95 backdrop-blur text-xs font-medium w-20">{t(lang, 'tolerance')}</th>
-                                                <th className="px-4 py-3 bg-white/95 backdrop-blur text-xs font-medium w-24">{t(lang, 'tests')}</th>
-                                                <th className="px-4 py-3 bg-slate-50/95 backdrop-blur border-x border-slate-100 text-center" colSpan={2}>{t(lang, 'od')}</th>
-                                                <th className="px-4 py-3 bg-slate-50/95 backdrop-blur border-r border-slate-100 text-center" colSpan={2}>{t(lang, 'wt')}</th>
-                                                <th className="px-4 py-3 bg-slate-50/95 backdrop-blur border-r border-slate-100 text-center" colSpan={2}>{t(lang, 'length')}</th>
-                                                <th className="px-4 py-3 text-right w-20 bg-white/95 backdrop-blur">{t(lang, 'qty')}</th>
-                                                <th className="px-4 py-3 text-center w-10 bg-white/95 backdrop-blur"></th>
+                                                {tableConfig.filter(c => c.visible).map(col => (
+                                                    <th key={col.id} className={`px-4 py-3 bg-white/95 backdrop-blur border-b border-slate-200 ${getWidthClass(col.width)}`}>
+                                                        {col.label}
+                                                    </th>
+                                                ))}
+                                                <th className="px-4 py-3 text-center w-10 bg-white/95 backdrop-blur border-b border-slate-200"></th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 bg-white">
                                             {rfq.line_items.map((item, index) => (
                                                 <tr key={item.item_id} className="hover:bg-slate-50 transition-colors group">
-                                                    <td className="px-4 py-2.5 text-center text-slate-400 bg-slate-50/30 border-r border-slate-50 font-mono text-[10px]">{item.line}</td>
-                                                    <td className="px-4 py-2.5">
-                                                        <input 
-                                                            value={item.description} 
-                                                            onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)}
-                                                            className="w-24 md:w-full bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none font-medium text-slate-700 transition-all"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-2.5">
-                                                        <input 
-                                                            value={item.material_grade || ''} 
-                                                            onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)}
-                                                            className="w-16 bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-600 transition-all"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-2.5">
-                                                        <input 
-                                                            value={item.tolerance || ''} 
-                                                            onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)}
-                                                            placeholder="-"
-                                                            className="w-16 bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-500 text-[10px] transition-all"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-2.5">
-                                                        <input 
-                                                            value={item.test_reqs?.join(', ') || ''} 
-                                                            onChange={(e) => handleUpdateLineItem(index, 'test_reqs', e.target.value.split(',').map(s => s.trim()))}
-                                                            placeholder="-"
-                                                            className="w-20 bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-500 text-[10px] transition-all"
-                                                        />
-                                                    </td>
-                                                    {/* OD */}
-                                                    <td className="px-1 py-2.5 text-right border-l border-slate-50">
-                                                        <input 
-                                                            type="number"
-                                                            value={item.size.outer_diameter.value || ''}
-                                                            onChange={(e) => handleUpdateDimension(index, 'outer_diameter', 'value', Number(e.target.value))}
-                                                            className="w-12 text-right bg-transparent border border-transparent rounded px-1 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-700 font-mono transition-all"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1 py-2.5 border-r border-slate-50">
-                                                        <input 
-                                                            value={item.size.outer_diameter.unit || ''}
-                                                            onChange={(e) => handleUpdateDimension(index, 'outer_diameter', 'unit', e.target.value)}
-                                                            className="w-8 text-slate-400 text-[10px] bg-transparent focus:outline-none pl-1"
-                                                        />
-                                                    </td>
-                                                     {/* WT */}
-                                                     <td className="px-1 py-2.5 text-right">
-                                                        <input 
-                                                            type="number"
-                                                            value={item.size.wall_thickness.value || ''}
-                                                            onChange={(e) => handleUpdateDimension(index, 'wall_thickness', 'value', Number(e.target.value))}
-                                                            className="w-12 text-right bg-transparent border border-transparent rounded px-1 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-700 font-mono transition-all"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1 py-2.5 border-r border-slate-50">
-                                                        <input 
-                                                            value={item.size.wall_thickness.unit || ''}
-                                                            onChange={(e) => handleUpdateDimension(index, 'wall_thickness', 'unit', e.target.value)}
-                                                            className="w-8 text-slate-400 text-[10px] bg-transparent focus:outline-none pl-1"
-                                                        />
-                                                    </td>
-                                                     {/* Length */}
-                                                     <td className="px-1 py-2.5 text-right">
-                                                        <input 
-                                                            type="number"
-                                                            value={item.size.length.value || ''}
-                                                            onChange={(e) => handleUpdateDimension(index, 'length', 'value', Number(e.target.value))}
-                                                            className="w-12 text-right bg-transparent border border-transparent rounded px-1 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-700 font-mono transition-all"
-                                                        />
-                                                    </td>
-                                                    <td className="px-1 py-2.5 border-r border-slate-50">
-                                                        <input 
-                                                            value={item.size.length.unit || ''}
-                                                            onChange={(e) => handleUpdateDimension(index, 'length', 'unit', e.target.value)}
-                                                            className="w-8 text-slate-400 text-[10px] bg-transparent focus:outline-none pl-1"
-                                                        />
-                                                    </td>
-
-                                                    <td className="px-4 py-2.5 text-right">
-                                                        <div className="flex justify-end items-center gap-1">
-                                                            <input 
-                                                                type="number"
-                                                                value={item.quantity || 0} 
-                                                                onChange={(e) => handleUpdateLineItem(index, 'quantity', Number(e.target.value))}
-                                                                className="w-12 text-right bg-transparent border border-transparent rounded px-1 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-700 font-bold transition-all"
-                                                            />
-                                                            <input 
-                                                                value={item.uom || ''} 
-                                                                onChange={(e) => handleUpdateLineItem(index, 'uom', e.target.value)}
-                                                                className="w-8 text-left bg-transparent border border-transparent rounded px-1 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-400 text-[10px] transition-all"
-                                                            />
-                                                        </div>
-                                                    </td>
+                                                    {tableConfig.filter(c => c.visible).map(col => {
+                                                        if (col.id === 'line') return <td key={col.id} className="px-4 py-2.5 text-center text-slate-400 bg-slate-50/30 border-r border-slate-50 font-mono text-[10px]">{item.line}</td>;
+                                                        if (col.id === 'description') return <td key={col.id} className="px-4 py-2.5"><input value={item.description} onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)} className="w-full bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none font-medium text-slate-700 transition-all" /></td>;
+                                                        if (col.id === 'grade') return <td key={col.id} className="px-4 py-2.5"><input value={item.material_grade || ''} onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)} className="w-full bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-600 transition-all" /></td>;
+                                                        if (col.id === 'tolerance') return <td key={col.id} className="px-4 py-2.5"><input value={item.tolerance || ''} onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)} placeholder="-" className="w-full bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-500 text-[10px] transition-all" /></td>;
+                                                        if (col.id === 'tests') return <td key={col.id} className="px-4 py-2.5"><input value={item.test_reqs?.join(', ') || ''} onChange={(e) => handleUpdateLineItem(index, 'test_reqs', e.target.value.split(',').map(s => s.trim()))} placeholder="-" className="w-full bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-500 text-[10px] transition-all" /></td>;
+                                                        if (col.id === 'od') return <td key={col.id} className="px-4 py-2.5 flex items-center"><input type="number" value={item.size.outer_diameter.value || ''} onChange={(e) => handleUpdateDimension(index, 'outer_diameter', 'value', Number(e.target.value))} className="w-12 text-right bg-transparent border border-transparent rounded px-1 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-700 font-mono transition-all" /><span className="text-[10px] text-slate-400 ml-1">{item.size.outer_diameter.unit}</span></td>;
+                                                        if (col.id === 'wt') return <td key={col.id} className="px-4 py-2.5 flex items-center"><input type="number" value={item.size.wall_thickness.value || ''} onChange={(e) => handleUpdateDimension(index, 'wall_thickness', 'value', Number(e.target.value))} className="w-12 text-right bg-transparent border border-transparent rounded px-1 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-700 font-mono transition-all" /><span className="text-[10px] text-slate-400 ml-1">{item.size.wall_thickness.unit}</span></td>;
+                                                        if (col.id === 'length') return <td key={col.id} className="px-4 py-2.5 flex items-center"><input type="number" value={item.size.length.value || ''} onChange={(e) => handleUpdateDimension(index, 'length', 'value', Number(e.target.value))} className="w-12 text-right bg-transparent border border-transparent rounded px-1 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-700 font-mono transition-all" /><span className="text-[10px] text-slate-400 ml-1">{item.size.length.unit}</span></td>;
+                                                        if (col.id === 'qty') return <td key={col.id} className="px-4 py-2.5"><input type="number" value={item.quantity || 0} onChange={(e) => handleUpdateLineItem(index, 'quantity', Number(e.target.value))} className="w-full text-right bg-transparent border border-transparent rounded px-1 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-700 font-bold transition-all" /></td>;
+                                                        if (col.id === 'uom') return <td key={col.id} className="px-4 py-2.5"><input value={item.uom || ''} onChange={(e) => handleUpdateLineItem(index, 'uom', e.target.value)} className="w-full bg-transparent border border-transparent rounded px-1 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-400 text-[10px] transition-all" /></td>;
+                                                        if (col.isCustom) return <td key={col.id} className="px-4 py-2.5"><input value={item.custom_fields?.[col.id] || ''} onChange={(e) => handleUpdateCustomField(index, col.id, e.target.value)} className="w-full bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-600 transition-all" placeholder="-" /></td>;
+                                                        return <td key={col.id}></td>;
+                                                    })}
                                                     <td className="px-4 py-2.5 text-center">
                                                         <button 
                                                             onClick={() => handleDeleteItem(index)}

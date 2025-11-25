@@ -72,9 +72,14 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-        setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+        // Force update state with new files
+        const newFiles = Array.from(e.target.files);
+        setAttachedFiles(prev => [...prev, ...newFiles]);
     }
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    // Reset input value to allow selecting same file again if needed
+    if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+    }
   };
 
   const removeFile = (index: number) => {
@@ -117,8 +122,11 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
           }
       }
 
+      // Ensure Unique ID for every submission to allow multiple quotes for same RFQ
+      const uniqueId = `QT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
       const quote: Quote = {
-          id: `QT-${Date.now()}`,
+          id: uniqueId,
           rfqId: rfq.id,
           projectName: rfq.project_name || "Untitled Project",
           supplierName: formData.supplierName || "Unnamed Supplier",
@@ -148,7 +156,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
       setQuoteHistory(updatedHistory);
 
       // Prepare Quote for Link
-      // CRITICAL FIX: We MUST strip the file data for the URL generation.
+      // CRITICAL: We MUST strip the file data for the URL generation.
       // Browsers limit URLs to ~2KB-8KB. Even a small PDF is 50KB+.
       // We keep the metadata (name, type) so the Buyer knows a file was attached.
       const quoteForLink = { ...quote };

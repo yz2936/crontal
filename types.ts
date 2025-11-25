@@ -29,6 +29,7 @@ export interface Dimension {
     incoterm?: string | null;
     payment_terms?: string | null;
     other_requirements: string[];
+    custom_fields?: Record<string, string>; // Dynamic columns
   }
   
   export interface CommercialTerms {
@@ -109,4 +110,12 @@ export interface Dimension {
     name?: string;
     mimeType: string;
     data: string; // base64 encoded string
+  }
+
+  export interface ColumnConfig {
+    id: string;
+    label: string;
+    visible: boolean;
+    width: 'sm' | 'md' | 'lg';
+    isCustom?: boolean;
   }

@@ -140,7 +140,15 @@ export const translations = {
     show_info: "Show Info",
     hide_info: "Hide Info",
     show_sidebar: "Show Sidebar",
-    hide_sidebar: "Hide Sidebar"
+    hide_sidebar: "Hide Sidebar",
+
+    // Table Management
+    column_settings: "Table Settings",
+    add_column: "Add Column",
+    col_width: "Width",
+    col_visible: "Visible",
+    custom_col_name: "Column Name",
+    enter_col_name: "e.g. Tag No"
   },
   es: {
     welcome: "Bienvenido",
@@ -277,7 +285,14 @@ export const translations = {
     show_info: "Mostrar Info",
     hide_info: "Ocultar Info",
     show_sidebar: "Mostrar Barra Lateral",
-    hide_sidebar: "Ocultar Barra Lateral"
+    hide_sidebar: "Ocultar Barra Lateral",
+
+    column_settings: "Configuración de Tabla",
+    add_column: "Añadir Columna",
+    col_width: "Ancho",
+    col_visible: "Visible",
+    custom_col_name: "Nombre Columna",
+    enter_col_name: "ej. Tag No"
   },
   zh: {
     welcome: "欢迎",
@@ -414,7 +429,14 @@ export const translations = {
     show_info: "显示信息",
     hide_info: "隐藏信息",
     show_sidebar: "显示侧边栏",
-    hide_sidebar: "隐藏侧边栏"
+    hide_sidebar: "隐藏侧边栏",
+
+    column_settings: "表格设置",
+    add_column: "添加列",
+    col_width: "宽度",
+    col_visible: "可见",
+    custom_col_name: "列名",
+    enter_col_name: "例如：标签号"
   }
 };
 
