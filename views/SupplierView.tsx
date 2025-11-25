@@ -147,13 +147,15 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
       const updatedHistory = storageService.saveQuote(quote);
       setQuoteHistory(updatedHistory);
 
-      // Prepare Quote for Link (Safety trim for URL length)
+      // Prepare Quote for Link
+      // CRITICAL FIX: We MUST strip the file data for the URL generation.
+      // Browsers limit URLs to ~2KB-8KB. Even a small PDF is 50KB+.
+      // We keep the metadata (name, type) so the Buyer knows a file was attached.
       const quoteForLink = { ...quote };
-      // If file data is > 20KB, strip it for the link to prevent URL overflow
       quoteForLink.attachments = quote.attachments?.map(a => ({
           name: a.name,
           mimeType: a.mimeType,
-          data: a.data.length > 20000 ? "" : a.data 
+          data: "" // STRIPPED FOR URL LINK SAFETY
       }));
 
       // Generate Response Link
@@ -166,7 +168,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
         onSubmitQuote(quote); // Optimistic update
       } catch (e) {
         console.error("Link generation failed", e);
-        alert("Quote is too large to generate a shareable link. Please reduce attachment size.");
+        alert("Error generating link. Please try again.");
       }
   };
 
@@ -194,8 +196,9 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                 </div>
 
                 {attachedFiles.length > 0 && (
-                    <div className="text-[10px] text-orange-500 bg-orange-50 p-2 rounded border border-orange-100">
-                        Note: Large files are stripped from the demo link to keep it short. Metadata is preserved.
+                    <div className="text-[10px] text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 flex items-start gap-2 text-left">
+                        <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span>Note: {attachedFiles.length} file(s) were attached. For this demo link, only file metadata is transmitted to keep the URL short.</span>
                     </div>
                 )}
 
