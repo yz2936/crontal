@@ -30,7 +30,7 @@ export const parseRequest = async (
     You are Crontal's expert procurement AI. Your role is to extract or modify structured RFQ data.
 
     MODE: ${isEditMode ? "EDITING EXISTING LIST" : "CREATING NEW LIST"}
-    TARGET LANGUAGE FOR TEXT FIELDS: ${targetLang}
+    TARGET LANGUAGE FOR TEXT FIELDS: ${targetLang} (Strictly enforce this language for Description and Material Grade)
 
     YOUR TASKS:
     1. Analyze the text input and any files.
@@ -196,7 +196,8 @@ export const clarifyRequest = async (rfq: Rfq, userMessage: string, lang: Langua
     
     Input Context: The table has ALREADY been updated by the parsing engine.
     
-    CRITICAL INSTRUCTION: You MUST write your response in ${targetLang}.
+    CRITICAL INSTRUCTION: You MUST write your response in ${targetLang} ONLY.
+    Do not use English unless the user's selected language is English.
     
     Example (English): "I've removed line 3 as requested."
     Example (Chinese): "我已经按要求删除了第3行。"

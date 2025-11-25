@@ -15,6 +15,7 @@ import PrivacyPolicy from './views/PrivacyPolicy';
 import TermsOfService from './views/TermsOfService';
 import { Layout } from './components/Layout';
 import { authService } from './services/authService';
+import { storageService } from './services/storageService';
 import { t } from './utils/i18n';
 
 export default function App() {
@@ -24,6 +25,16 @@ export default function App() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [lang, setLang] = useState<Language>('en');
   const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // Load quotes whenever the active RFQ changes
+  useEffect(() => {
+    if (rfq?.id) {
+        const storedQuotes = storageService.getReceivedQuotes(rfq.id);
+        setQuotes(storedQuotes);
+    } else {
+        setQuotes([]);
+    }
+  }, [rfq?.id]);
 
   useEffect(() => {
     const handleUrlState = () => {
@@ -60,11 +71,13 @@ export default function App() {
                     if (storedRfqStr) {
                         const originalRfq = JSON.parse(storedRfqStr);
                         setRfq(originalRfq);
-                        // Append quote to list, deduplicating by ID
-                        setQuotes(prev => {
-                            const exists = prev.some(q => q.id === incomingQuote.id);
-                            return exists ? prev : [...prev, incomingQuote];
-                        });
+                        
+                        // Save quote to persistent storage for comparison
+                        storageService.saveReceivedQuote(incomingQuote);
+                        // Reload list
+                        const updatedQuotes = storageService.getReceivedQuotes(incomingQuote.rfqId);
+                        setQuotes(updatedQuotes);
+                        
                         alert(t('en', 'quote_imported_success', { supplier: incomingQuote.supplierName }));
                     } else {
                         alert("Quote received, but the original RFQ was not found on this device.");

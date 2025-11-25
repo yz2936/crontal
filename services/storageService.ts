@@ -38,12 +38,36 @@ export const storageService = {
         return list;
     },
 
-    // Supplier Methods
+    // Buyer Methods - Received Quotes (For Comparison)
+    saveReceivedQuote: (quote: Quote) => {
+        const key = `crontal_received_quotes_${quote.rfqId}`;
+        const existingStr = localStorage.getItem(key);
+        let list: Quote[] = existingStr ? JSON.parse(existingStr) : [];
+        
+        // Check duplicates based on ID
+        const index = list.findIndex(item => item.id === quote.id);
+        if (index > -1) {
+            list[index] = quote;
+        } else {
+            list.push(quote);
+        }
+        
+        localStorage.setItem(key, JSON.stringify(list));
+        return list;
+    },
+
+    getReceivedQuotes: (rfqId: string): Quote[] => {
+        const key = `crontal_received_quotes_${rfqId}`;
+        const existingStr = localStorage.getItem(key);
+        return existingStr ? JSON.parse(existingStr) : [];
+    },
+
+    // Supplier Methods - Outgoing Quotes
     saveQuote: (quote: Quote) => {
         const existingStr = localStorage.getItem(SUPPLIER_QUOTE_KEY);
         let list: Quote[] = existingStr ? JSON.parse(existingStr) : [];
         
-        // Check duplicates based on ID, avoid saving same quote twice if just re-opening
+        // Check duplicates based on ID
         const index = list.findIndex(item => item.id === quote.id);
         if (index > -1) {
             list[index] = quote;
