@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import LZString from 'lz-string';
-import { Rfq, Quote, Language } from '../types';
+import { Rfq, Quote, Language, FileAttachment } from '../types';
 import { t } from '../utils/i18n';
 import { storageService } from '../services/storageService';
 
@@ -14,6 +14,9 @@ interface SupplierViewProps {
 
 export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: SupplierViewProps) {
   const [prices, setPrices] = useState<Record<number, number>>({});
+  const [moqs, setMoqs] = useState<Record<number, number>>({});
+  const [alternates, setAlternates] = useState<Record<number, string>>({});
+  
   const [formData, setFormData] = useState({
       supplierName: '',
       currency: 'USD',
@@ -25,6 +28,8 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
   const [submittedLink, setSubmittedLink] = useState<string | null>(null);
   const [quoteHistory, setQuoteHistory] = useState<Quote[]>([]);
   const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
       setQuoteHistory(storageService.getQuotes());
@@ -47,6 +52,14 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
       setPrices(prev => ({ ...prev, [line]: parseFloat(val) || 0 }));
   };
 
+  const handleMoqChange = (line: number, val: string) => {
+      setMoqs(prev => ({ ...prev, [line]: parseInt(val) || 0 }));
+  };
+
+  const handleAltChange = (line: number, val: string) => {
+      setAlternates(prev => ({ ...prev, [line]: val }));
+  };
+
   const calculateTotal = () => {
       if (!rfq) return 0;
       let total = 0;
@@ -57,8 +70,53 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
       return total;
   };
 
-  const handleSubmit = () => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+        setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeFile = (index: number) => {
+      setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const fileToGenerativePart = (file: File): Promise<FileAttachment> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const result = reader.result as string;
+            // Handle empty files or read errors
+            if (!result || !result.includes(',')) {
+                resolve({ name: file.name, mimeType: file.type, data: "" });
+                return;
+            }
+            const base64String = result.split(',')[1];
+            resolve({
+                name: file.name,
+                mimeType: file.type,
+                data: base64String
+            });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+  };
+
+  const handleSubmit = async () => {
       if (!rfq) return;
+
+      // Process attachments
+      const processedAttachments: FileAttachment[] = [];
+      for (const file of attachedFiles) {
+          try {
+              const attachment = await fileToGenerativePart(file);
+              processedAttachments.push(attachment);
+          } catch (e) {
+              console.error("File read error", e);
+          }
+      }
+
       const quote: Quote = {
           id: `QT-${Date.now()}`,
           rfqId: rfq.id,
@@ -70,6 +128,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
           payment: formData.payment,
           validity: formData.validity,
           notes: formData.notes,
+          attachments: processedAttachments,
           email: '',
           phone: '',
           timestamp: Date.now(),
@@ -78,21 +137,37 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
               quantity: item.quantity,
               unitPrice: prices[item.line] || 0,
               lineTotal: (prices[item.line] || 0) * (item.quantity || 0),
-              rfqDescription: item.description // Store snapshot for history
+              rfqDescription: item.description, // Store snapshot for history
+              moq: moqs[item.line] || null,
+              alternates: alternates[item.line] || ""
           }))
       };
 
-      // Save locally
+      // Save locally (Supplier's own record - keeps full files)
       const updatedHistory = storageService.saveQuote(quote);
       setQuoteHistory(updatedHistory);
 
+      // Prepare Quote for Link (Safety trim for URL length)
+      const quoteForLink = { ...quote };
+      // If file data is > 20KB, strip it for the link to prevent URL overflow
+      quoteForLink.attachments = quote.attachments?.map(a => ({
+          name: a.name,
+          mimeType: a.mimeType,
+          data: a.data.length > 20000 ? "" : a.data 
+      }));
+
       // Generate Response Link
-      const jsonStr = JSON.stringify(quote);
-      const compressed = LZString.compressToEncodedURIComponent(jsonStr);
-      const url = `${window.location.origin}${window.location.pathname}?mode=quote_response&data=${compressed}`;
-      
-      setSubmittedLink(url);
-      onSubmitQuote(quote); // Optimistic update
+      try {
+        const jsonStr = JSON.stringify(quoteForLink);
+        const compressed = LZString.compressToEncodedURIComponent(jsonStr);
+        const url = `${window.location.origin}${window.location.pathname}?mode=quote_response&data=${compressed}`;
+        
+        setSubmittedLink(url);
+        onSubmitQuote(quote); // Optimistic update
+      } catch (e) {
+        console.error("Link generation failed", e);
+        alert("Quote is too large to generate a shareable link. Please reduce attachment size.");
+      }
   };
 
   const copyToClipboard = () => {
@@ -114,9 +189,15 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                     {t(lang, 'quote_submitted_desc')}
                 </p>
                 
-                <div className="bg-slate-100 p-4 rounded-xl break-all text-xs font-mono text-slate-600 border border-slate-200">
+                <div className="bg-slate-100 p-4 rounded-xl break-all text-xs font-mono text-slate-600 border border-slate-200 max-h-32 overflow-y-auto">
                     {submittedLink}
                 </div>
+
+                {attachedFiles.length > 0 && (
+                    <div className="text-[10px] text-orange-500 bg-orange-50 p-2 rounded border border-orange-100">
+                        Note: Large files are stripped from the demo link to keep it short. Metadata is preserved.
+                    </div>
+                )}
 
                 <div className="flex flex-col gap-3">
                     <button 
@@ -140,7 +221,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
 
   return (
     <div className="min-h-screen py-6 px-4 bg-slate-50/50">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
             {/* Sidebar */}
             <div className="md:w-64 flex-shrink-0 flex flex-col gap-4">
@@ -254,33 +335,57 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                     <thead className="bg-slate-50 text-slate-500 font-medium">
                                         <tr>
                                             <th className="px-4 py-3 border-r border-slate-100 w-12">{t(lang, 'line')}</th>
-                                            <th className="px-4 py-3">{t(lang, 'description')}</th>
-                                            <th className="px-4 py-3">{t(lang, 'specs')}</th>
-                                            <th className="px-4 py-3 w-32 bg-slate-100/50 text-center border-x border-slate-100">{t(lang, 'size')} (OD x WT x L)</th>
-                                            <th className="px-4 py-3 text-right">{t(lang, 'qty')}</th>
-                                            <th className="px-4 py-3 text-right w-32 bg-slate-50">{t(lang, 'unit_price')}</th>
+                                            <th className="px-4 py-3 w-1/4">{t(lang, 'description')}</th>
+                                            <th className="px-4 py-3 w-32 bg-slate-100/50 text-center border-x border-slate-100">{t(lang, 'size')} (OD x WT)</th>
+                                            <th className="px-4 py-3 text-right w-20">{t(lang, 'qty')}</th>
+                                            {/* Supplier Input Columns */}
+                                            <th className="px-4 py-3 w-20 bg-slate-50">{t(lang, 'moq')}</th>
+                                            <th className="px-4 py-3 w-32 bg-slate-50">{t(lang, 'unit_price')}</th>
+                                            <th className="px-4 py-3 w-40 bg-slate-50">{t(lang, 'alternates')}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {rfq.line_items.map(item => (
-                                            <tr key={item.item_id} className="hover:bg-slate-50/50">
-                                                <td className="px-4 py-3 text-slate-400 font-mono text-xs border-r border-slate-100">{item.line}</td>
-                                                <td className="px-4 py-3 font-medium text-slate-800">{item.description}</td>
-                                                <td className="px-4 py-3 text-slate-500 text-xs">
-                                                    {item.material_grade}
+                                            <tr key={item.item_id} className="hover:bg-slate-50/50 group">
+                                                <td className="px-4 py-3 text-slate-400 font-mono text-xs border-r border-slate-100 align-top">{item.line}</td>
+                                                <td className="px-4 py-3 font-medium text-slate-800 align-top">
+                                                    <div className="text-sm">{item.description}</div>
+                                                    <div className="text-xs text-slate-500 mt-1">{item.material_grade}</div>
+                                                    {(item.tolerance || (item.test_reqs && item.test_reqs.length > 0)) && (
+                                                        <div className="text-[10px] text-slate-400 mt-1 bg-slate-100 inline-block px-1 rounded">
+                                                            {item.tolerance} {item.test_reqs?.join(', ')}
+                                                        </div>
+                                                    )}
                                                 </td>
-                                                <td className="px-4 py-3 text-slate-600 text-xs text-center border-x border-slate-100 font-mono">
+                                                <td className="px-4 py-3 text-slate-600 text-xs text-center border-x border-slate-100 font-mono align-top pt-4">
                                                     {item.size.outer_diameter.value ? `${item.size.outer_diameter.value}${item.size.outer_diameter.unit}` : '-'} x 
-                                                    {item.size.wall_thickness.value ? ` ${item.size.wall_thickness.value}${item.size.wall_thickness.unit}` : ' -'} x 
-                                                    {item.size.length.value ? ` ${item.size.length.value}${item.size.length.unit}` : ' -'}
+                                                    {item.size.wall_thickness.value ? ` ${item.size.wall_thickness.value}${item.size.wall_thickness.unit}` : ' -'}
                                                 </td>
-                                                <td className="px-4 py-3 text-right text-slate-700 font-medium">{item.quantity} {item.uom}</td>
-                                                <td className="px-4 py-3 text-right bg-slate-50/30">
+                                                <td className="px-4 py-3 text-right text-slate-700 font-medium align-top pt-4">{item.quantity} {item.uom}</td>
+                                                
+                                                {/* Supplier Inputs */}
+                                                <td className="px-2 py-3 bg-slate-50/30 align-top">
+                                                    <input 
+                                                        type="number" 
+                                                        placeholder="Min"
+                                                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-center focus:border-accent focus:ring-1 focus:ring-accent outline-none shadow-sm"
+                                                        onChange={(e) => handleMoqChange(item.line, e.target.value)}
+                                                    />
+                                                </td>
+                                                <td className="px-2 py-3 bg-slate-50/30 align-top">
                                                     <input 
                                                         type="number" 
                                                         placeholder="0.00"
                                                         className="w-full text-right bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none shadow-sm"
                                                         onChange={(e) => handlePriceChange(item.line, e.target.value)}
+                                                    />
+                                                </td>
+                                                <td className="px-2 py-3 bg-slate-50/30 align-top">
+                                                    <textarea 
+                                                        rows={2}
+                                                        placeholder="Remarks..."
+                                                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:border-accent focus:ring-1 focus:ring-accent outline-none shadow-sm resize-none"
+                                                        onChange={(e) => handleAltChange(item.line, e.target.value)}
                                                     />
                                                 </td>
                                             </tr>
@@ -339,6 +444,44 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                     />
                                 </div>
                             </div>
+
+                            {/* File Upload Section for MTRs */}
+                            <div className="mt-6 pt-6 border-t border-slate-100">
+                                <label className="block text-slate-500 mb-2 text-xs font-medium uppercase tracking-wider">{t(lang, 'upload_mtr')}</label>
+                                <div className="flex items-center gap-4">
+                                    <input 
+                                        type="file" 
+                                        multiple 
+                                        ref={fileInputRef}
+                                        onChange={handleFileSelect}
+                                        className="hidden"
+                                        accept=".pdf,.jpg,.png,.xlsx"
+                                    />
+                                    <button 
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-50 hover:text-accent transition flex items-center gap-2"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                        Select Files
+                                    </button>
+                                    {attachedFiles.length > 0 && (
+                                        <div className="text-xs text-slate-500">
+                                            {attachedFiles.length} {t(lang, 'mtr_attached')}
+                                        </div>
+                                    )}
+                                </div>
+                                {attachedFiles.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-3">
+                                        {attachedFiles.map((file, i) => (
+                                            <div key={i} className="flex items-center gap-1 bg-slate-100 text-slate-600 text-[10px] px-2 py-1 rounded border border-slate-200">
+                                                <span className="truncate max-w-[150px]">{file.name}</span>
+                                                <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500 ml-1">×</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="mt-8 flex justify-end">
                                 <button 
                                     onClick={handleSubmit}

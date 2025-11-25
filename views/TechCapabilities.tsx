@@ -14,7 +14,7 @@ export default function TechCapabilities({ onBack, onStartDemo }: TechCapabiliti
   useEffect(() => {
     const interval = setInterval(() => {
         setActiveFeature(prev => (prev + 1) % 3);
-    }, 4000);
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -60,7 +60,7 @@ export default function TechCapabilities({ onBack, onStartDemo }: TechCapabiliti
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">We understand Physics.</span>
                 </h1>
                 <p className="text-xl text-slate-400 mb-10 leading-relaxed max-w-lg">
-                    Other apps match keywords. Crontal parses <strong>ASTM standards</strong>, calculates <strong>Wall Thickness schedules</strong>, and verifies <strong>MTR compliance</strong> automatically.
+                    Other apps match keywords. Crontal parses <strong>ASTM standards</strong>, calculates <strong>Wall Thickness schedules</strong>, and verifies <strong>MTR compliance</strong> automatically from messy scanned documents.
                 </p>
 
                 {/* Feature Toggle Buttons */}
@@ -73,8 +73,8 @@ export default function TechCapabilities({ onBack, onStartDemo }: TechCapabiliti
                             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
                         </div>
                         <div>
-                            <h3 className={`font-bold ${activeFeature === 0 ? 'text-white' : 'text-slate-400'}`}>Physics-Aware Extraction</h3>
-                            <p className="text-xs text-slate-500 mt-1">Parses Dimensions (OD/WT/L) vs. Nominal Sizes.</p>
+                            <h3 className={`font-bold ${activeFeature === 0 ? 'text-white' : 'text-slate-400'}`}>Unstructured to Precision</h3>
+                            <p className="text-xs text-slate-500 mt-1">Extracts exact specs from messy scanned PDFs.</p>
                         </div>
                     </button>
 
@@ -111,40 +111,68 @@ export default function TechCapabilities({ onBack, onStartDemo }: TechCapabiliti
                 
                 {/* Feature 0: Physics Extraction Visual */}
                 <div className={`absolute inset-0 transition-opacity duration-500 flex flex-col items-center justify-center ${activeFeature === 0 ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
-                    {/* The Raw Input */}
-                    <div className="bg-slate-800 p-4 rounded-lg border border-slate-600 mb-8 w-80 relative shadow-2xl">
-                        <div className="absolute -top-3 left-4 bg-slate-900 text-slate-400 text-[10px] px-2 border border-slate-600">RAW PDF INPUT</div>
-                        <p className="font-mono text-sm text-slate-300">
-                            "Item 4: Smls Pipe <span className="text-blue-400 font-bold">6"</span> Sch <span className="text-blue-400 font-bold">40</span> <span className="text-purple-400 font-bold">ASTM A106 Gr B</span>"
-                        </p>
-                        {/* Scanning Bar */}
-                        <div className="absolute top-0 bottom-0 w-1 bg-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,1)] animate-[scan_2s_ease-in-out_infinite]"></div>
+                    {/* The "Messy" Scanned Input */}
+                    <div className="relative bg-[#f4f4f9] p-5 rounded shadow-2xl w-96 rotate-1 border border-slate-400 mb-10 origin-center transform transition hover:rotate-0 hover:scale-105 duration-500">
+                        {/* Paper Texture Overlay */}
+                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none"></div>
+                        <div className="absolute top-2 right-2 text-[9px] text-slate-400 font-mono rotate-90">SCANNED_IMG_0042.jpg</div>
+                        
+                        {/* Messy Content */}
+                        <div className="font-mono text-xs text-slate-800 leading-relaxed opacity-80" style={{fontFamily: '"Courier New", Courier, monospace'}}>
+                            <div className="border-b-2 border-slate-800 pb-1 mb-2 flex justify-between font-bold tracking-tighter">
+                                <span>ITEM</span><span className="pl-4">DESCRIPTION</span><span>QTY</span>
+                            </div>
+                            <div className="flex gap-4 items-start mb-4">
+                                <span className="font-bold">001</span>
+                                <span className="text-[11px] font-bold leading-tight uppercase blur-[0.3px]">
+                                    PIPE, SMLS, 8 IN, SCH 80<br/>
+                                    API 5L GR.B PSL2, BEVELED<br/>
+                                    ENDS, SOUR SERVICE
+                                </span>
+                                <span className="font-bold">200</span>
+                            </div>
+                            <div className="text-[9px] text-slate-600 border border-slate-400 p-1 inline-block rotate-[-1deg]">
+                                NOTE: MTR EN10204 3.1 REQ. <br/> NACE MR0175 COMPLIANT.
+                            </div>
+                        </div>
+                        {/* Scanning Laser Animation */}
+                        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent via-blue-500/20 to-transparent -translate-y-full animate-[scan_3s_ease-in-out_infinite] pointer-events-none"></div>
                     </div>
 
                     {/* Connection Lines (SVG) */}
-                    <svg className="w-80 h-20 text-blue-500 overflow-visible mb-2">
-                         <path d="M160 0 V20" stroke="currentColor" strokeWidth="1" strokeDasharray="4 4" />
-                         <path d="M160 20 L40 60" stroke="currentColor" strokeWidth="1" className="animate-[draw_1s_ease-out_forwards]" />
-                         <path d="M160 20 L160 60" stroke="currentColor" strokeWidth="1" className="animate-[draw_1s_ease-out_forwards]" />
-                         <path d="M160 20 L280 60" stroke="currentColor" strokeWidth="1" className="animate-[draw_1s_ease-out_forwards]" />
+                    <svg className="w-96 h-16 text-blue-500 overflow-visible mb-2 -mt-6 relative z-0">
+                         <path d="M200 0 V16" stroke="currentColor" strokeWidth="1" strokeDasharray="4 4" className="opacity-50" />
+                         <path d="M200 16 L60 50" stroke="currentColor" strokeWidth="1" className="animate-[draw_1s_ease-out_forwards]" />
+                         <path d="M200 16 L200 50" stroke="currentColor" strokeWidth="1" className="animate-[draw_1s_ease-out_forwards]" />
+                         <path d="M200 16 L340 50" stroke="currentColor" strokeWidth="1" className="animate-[draw_1s_ease-out_forwards]" />
+                         <circle cx="200" cy="16" r="3" fill="currentColor" className="animate-ping" />
                     </svg>
 
-                    {/* The Output Cards */}
+                    {/* The Output Cards (Structured) */}
                     <div className="flex gap-4">
-                        <div className="bg-slate-900 border border-blue-500/30 p-4 rounded-xl w-32 shadow-[0_0_20px_rgba(59,130,246,0.2)] animate-in slide-in-from-bottom-4 fade-in duration-700">
-                            <div className="text-[10px] text-slate-500 uppercase">OD (Outer)</div>
-                            <div className="text-2xl font-bold text-white">168.3</div>
-                            <div className="text-xs text-blue-400">mm</div>
+                        <div className="bg-slate-900 border border-green-500/30 p-4 rounded-xl w-36 shadow-[0_0_20px_rgba(34,197,94,0.1)] animate-in slide-in-from-bottom-4 fade-in duration-700">
+                            <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider mb-1">Standard Detected</div>
+                            <div className="text-sm font-bold text-white leading-tight">API 5L PSL2</div>
+                            <div className="text-[10px] text-green-400 mt-1 flex items-center gap-1">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                NACE MR0175
+                            </div>
                         </div>
-                        <div className="bg-slate-900 border border-blue-500/30 p-4 rounded-xl w-32 shadow-[0_0_20px_rgba(59,130,246,0.2)] animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100">
-                            <div className="text-[10px] text-slate-500 uppercase">WT (Wall)</div>
-                            <div className="text-2xl font-bold text-white">7.11</div>
-                            <div className="text-xs text-blue-400">mm (Sch40)</div>
+                        <div className="bg-slate-900 border border-blue-500/30 p-4 rounded-xl w-36 shadow-[0_0_20px_rgba(59,130,246,0.2)] animate-in slide-in-from-bottom-4 fade-in duration-700 delay-100">
+                            <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider mb-1">Calculated Size</div>
+                            <div className="flex justify-between items-end border-b border-slate-800 pb-1 mb-1">
+                                <span className="text-[10px] text-slate-400">OD</span>
+                                <span className="text-sm font-bold text-white">219.1<span className="text-[10px] font-normal text-slate-500">mm</span></span>
+                            </div>
+                            <div className="flex justify-between items-end">
+                                <span className="text-[10px] text-slate-400">WT</span>
+                                <span className="text-sm font-bold text-blue-400">12.7<span className="text-[10px] font-normal text-slate-500">mm</span></span>
+                            </div>
                         </div>
-                        <div className="bg-slate-900 border border-purple-500/30 p-4 rounded-xl w-32 shadow-[0_0_20px_rgba(168,85,247,0.2)] animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200">
-                            <div className="text-[10px] text-slate-500 uppercase">Yield</div>
-                            <div className="text-2xl font-bold text-white">35</div>
-                            <div className="text-xs text-purple-400">ksi (Gr B)</div>
+                        <div className="bg-slate-900 border border-purple-500/30 p-4 rounded-xl w-36 shadow-[0_0_20px_rgba(168,85,247,0.2)] animate-in slide-in-from-bottom-4 fade-in duration-700 delay-200">
+                            <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider mb-1">Material</div>
+                            <div className="text-sm font-bold text-white">Carbon Steel</div>
+                            <div className="text-[10px] text-purple-400 mt-1">Grade B</div>
                         </div>
                     </div>
                 </div>

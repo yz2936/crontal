@@ -52,7 +52,11 @@ export const parseRequest = async (
          * Length
        - Normalize units to: 'mm', 'm', 'in', 'ft', 'pcs'.
     
-    4. COMMERCIAL TERMS:
+    4. DEEP SPECIFICATION EXTRACTION:
+       - Extract **Tolerances** (e.g., "+/- 12.5%", "Min Wall").
+       - Extract **Testing Requirements** (e.g., "HIC", "SSC", "Impact Test @ -50C", "Ultrasonic Test").
+    
+    5. COMMERCIAL TERMS:
        - Extract Destination, Incoterm, Payment Terms if mentioned.
 
     OUTPUT FORMAT:
@@ -66,16 +70,12 @@ export const parseRequest = async (
     let promptText = `USER REQUEST:\n"""${text}"""\n\nProject Name Context: ${projectName || "N/A"}\n`;
     
     if (isEditMode) {
-        // We strip internal fields like 'line' to let the model re-index if needed, or we rely on ID.
-        // Sending a clean version of the list helps the model focus.
         const cleanList = currentLineItems.map(({line, raw_description, ...rest}) => rest);
         promptText += `\n\n[CURRENT LINE ITEMS DATA - APPLY CHANGES TO THIS LIST]:\n${JSON.stringify(cleanList, null, 2)}\n`;
     }
 
-    // Add text prompt
     parts.push({ text: promptText });
 
-    // Add file parts
     if (files && files.length > 0) {
         files.forEach(file => {
             parts.push({
@@ -115,6 +115,8 @@ export const parseRequest = async (
                   description: { type: Type.STRING },
                   product_type: { type: Type.STRING, nullable: true },
                   material_grade: { type: Type.STRING, nullable: true },
+                  tolerance: { type: Type.STRING, nullable: true },
+                  test_reqs: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
                   size: {
                     type: Type.OBJECT,
                     properties: {
@@ -147,6 +149,8 @@ export const parseRequest = async (
             grade: li.material_grade || "",
             product_type: li.product_type,
             material_grade: li.material_grade,
+            tolerance: li.tolerance,
+            test_reqs: li.test_reqs || [],
             standard_or_spec: "",
             delivery_location: "",
             required_delivery_date: "",

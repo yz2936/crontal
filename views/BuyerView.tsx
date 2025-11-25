@@ -83,6 +83,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         reader.onloadend = () => {
             const base64String = (reader.result as string).split(',')[1];
             resolve({
+                name: file.name,
                 mimeType: file.type,
                 data: base64String
             });
@@ -184,17 +185,17 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
           line_items: [
               {
                   item_id: "L1", line: 1, quantity: 400, uom: "m", description: "Seamless Pipe, API 5L Gr. B", 
-                  material_grade: "API 5L Gr. B", raw_description: "", other_requirements: [],
+                  material_grade: "API 5L Gr. B", tolerance: "+/- 12.5% WT", test_reqs: ["HIC Test", "SSC Test"], raw_description: "", other_requirements: [],
                   size: { outer_diameter: { value: 8, unit: "in" }, wall_thickness: { value: 0.322, unit: "in" }, length: { value: 12, unit: "m" } }
               },
               {
                   item_id: "L2", line: 2, quantity: 120, uom: "pcs", description: "Flange, Weld Neck, RF, Class 300", 
-                  material_grade: "ASTM A105", raw_description: "", other_requirements: [],
+                  material_grade: "ASTM A105", tolerance: "", test_reqs: ["Hardness < 22HRC"], raw_description: "", other_requirements: [],
                   size: { outer_diameter: { value: 8, unit: "in" }, wall_thickness: { value: null, unit: null }, length: { value: null, unit: null } }
               },
               {
                   item_id: "L3", line: 3, quantity: 50, uom: "pcs", description: "Elbow 90 deg, Long Radius", 
-                  material_grade: "ASTM A234 WPB", raw_description: "", other_requirements: [],
+                  material_grade: "ASTM A234 WPB", tolerance: "ASME B16.9", test_reqs: [], raw_description: "", other_requirements: [],
                   size: { outer_diameter: { value: 8, unit: "in" }, wall_thickness: { value: 0.322, unit: "in" }, length: { value: null, unit: null } }
               }
           ]
@@ -429,17 +430,20 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     }
     
     // Table Construction
-    const headers = [['Line', 'Description', 'Material/Grade', 'Qty', 'Unit', 'Size (OD x WT x L)']];
+    const headers = [['Line', 'Description', 'Material/Grade', 'Tolerance/Tests', 'Qty', 'Unit', 'Size (OD x WT x L)']];
     
     const data = rfq.line_items.map(item => {
         const od = item.size?.outer_diameter?.value ? `${item.size.outer_diameter.value} ${item.size.outer_diameter.unit || ''}` : '-';
         const wt = item.size?.wall_thickness?.value ? `${item.size.wall_thickness.value} ${item.size.wall_thickness.unit || ''}` : '-';
         const len = item.size?.length?.value ? `${item.size.length.value} ${item.size.length.unit || ''}` : '-';
         
+        const techDetails = [item.tolerance, ...(item.test_reqs || [])].filter(Boolean).join(", ");
+
         return [
             item.line.toString(),
             item.description || '',
             item.material_grade || '',
+            techDetails || '-',
             item.quantity?.toString() || '0',
             item.uom || '',
             `${od} x ${wt} x ${len}`
@@ -457,9 +461,10 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             0: { cellWidth: 15 }, // Line
             1: { cellWidth: 'auto' }, // Desc
             2: { cellWidth: 30 }, // Grade
-            3: { cellWidth: 20, halign: 'right' }, // Qty
-            4: { cellWidth: 15 }, // Unit
-            5: { cellWidth: 40 } // Size
+            3: { cellWidth: 30 }, // Tech
+            4: { cellWidth: 20, halign: 'right' }, // Qty
+            5: { cellWidth: 15 }, // Unit
+            6: { cellWidth: 40 } // Size
         }
     });
 
@@ -523,7 +528,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       doc.text("Currency: " + quote.currency, 160, y + 14);
 
       // Table construction similar to Screenshot
-      const headers = [['Size\n(OD*WT*L)', 'OD\n(mm)', 'WT\n(mm)', 'L\n(mm)', 'Quantity', 'N.W\n(Kgs)', 'PCS', 'Price', 'Amount']];
+      const headers = [['Size\n(OD*WT*L)', 'Specs / Tolerance', 'OD\n(mm)', 'WT\n(mm)', 'Qty', 'N.W\n(Kgs)', 'Price', 'Amount']];
       
       const tableData = rfq.line_items.map((item, i) => {
           // Quote item mapping
@@ -540,15 +545,16 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
           const odU = item.size.outer_diameter.unit === 'in' ? '"' : '';
           const wtU = item.size.wall_thickness.unit === 'in' ? '"' : '';
           const sizeStr = `${od}${odU} x ${wt}${wtU} x ${len}`;
+          
+          const deepSpecs = [item.material_grade, item.tolerance, ...(item.test_reqs || [])].filter(Boolean).join(", ");
 
           return [
               sizeStr,
+              deepSpecs,
               od.toString(),
               wt.toString(),
-              len.toString(),
               `${item.quantity} ${item.uom}`,
               "-", // N.W Placeholder
-              item.uom === 'pcs' ? item.quantity : "-", // PCS
               price.toFixed(2),
               total.toFixed(2)
           ];
@@ -558,7 +564,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
       tableData.push([
           "", "", "", "Total", 
           rfq.line_items.reduce((acc, i) => acc + (i.quantity || 0), 0).toString(), 
-          "-", "-", "", 
+          "-", "", 
           quote.total.toFixed(2)
       ]);
 
@@ -582,8 +588,9 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
               lineWidth: 0.1
           },
           columnStyles: {
-              0: { halign: 'left', cellWidth: 40 }, // Size needs more width
-              8: { halign: 'right' } // Amount right align
+              0: { halign: 'left', cellWidth: 35 }, // Size needs more width
+              1: { halign: 'left', cellWidth: 40 }, // Specs
+              7: { halign: 'right' } // Amount right align
           }
       });
 
@@ -1087,6 +1094,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                 <th className="px-4 py-3 w-10 text-center bg-slate-50/95 backdrop-blur">{t(lang, 'line')}</th>
                                                 <th className="px-4 py-3 bg-white/95 backdrop-blur">{t(lang, 'desc')}</th>
                                                 <th className="px-4 py-3 bg-white/95 backdrop-blur">{t(lang, 'grade')}</th>
+                                                <th className="px-4 py-3 bg-white/95 backdrop-blur text-xs font-medium w-20">{t(lang, 'tolerance')}</th>
+                                                <th className="px-4 py-3 bg-white/95 backdrop-blur text-xs font-medium w-24">{t(lang, 'tests')}</th>
                                                 <th className="px-4 py-3 bg-slate-50/95 backdrop-blur border-x border-slate-100 text-center" colSpan={2}>{t(lang, 'od')}</th>
                                                 <th className="px-4 py-3 bg-slate-50/95 backdrop-blur border-r border-slate-100 text-center" colSpan={2}>{t(lang, 'wt')}</th>
                                                 <th className="px-4 py-3 bg-slate-50/95 backdrop-blur border-r border-slate-100 text-center" colSpan={2}>{t(lang, 'length')}</th>
@@ -1110,6 +1119,22 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                             value={item.material_grade || ''} 
                                                             onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)}
                                                             className="w-16 bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-600 transition-all"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-2.5">
+                                                        <input 
+                                                            value={item.tolerance || ''} 
+                                                            onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)}
+                                                            placeholder="-"
+                                                            className="w-16 bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-500 text-[10px] transition-all"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-2.5">
+                                                        <input 
+                                                            value={item.test_reqs?.join(', ') || ''} 
+                                                            onChange={(e) => handleUpdateLineItem(index, 'test_reqs', e.target.value.split(',').map(s => s.trim()))}
+                                                            placeholder="-"
+                                                            className="w-20 bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-500 text-[10px] transition-all"
                                                         />
                                                     </td>
                                                     {/* OD */}
@@ -1261,6 +1286,22 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                                 </span>
                                                             </div>
                                                         </div>
+
+                                                        {/* Attachments Display */}
+                                                        {q.attachments && q.attachments.length > 0 && (
+                                                            <div className="mt-2 border-t border-slate-100 pt-2">
+                                                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Documents</p>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {q.attachments.map((file, i) => (
+                                                                        <div key={i} className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200 text-[10px] text-slate-600">
+                                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                                                            <span className="truncate max-w-[100px]" title={file.name}>{file.name}</span>
+                                                                            {!file.data && <span className="text-xs text-orange-400" title="Content too large for link">*</span>}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                         
                                                         {isSelected && (
                                                             <div className="mt-4 flex flex-col gap-2">

@@ -19,6 +19,8 @@ export interface Dimension {
     product_type?: string | null;
     material_grade?: string | null;
     standard_or_spec?: string | null;
+    tolerance?: string | null; // Deep Spec
+    test_reqs?: string[];      // Deep Spec
     size: Size;
     quantity: number | null;
     uom: string | null;
@@ -60,6 +62,8 @@ export interface Dimension {
     quantity: number | null;
     lineTotal: number | null;
     rfqDescription?: string; // Helper for display
+    moq?: number | null;     // Supplier Requirement
+    alternates?: string;     // Supplier Requirement
   }
   
   export interface Quote {
@@ -74,6 +78,7 @@ export interface Dimension {
     payment: string;
     validity: string;
     notes: string;
+    attachments?: FileAttachment[]; // MTRs, Certs
     email: string;
     phone: string;
     timestamp: number;
@@ -101,6 +106,7 @@ export interface Dimension {
   export type Language = 'en' | 'es' | 'zh';
 
   export interface FileAttachment {
+    name?: string;
     mimeType: string;
     data: string; // base64 encoded string
   }
