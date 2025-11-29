@@ -1,7 +1,6 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage } from '../types';
-import { parseRequest, clarifyRequest, generateRfqSummary, auditRfqSpecs } from '../services/geminiService';
+import { parseRequest } from '../services/geminiService';
 import { storageService } from '../services/storageService';
 import { t } from '../utils/i18n';
 import LZString from 'lz-string';
@@ -29,17 +28,31 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     
     // UI State
-    const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); // Default to TRUE
+    const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); // Default to TRUE for visibility
+    const prevItemCount = useRef(0);
 
     // Load drafts on mount
     useEffect(() => {
         setSavedRfqs(storageService.getRfqs());
-    }, [rfq]); // Reload if current RFQ changes (save/update)
+    }, [rfq]); 
 
     // Scroll to bottom of chat
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chatHistory, isProcessing]);
+
+    // Auto-focus logic for new items
+    useEffect(() => {
+        if (rfq && rfq.line_items.length > prevItemCount.current) {
+            // Item was added, focus the new row's first input
+            const newIndex = rfq.line_items.length - 1;
+            setTimeout(() => {
+                const el = document.getElementById(`cell-shape-${newIndex}`);
+                if (el) (el as HTMLInputElement).focus();
+            }, 100); 
+        }
+        prevItemCount.current = rfq ? rfq.line_items.length : 0;
+    }, [rfq?.line_items.length]);
 
     // Default Table Configuration
     const [tableConfig, setTableConfig] = useState<ColumnConfig[]>([
@@ -99,26 +112,30 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const handleSend = async () => {
         if ((!inputText.trim() && attachedFiles.length === 0) || isProcessing) return;
         
-        // Add User Message to History
-        const userMessage: ChatMessage = { role: 'user', content: inputText };
+        let displayContent = inputText;
         if (attachedFiles.length > 0) {
-            userMessage.content += ` [Attached ${attachedFiles.length} file(s): ${attachedFiles.map(f => f.name).join(', ')}]`;
+            const fileNames = attachedFiles.map(f => f.name).join(', ');
+            displayContent = displayContent 
+                ? `${displayContent} \n[Attached: ${fileNames}]`
+                : `[Attached: ${fileNames}]`;
         }
+
+        const userMessage: ChatMessage = { role: 'user', content: displayContent };
         setChatHistory(prev => [...prev, userMessage]);
         
-        const currentInput = inputText; // Capture for processing
-        setInputText(''); // Clear input immediately
-        setAttachedFiles([]); // Clear files immediately
+        const currentInput = inputText;
+        const currentFiles = [...attachedFiles];
+        
+        setInputText(''); 
+        setAttachedFiles([]);
         setIsProcessing(true);
 
         try {
             const processedFiles: FileAttachment[] = [];
-            for (const file of attachedFiles) {
+            for (const file of currentFiles) {
                 processedFiles.push(await fileToGenerativePart(file));
             }
 
-            // Call Gemini
-            // If we have an existing RFQ, we are in "Edit Mode"
             const currentItems = rfq ? rfq.line_items : [];
             const projectName = rfq ? rfq.project_name : null;
 
@@ -127,7 +144,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             let newItemCount = 0;
 
             if (rfq) {
-                // Merge logic for edit mode
                 const updatedRfq: Rfq = {
                     ...rfq,
                     project_name: result.project_name || rfq.project_name,
@@ -140,7 +156,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 setRfq(updatedRfq);
                 newItemCount = result.line_items ? result.line_items.length : 0;
             } else {
-                // New RFQ
                 newItemCount = result.line_items ? result.line_items.length : 0;
                 const newRfq: Rfq = {
                     id: `RFQ-${Date.now()}`,
@@ -163,7 +178,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 setRfq(newRfq);
             }
             
-            // Add AI Response to History
+            setIsHeaderInfoOpen(true); // Ensure details are visible after AI draft
             const aiMessage: ChatMessage = { 
                 role: 'assistant', 
                 content: t(lang, 'rfq_created_msg', { count: newItemCount.toString() }) 
@@ -178,12 +193,9 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         }
     };
 
-    // Helper to focus specific cell
     const focusCell = (colId: string, rowIndex: number) => {
-        setTimeout(() => {
-            const el = document.getElementById(`cell-${colId}-${rowIndex}`);
-            if (el) (el as HTMLInputElement).focus();
-        }, 50);
+        const el = document.getElementById(`cell-${colId}-${rowIndex}`);
+        if (el) (el as HTMLInputElement).focus();
     };
 
     const handleAddItem = () => {
@@ -209,9 +221,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
         if (rfq) {
             setRfq({ ...rfq, line_items: [...rfq.line_items, newItem] });
-            focusCell('shape', rfq.line_items.length);
         } else {
-            // Create blank RFQ if none exists
             const newRfq: Rfq = {
                 id: `RFQ-${Date.now()}`,
                 project_name: "New RFP",
@@ -231,8 +241,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 }
             };
             setRfq(newRfq);
-            // Wait for render then focus
-            setTimeout(() => focusCell('shape', 0), 100);
+            setIsHeaderInfoOpen(true); // Ensure details are visible for new manual items
         }
     };
 
@@ -267,7 +276,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             ]
         };
         setRfq(sampleRfq);
-        // Add sample chat message
+        setIsHeaderInfoOpen(true);
         setChatHistory([{ role: 'user', content: "Load sample piping data." }, { role: 'assistant', content: t(lang, 'rfq_created_msg', { count: '2' }) }]);
     };
 
@@ -275,6 +284,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         setRfq(null);
         setInputText('');
         setChatHistory([]);
+        setIsHeaderInfoOpen(true);
     };
 
     const handleSaveRfq = () => {
@@ -288,7 +298,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         const selected = savedRfqs.find(r => r.id === id);
         if (selected) {
             setRfq(selected);
-            setChatHistory([]); // Clear chat for new project load
+            setChatHistory([]); 
+            setIsHeaderInfoOpen(true);
         }
     };
 
@@ -365,7 +376,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const handleGeneratePO = () => {
         if (!rfq) return;
         const doc = new jsPDF();
-        // ... (PDF generation logic preserved)
         doc.setFontSize(22);
         doc.setFont("times", "bold");
         doc.text("PURCHASE ORDER", 14, 20);
@@ -399,12 +409,12 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         doc.text(rfq.commercial.destination || "See Below", 110, startY + 5);
         
         doc.setFont("helvetica", "bold");
-        doc.text("Project:", 14, startY + 25);
+        doc.text("RFP Name:", 14, startY + 25);
         doc.setFont("helvetica", "normal");
-        doc.text(rfq.project_name || "N/A", 30, startY + 25);
+        doc.text(rfq.project_name || "N/A", 35, startY + 25);
 
         const tableBody = rfq.line_items.map(item => [
-            `${item.size.outer_diameter.value || '-'} ${item.size.outer_diameter.unit || ''} x ${item.size.wall_thickness.value || '-'} ${item.size.wall_thickness.unit || ''} x ${item.size.length.value || '-'} ${item.size.length.unit || ''}`,
+            `${item.description} \n${item.product_type || ''} ${item.material_grade || ''} \n${item.tolerance ? `Tol: ${item.tolerance}` : ''} ${item.test_reqs?.length ? `Tests: ${item.test_reqs.join(',')}` : ''}`,
             item.size.outer_diameter.value?.toString() || '-',
             item.size.wall_thickness.value?.toString() || '-',
             item.size.length.value?.toString() || '-',
@@ -417,13 +427,13 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
         autoTable(doc, {
             startY: startY + 30,
-            head: [['Size (OD x WT x L)', 'OD', 'WT', 'L', 'Qty', 'N.W(kg)', 'UOM', 'Price', 'Amount']],
+            head: [['Description & Specs', 'OD', 'WT', 'L', 'Qty', 'N.W', 'UOM', 'Price', 'Amount']],
             body: tableBody,
             theme: 'grid',
             headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1 },
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1 },
+            styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, valign: 'middle' },
             columnStyles: {
-                0: { cellWidth: 50 },
+                0: { cellWidth: 60 },
                 4: { halign: 'right' },
                 7: { halign: 'right' },
                 8: { halign: 'right' }
@@ -479,12 +489,16 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                             <span className="w-5 h-5 flex items-center justify-center bg-brandOrange rounded-full text-[10px]">1</span>
                             <span>{t(lang, 'step1_short')}</span>
                         </div>
-                        <div className="w-8 h-px bg-slate-200"></div>
+                        <div className="w-8 h-8 flex items-center justify-center text-slate-300">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        </div>
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 text-slate-500 rounded-full text-xs font-medium">
                             <span className="w-5 h-5 flex items-center justify-center bg-slate-100 rounded-full text-[10px]">2</span>
                             <span>{t(lang, 'step2_short')}</span>
                         </div>
-                        <div className="w-8 h-px bg-slate-200"></div>
+                        <div className="w-8 h-8 flex items-center justify-center text-slate-300">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                        </div>
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 text-slate-500 rounded-full text-xs font-medium">
                             <span className="w-5 h-5 flex items-center justify-center bg-slate-100 rounded-full text-[10px]">3</span>
                             <span>{t(lang, 'step3_short')}</span>
@@ -555,9 +569,10 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 {/* COLUMN 2: DRAFTING ASSISTANT */}
                 <div className="flex-1 flex flex-col min-w-[300px] max-w-[400px] gap-4">
                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
-                        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+                            <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold">1</span>
                             <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'drafting_assistant')}</span>
-                            <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-bold cursor-pointer hover:bg-slate-300">{t(lang, 'guide_me')}</span>
+                            <span className="ml-auto text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-bold cursor-pointer hover:bg-slate-300">{t(lang, 'guide_me')}</span>
                         </div>
                         
                         <div className="flex-1 p-4 flex flex-col gap-4 overflow-y-auto">
@@ -576,7 +591,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                         <div className="p-4 border-t border-slate-100 bg-slate-50/50">
                             {/* Visible File List */}
                             {attachedFiles.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mb-2">
+                                <div className="flex flex-wrap gap-2 mb-2 animate-in fade-in slide-in-from-bottom-1">
                                     {attachedFiles.map((file, i) => (
                                         <div key={i} className="flex items-center gap-1 bg-white border border-slate-200 text-slate-600 text-[10px] px-2 py-1 rounded-full shadow-sm">
                                             <span className="truncate max-w-[120px]">{file.name}</span>
@@ -639,7 +654,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                     </div>
                                 </button>
 
-                                <button onClick={() => {}} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-purple-50 hover:border-purple-100 transition-all flex flex-col items-center text-center gap-4 cursor-default">
+                                <button onClick={() => document.querySelector('textarea')?.focus()} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-purple-50 hover:border-purple-100 transition-all flex flex-col items-center text-center gap-4">
                                     <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center">
                                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                                     </div>
@@ -677,18 +692,17 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                         <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden animate-in fade-in">
                             <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex flex-col gap-3">
                                 <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-3">
-                                        <input 
-                                            value={rfq.project_name || ''}
-                                            onChange={(e) => setRfq({ ...rfq, project_name: e.target.value })}
-                                            className="font-bold text-sm text-slate-800 bg-transparent border-none p-0 focus:ring-0 placeholder-slate-300 w-48 focus:border-b focus:border-accent"
-                                            placeholder="Untitled RFP"
-                                        />
-                                        <div className="h-4 w-px bg-slate-300"></div>
-                                        <div className="text-xs text-slate-500 flex gap-2">
-                                            <span>{rfq.line_items.length} items</span>
-                                            <span className="text-slate-300">•</span>
-                                            <span className="text-slate-400">{new Date(rfq.created_at).toLocaleDateString()}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold">2</span>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'live_preview')}</span>
+                                            <div className="h-4 w-px bg-slate-300"></div>
+                                            <input 
+                                                value={rfq.project_name || ''}
+                                                onChange={(e) => setRfq({ ...rfq, project_name: e.target.value })}
+                                                className="font-bold text-sm text-slate-800 bg-transparent border-none p-0 focus:ring-0 placeholder-slate-300 w-48 focus:border-b focus:border-accent"
+                                                placeholder="Untitled RFP"
+                                            />
                                         </div>
                                     </div>
                                     <div className="flex gap-2">
@@ -717,7 +731,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
                                 {/* EXPANDABLE RFP DETAILS PANEL */}
                                 {isHeaderInfoOpen && (
-                                    <div className="bg-white border border-slate-200 rounded-lg p-4 animate-in slide-in-from-top-2 text-xs">
+                                    <div className="bg-white border border-slate-200 rounded-lg p-4 animate-in slide-in-from-top-2 text-xs shadow-sm">
                                         <div className="grid grid-cols-2 gap-4 mb-4">
                                             <div>
                                                 <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'project_description')}</label>
@@ -803,33 +817,33 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                             <tr key={item.item_id} className="hover:bg-blue-50/10 transition-colors group">
                                                 {tableConfig.filter(c => c.visible).map(col => {
                                                     const cellClass = "px-2 py-2 border-r border-slate-200 align-middle";
-                                                    // Clean input box style
+                                                    // Clean input box style with visible border
                                                     const inputClass = "w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 placeholder-slate-300 focus:bg-white focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all";
                                                     const inputId = `cell-${col.id}-${index}`;
 
                                                     if (col.id === 'line') return <td key={col.id} className={`${cellClass} text-center bg-slate-50/50 text-slate-400 font-mono w-24`}>{item.line}</td>;
                                                     
-                                                    if (col.id === 'shape') return <td key={col.id} className={`${cellClass} w-32`}><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.product_type || ''} onChange={(e) => handleUpdateLineItem(index, 'product_type', e.target.value)} className={inputClass} placeholder="-" /></td>;
+                                                    if (col.id === 'shape') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.product_type || ''} onChange={(e) => handleUpdateLineItem(index, 'product_type', e.target.value)} className={inputClass} placeholder="-" /></td>;
                                                     
-                                                    if (col.id === 'description') return <td key={col.id} className={`${cellClass} w-64`}><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.description} onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)} className={`${inputClass} font-medium`} /></td>;
+                                                    if (col.id === 'description') return <td key={col.id} className={`${cellClass} w-64`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.description} onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)} className={`${inputClass} font-medium`} /></td>;
                                                     
-                                                    if (col.id === 'grade') return <td key={col.id} className={`${cellClass} w-32`}><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.material_grade || ''} onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)} className={inputClass} /></td>;
+                                                    if (col.id === 'grade') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.material_grade || ''} onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)} className={inputClass} /></td>;
                                                     
-                                                    if (col.id === 'tolerance') return <td key={col.id} className={`${cellClass} w-24`}><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.tolerance || ''} onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)} placeholder="-" className={`${inputClass} text-center`} /></td>;
+                                                    if (col.id === 'tolerance') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.tolerance || ''} onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)} placeholder="-" className={`${inputClass} text-center`} /></td>;
                                                     
-                                                    if (col.id === 'tests') return <td key={col.id} className={`${cellClass} w-24`}><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.test_reqs?.join(', ') || ''} onChange={(e) => handleUpdateLineItem(index, 'test_reqs', e.target.value.split(',').map(s => s.trim()))} placeholder="-" className={inputClass} /></td>;
+                                                    if (col.id === 'tests') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.test_reqs?.join(', ') || ''} onChange={(e) => handleUpdateLineItem(index, 'test_reqs', e.target.value.split(',').map(s => s.trim()))} placeholder="-" className={inputClass} /></td>;
                                                     
-                                                    if (col.id === 'od') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.outer_diameter.value || ''} onChange={(e) => handleUpdateDimension(index, 'outer_diameter', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.outer_diameter.unit}</span></div></td>;
+                                                    if (col.id === 'od') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.outer_diameter.value || ''} onChange={(e) => handleUpdateDimension(index, 'outer_diameter', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.outer_diameter.unit}</span></div></td>;
                                                     
-                                                    if (col.id === 'wt') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.wall_thickness.value || ''} onChange={(e) => handleUpdateDimension(index, 'wall_thickness', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.wall_thickness.unit}</span></div></td>;
+                                                    if (col.id === 'wt') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.wall_thickness.value || ''} onChange={(e) => handleUpdateDimension(index, 'wall_thickness', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.wall_thickness.unit}</span></div></td>;
                                                     
-                                                    if (col.id === 'length') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.length.value || ''} onChange={(e) => handleUpdateDimension(index, 'length', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.length.unit}</span></div></td>;
+                                                    if (col.id === 'length') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.length.value || ''} onChange={(e) => handleUpdateDimension(index, 'length', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.length.unit}</span></div></td>;
                                                     
-                                                    if (col.id === 'qty') return <td key={col.id} className={`${cellClass} w-24`}><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.quantity || 0} onChange={(e) => handleUpdateLineItem(index, 'quantity', Number(e.target.value))} className={`${inputClass} text-right font-bold text-slate-800`} /></td>;
+                                                    if (col.id === 'qty') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.quantity || 0} onChange={(e) => handleUpdateLineItem(index, 'quantity', Number(e.target.value))} className={`${inputClass} text-right font-bold text-slate-800`} /></td>;
                                                     
-                                                    if (col.id === 'uom') return <td key={col.id} className={`${cellClass} w-24`}><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.uom || ''} onChange={(e) => handleUpdateLineItem(index, 'uom', e.target.value)} className={`${inputClass} text-center text-slate-500`} /></td>;
+                                                    if (col.id === 'uom') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.uom || ''} onChange={(e) => handleUpdateLineItem(index, 'uom', e.target.value)} className={`${inputClass} text-center text-slate-500`} /></td>;
                                                     
-                                                    if (col.isCustom) return <td key={col.id} className={`${cellClass} w-32`}><input id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.custom_fields?.[col.id] || ''} onChange={(e) => handleUpdateCustomField(index, col.id, e.target.value)} className={inputClass} placeholder="-" /></td>;
+                                                    if (col.isCustom) return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.custom_fields?.[col.id] || ''} onChange={(e) => handleUpdateCustomField(index, col.id, e.target.value)} className={inputClass} placeholder="-" /></td>;
                                                     
                                                     return null;
                                                 })}
