@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment } from '../types';
+import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage } from '../types';
 import { parseRequest, clarifyRequest, generateRfqSummary, auditRfqSpecs } from '../services/geminiService';
 import { storageService } from '../services/storageService';
 import { t } from '../utils/i18n';
@@ -17,9 +17,11 @@ interface BuyerViewProps {
 
 export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps) {
     const [inputText, setInputText] = useState('');
+    const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const chatEndRef = useRef<HTMLDivElement>(null);
     
     // Sidebar State
     const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
@@ -27,12 +29,17 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     
     // UI State
-    const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(false);
+    const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); // Default to TRUE
 
     // Load drafts on mount
     useEffect(() => {
         setSavedRfqs(storageService.getRfqs());
     }, [rfq]); // Reload if current RFQ changes (save/update)
+
+    // Scroll to bottom of chat
+    useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [chatHistory, isProcessing]);
 
     // Default Table Configuration
     const [tableConfig, setTableConfig] = useState<ColumnConfig[]>([
@@ -91,6 +98,17 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
     const handleSend = async () => {
         if ((!inputText.trim() && attachedFiles.length === 0) || isProcessing) return;
+        
+        // Add User Message to History
+        const userMessage: ChatMessage = { role: 'user', content: inputText };
+        if (attachedFiles.length > 0) {
+            userMessage.content += ` [Attached ${attachedFiles.length} file(s): ${attachedFiles.map(f => f.name).join(', ')}]`;
+        }
+        setChatHistory(prev => [...prev, userMessage]);
+        
+        const currentInput = inputText; // Capture for processing
+        setInputText(''); // Clear input immediately
+        setAttachedFiles([]); // Clear files immediately
         setIsProcessing(true);
 
         try {
@@ -104,8 +122,10 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             const currentItems = rfq ? rfq.line_items : [];
             const projectName = rfq ? rfq.project_name : null;
 
-            const result = await parseRequest(inputText, projectName, processedFiles, lang, currentItems);
+            const result = await parseRequest(currentInput, projectName, processedFiles, lang, currentItems);
             
+            let newItemCount = 0;
+
             if (rfq) {
                 // Merge logic for edit mode
                 const updatedRfq: Rfq = {
@@ -118,14 +138,16 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                     }
                 };
                 setRfq(updatedRfq);
+                newItemCount = result.line_items ? result.line_items.length : 0;
             } else {
                 // New RFQ
+                newItemCount = result.line_items ? result.line_items.length : 0;
                 const newRfq: Rfq = {
                     id: `RFQ-${Date.now()}`,
                     project_name: result.project_name || "New RFP",
                     status: 'draft',
                     line_items: result.line_items || [],
-                    original_text: inputText,
+                    original_text: currentInput,
                     created_at: Date.now(),
                     commercial: {
                         destination: result.commercial?.destination || "",
@@ -141,11 +163,16 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 setRfq(newRfq);
             }
             
-            setInputText('');
-            setAttachedFiles([]);
+            // Add AI Response to History
+            const aiMessage: ChatMessage = { 
+                role: 'assistant', 
+                content: t(lang, 'rfq_created_msg', { count: newItemCount.toString() }) 
+            };
+            setChatHistory(prev => [...prev, aiMessage]);
+
         } catch (e) {
             console.error(e);
-            alert("Error processing request. Please try again.");
+            setChatHistory(prev => [...prev, { role: 'assistant', content: t(lang, 'analyzing_error') }]);
         } finally {
             setIsProcessing(false);
         }
@@ -240,11 +267,14 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             ]
         };
         setRfq(sampleRfq);
+        // Add sample chat message
+        setChatHistory([{ role: 'user', content: "Load sample piping data." }, { role: 'assistant', content: t(lang, 'rfq_created_msg', { count: '2' }) }]);
     };
 
     const handleNewRfp = () => {
         setRfq(null);
         setInputText('');
+        setChatHistory([]);
     };
 
     const handleSaveRfq = () => {
@@ -256,7 +286,10 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
     const handleSelectRfq = (id: string) => {
         const selected = savedRfqs.find(r => r.id === id);
-        if (selected) setRfq(selected);
+        if (selected) {
+            setRfq(selected);
+            setChatHistory([]); // Clear chat for new project load
+        }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent, colId: string, rowIndex: number) => {
@@ -333,7 +366,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         if (!rfq) return;
         const doc = new jsPDF();
         // ... (PDF generation logic preserved)
-        // For brevity, reusing the existing PDF logic
         doc.setFontSize(22);
         doc.setFont("times", "bold");
         doc.text("PURCHASE ORDER", 14, 20);
@@ -532,14 +564,28 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                             <div className="bg-slate-50 p-3 rounded-2xl rounded-tl-none border border-slate-100 text-sm text-slate-600">
                                 {t(lang, 'initial_greeting')}
                             </div>
-                            {inputText && (
-                                <div className="bg-slate-900 text-white p-3 rounded-2xl rounded-tr-none text-sm self-end max-w-[90%] shadow-md">
-                                    {inputText}
+                            {/* Chat History */}
+                            {chatHistory.map((msg, idx) => (
+                                <div key={idx} className={`text-sm p-3 rounded-2xl max-w-[90%] shadow-sm ${msg.role === 'user' ? 'bg-slate-900 text-white self-end rounded-tr-none' : 'bg-slate-50 text-slate-600 self-start rounded-tl-none border border-slate-100'}`}>
+                                    {msg.content}
                                 </div>
-                            )}
+                            ))}
+                            <div ref={chatEndRef} />
                         </div>
 
                         <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+                            {/* Visible File List */}
+                            {attachedFiles.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                    {attachedFiles.map((file, i) => (
+                                        <div key={i} className="flex items-center gap-1 bg-white border border-slate-200 text-slate-600 text-[10px] px-2 py-1 rounded-full shadow-sm">
+                                            <span className="truncate max-w-[120px]">{file.name}</span>
+                                            <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full w-4 h-4 flex items-center justify-center transition">×</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             <textarea 
                                 value={inputText}
                                 onChange={(e) => setInputText(e.target.value)}
@@ -555,11 +601,10 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                             <div className="flex justify-between items-center">
                                 <div className="flex items-center gap-2">
                                     <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
-                                    <button onClick={() => fileInputRef.current?.click()} className="text-slate-400 hover:text-accent flex items-center gap-1 text-xs font-medium">
+                                    <button onClick={() => fileInputRef.current?.click()} className="text-slate-400 hover:text-accent flex items-center gap-1 text-xs font-medium px-2 py-1 rounded hover:bg-slate-100 transition">
                                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
                                         {t(lang, 'upload_file')}
                                     </button>
-                                    {attachedFiles.length > 0 && <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{attachedFiles.length} files</span>}
                                 </div>
                                 <button 
                                     onClick={handleSend} 
