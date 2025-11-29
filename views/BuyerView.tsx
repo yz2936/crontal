@@ -29,6 +29,9 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
     const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
     
+    // Comparison State
+    const [sortBy, setSortBy] = useState<'price' | 'time' | 'date'>('price');
+
     // UI State
     const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); 
     const prevItemCount = useRef(0);
@@ -380,6 +383,19 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         }
     };
 
+    const getSortedQuotes = () => {
+        if (!quotes) return [];
+        const sorted = [...quotes];
+        if (sortBy === 'price') {
+            sorted.sort((a, b) => a.total - b.total);
+        } else if (sortBy === 'time') {
+            sorted.sort((a, b) => (parseInt(a.leadTime) || 999) - (parseInt(b.leadTime) || 999));
+        } else {
+            sorted.sort((a, b) => b.timestamp - a.timestamp);
+        }
+        return sorted;
+    };
+
     const handleGenerateAwardPO = (winningQuote: Quote) => {
         if (!rfq) return;
         const doc = new jsPDF();
@@ -595,7 +611,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                             <button onClick={() => setActiveTab('archived')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition ${activeTab === 'archived' ? 'bg-white text-slate-900 border-b-2 border-slate-900' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>{t(lang, 'nav_archived')}</button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                            {savedRfqs.filter(r => (activeTab === 'active' ? r.status !== 'archived' : r.status === 'archived')).length === 0 ? (
+                            {savedRfqs.filter(r => r && (activeTab === 'active' ? r.status !== 'archived' : r.status === 'archived')).length === 0 ? (
                                 <div className="text-center text-slate-300 text-xs italic mt-10">No RFPs found</div>
                             ) : (
                                 savedRfqs
@@ -715,13 +731,27 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                         <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden animate-in fade-in">
                             
                             {currentStep === 3 ? (
-                                // --- COMPARISON VIEW (STEP 3) ---
+                                // --- COMPARISON VIEW (STEP 3) - TABLE LAYOUT ---
                                 <div className="flex flex-col h-full">
-                                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
+                                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center shrink-0">
                                         <div className="flex items-center gap-2">
                                             <span className="w-5 h-5 flex items-center justify-center bg-brandOrange text-white rounded-full text-[10px] font-bold">3</span>
                                             <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'received_quotes')}</span>
                                         </div>
+                                        {quotes.length > 0 && (
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs text-slate-500">{t(lang, 'sort_by')}</span>
+                                                <select 
+                                                    className="text-xs border border-slate-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-accent"
+                                                    value={sortBy}
+                                                    onChange={(e) => setSortBy(e.target.value as any)}
+                                                >
+                                                    <option value="price">{t(lang, 'price')} (Low-High)</option>
+                                                    <option value="time">{t(lang, 'delivery')} (Fastest)</option>
+                                                    <option value="date">{t(lang, 'created')} (Newest)</option>
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
                                     
                                     {quotes.length === 0 ? (
@@ -732,75 +762,106 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                             <button onClick={handleShare} className="mt-6 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold">{t(lang, 'share_link')}</button>
                                         </div>
                                     ) : (
-                                        <div className="flex-1 overflow-auto p-6">
-                                            <div className="flex gap-6 min-w-max pb-4">
-                                                {/* Labels Column */}
-                                                <div className="w-48 pt-14 flex flex-col gap-4 text-right text-sm font-semibold text-slate-500 shrink-0">
-                                                    <div className="h-8">Total Price</div>
-                                                    <div className="h-8">Lead Time</div>
-                                                    <div className="h-8">Payment</div>
-                                                    <div className="h-8">Validity</div>
-                                                    <div className="border-t border-slate-200 my-2"></div>
-                                                    {rfq.line_items.map(item => (
-                                                        <div key={item.item_id} className="h-12 flex items-center justify-end text-xs font-normal">
-                                                            Line {item.line} ({item.uom})
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                        <div className="flex-1 overflow-auto bg-slate-50">
+                                            <div className="inline-block min-w-full align-middle">
+                                                <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
+                                                    <thead className="bg-white sticky top-0 z-20">
+                                                        <tr>
+                                                            {/* Sticky First Column Header */}
+                                                            <th scope="col" className="sticky left-0 z-30 bg-white border-b border-r border-slate-200 px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-64 shadow-[5px_0_10px_-5px_rgba(0,0,0,0.05)]">
+                                                                Comparison
+                                                            </th>
+                                                            {/* Supplier Headers */}
+                                                            {getSortedQuotes().map((quote) => {
+                                                                const sortedQuotes = getSortedQuotes();
+                                                                const isBestPrice = quote.total === Math.min(...sortedQuotes.map(q => q.total));
+                                                                const isFastest = parseInt(quote.leadTime) === Math.min(...sortedQuotes.map(q => parseInt(q.leadTime) || 999));
 
-                                                {/* Supplier Columns */}
-                                                {quotes.map((quote, idx) => {
-                                                    const isBestPrice = quote.total === Math.min(...quotes.map(q => q.total));
-                                                    const isFastest = parseInt(quote.leadTime) === Math.min(...quotes.map(q => parseInt(q.leadTime) || 999));
+                                                                return (
+                                                                    <th key={quote.id} scope="col" className="px-6 py-4 text-center border-b border-r border-slate-200 min-w-[250px] relative group bg-white">
+                                                                        {isBestPrice && <div className="absolute top-0 right-0 left-0 bg-green-500 text-white text-[9px] font-bold py-0.5">BEST PRICE</div>}
+                                                                        {isFastest && !isBestPrice && <div className="absolute top-0 right-0 left-0 bg-blue-500 text-white text-[9px] font-bold py-0.5">FASTEST</div>}
+                                                                        
+                                                                        <div className="mt-2 text-sm font-bold text-slate-900">{quote.supplierName}</div>
+                                                                        <div className="text-[10px] text-slate-400 font-normal">{new Date(quote.timestamp).toLocaleDateString()}</div>
+                                                                        <button 
+                                                                            onClick={() => handleGenerateAwardPO(quote)}
+                                                                            className="mt-3 w-full bg-slate-900 text-white py-1.5 rounded-lg text-xs font-bold hover:bg-slate-700 transition shadow-sm opacity-90 group-hover:opacity-100"
+                                                                        >
+                                                                            Award
+                                                                        </button>
+                                                                    </th>
+                                                                );
+                                                            })}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="bg-white divide-y divide-slate-100">
+                                                        {/* Summary Rows */}
+                                                        <tr className="bg-slate-50/50">
+                                                            <td className="sticky left-0 bg-slate-50 border-r border-slate-200 px-6 py-3 text-sm font-bold text-slate-700 z-10 shadow-[5px_0_10px_-5px_rgba(0,0,0,0.05)]">Total Price</td>
+                                                            {getSortedQuotes().map(quote => (
+                                                                <td key={quote.id} className="px-6 py-3 text-center text-sm font-bold text-slate-900 border-r border-slate-200 bg-slate-50/50">{quote.currency} {quote.total.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                            ))}
+                                                        </tr>
+                                                        <tr>
+                                                            <td className="sticky left-0 bg-white border-r border-slate-200 px-6 py-3 text-sm font-medium text-slate-500 z-10 shadow-[5px_0_10px_-5px_rgba(0,0,0,0.05)]">Lead Time</td>
+                                                            {getSortedQuotes().map(quote => (
+                                                                <td key={quote.id} className="px-6 py-3 text-center text-sm text-slate-600 border-r border-slate-200">{quote.leadTime} Days</td>
+                                                            ))}
+                                                        </tr>
+                                                        <tr className="bg-slate-50/50">
+                                                            <td className="sticky left-0 bg-slate-50 border-r border-slate-200 px-6 py-3 text-sm font-medium text-slate-500 z-10 shadow-[5px_0_10px_-5px_rgba(0,0,0,0.05)]">Payment Terms</td>
+                                                            {getSortedQuotes().map(quote => (
+                                                                <td key={quote.id} className="px-6 py-3 text-center text-xs text-slate-600 border-r border-slate-200 bg-slate-50/50">{quote.payment || "-"}</td>
+                                                            ))}
+                                                        </tr>
+                                                        <tr>
+                                                            <td className="sticky left-0 bg-white border-r border-slate-200 px-6 py-3 text-sm font-medium text-slate-500 z-10 shadow-[5px_0_10px_-5px_rgba(0,0,0,0.05)]">Valid Until</td>
+                                                            {getSortedQuotes().map(quote => (
+                                                                <td key={quote.id} className="px-6 py-3 text-center text-xs text-slate-600 border-r border-slate-200">{quote.validity || "-"}</td>
+                                                            ))}
+                                                        </tr>
+                                                        
+                                                        {/* Attachments Row */}
+                                                        <tr className="bg-slate-50/50">
+                                                            <td className="sticky left-0 bg-slate-50 border-r border-slate-200 px-6 py-3 text-sm font-medium text-slate-500 z-10 shadow-[5px_0_10px_-5px_rgba(0,0,0,0.05)]">Attachments</td>
+                                                            {getSortedQuotes().map(quote => (
+                                                                <td key={quote.id} className="px-6 py-3 text-center text-xs text-blue-600 border-r border-slate-200 bg-slate-50/50">
+                                                                    {quote.attachments?.length ? `${quote.attachments.length} Files` : "-"}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
 
-                                                    return (
-                                                        <div key={quote.id} className="w-64 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-all flex flex-col shrink-0 relative overflow-hidden">
-                                                            {/* Best Badges */}
-                                                            {isBestPrice && <div className="absolute top-0 right-0 bg-green-500 text-white text-[9px] px-2 py-0.5 rounded-bl-lg font-bold">BEST PRICE</div>}
-                                                            {isFastest && !isBestPrice && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[9px] px-2 py-0.5 rounded-bl-lg font-bold">FASTEST</div>}
+                                                        {/* Section Divider */}
+                                                        <tr>
+                                                            <td colSpan={getSortedQuotes().length + 1} className="bg-slate-100 px-6 py-2 text-xs font-bold text-slate-500 uppercase tracking-wider border-y border-slate-200 sticky left-0 z-10">
+                                                                Line Item Pricing
+                                                            </td>
+                                                        </tr>
 
-                                                            <div className="p-4 border-b border-slate-100 bg-slate-50/50 text-center">
-                                                                <div className="font-bold text-slate-900">{quote.supplierName}</div>
-                                                                <div className="text-xs text-slate-500">{new Date(quote.timestamp).toLocaleDateString()}</div>
-                                                                <button 
-                                                                    onClick={() => handleGenerateAwardPO(quote)}
-                                                                    className="mt-3 w-full bg-slate-900 text-white py-1.5 rounded-lg text-xs font-bold hover:bg-slate-700 transition"
-                                                                >
-                                                                    Award & Generate PO
-                                                                </button>
-                                                            </div>
-                                                            
-                                                            <div className="p-4 flex flex-col gap-4 text-center text-sm">
-                                                                <div className="h-8 font-bold text-lg text-slate-900">{quote.currency} {quote.total.toLocaleString()}</div>
-                                                                <div className="h-8 text-slate-600">{quote.leadTime} Days</div>
-                                                                <div className="h-8 text-slate-600 text-xs">{quote.payment}</div>
-                                                                <div className="h-8 text-slate-600 text-xs">{quote.validity}</div>
-                                                                <div className="border-t border-slate-100 my-2"></div>
-                                                                
-                                                                {/* Line Item Prices */}
-                                                                {rfq.line_items.map(item => {
+                                                        {/* Line Items */}
+                                                        {rfq.line_items.map((item, idx) => (
+                                                            <tr key={item.item_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}>
+                                                                <td className={`sticky left-0 border-r border-slate-200 px-6 py-3 text-xs text-slate-600 z-10 shadow-[5px_0_10px_-5px_rgba(0,0,0,0.05)] ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
+                                                                    <div className="font-bold text-slate-800">Line {item.line}</div>
+                                                                    <div className="truncate max-w-[200px]" title={item.description}>{item.description}</div>
+                                                                    <div className="text-[10px] text-slate-400">{item.quantity} {item.uom}</div>
+                                                                </td>
+                                                                {getSortedQuotes().map(quote => {
                                                                     const qItem = quote.items.find(i => i.line === item.line);
                                                                     return (
-                                                                        <div key={item.item_id} className="h-12 flex flex-col justify-center items-center bg-slate-50 rounded border border-slate-100">
-                                                                            <span className="font-bold text-slate-800">{quote.currency} {qItem?.unitPrice?.toFixed(2) || '-'}</span>
-                                                                            <span className="text-[9px] text-slate-400">Total: {(qItem?.lineTotal || 0).toLocaleString()}</span>
-                                                                        </div>
+                                                                        <td key={quote.id} className="px-6 py-3 text-center border-r border-slate-200 align-top">
+                                                                            <div className="font-bold text-slate-900 text-sm">{quote.currency} {qItem?.unitPrice?.toFixed(2) || '-'}</div>
+                                                                            <div className="text-[10px] text-slate-400">Total: {(qItem?.lineTotal || 0).toLocaleString()}</div>
+                                                                            {qItem?.moq && <div className="text-[9px] text-orange-500 mt-1">MOQ: {qItem.moq}</div>}
+                                                                            {qItem?.alternates && <div className="text-[9px] text-blue-500 mt-1 italic max-w-[200px] mx-auto truncate" title={qItem.alternates}>Note: {qItem.alternates}</div>}
+                                                                        </td>
                                                                     );
                                                                 })}
-
-                                                                {/* Attachments */}
-                                                                {quote.attachments && quote.attachments.length > 0 && (
-                                                                    <div className="mt-2 pt-2 border-t border-slate-100 text-xs">
-                                                                        <div className="font-bold text-slate-500 mb-1">Attachments:</div>
-                                                                        {quote.attachments.map((att, i) => (
-                                                                            <div key={i} className="text-blue-600 truncate">{att.name}</div>
-                                                                        ))}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
                                             </div>
                                         </div>
                                     )}
