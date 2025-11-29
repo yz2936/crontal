@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Rfq, LineItem, FileAttachment, Language } from "../types";
 
@@ -6,6 +7,15 @@ import { Rfq, LineItem, FileAttachment, Language } from "../types";
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const MODEL_FAST = "gemini-2.5-flash";
+const MODEL_IMAGE = "gemini-2.5-flash-image";
+
+// Export the Risk Interface here so it can be used in views
+export interface RiskAnalysisItem {
+    category: 'Technical' | 'Commercial' | 'Strategic';
+    risk: string;
+    recommendation: string;
+    impact_level: 'High' | 'Medium' | 'Low';
+}
 
 const getLanguageName = (lang: Language): string => {
     switch (lang) {
@@ -233,6 +243,75 @@ export const parseRequest = async (
   }
 };
 
+export const analyzeRfqRisks = async (rfq: Rfq, lang: Language = 'en'): Promise<RiskAnalysisItem[]> => {
+    const targetLang = getLanguageName(lang);
+    const systemInstruction = `
+      You are a Senior Procurement Risk Officer. Your job is to audit this RFQ before it is sent to suppliers.
+      Identify WEAKNESSES that could lead to ambiguity, wrong quotes, manufacturing errors, or commercial disputes.
+      
+      ANALYZE:
+      1. **Technical**: Missing grades, undefined specs (e.g. "Carbon Steel" without Grade), missing dimensions, missing NACE/HIC requirements for O&G. 
+         - **IMPORTANT**: If a specific item is missing data, reference it clearly as "Line X" (e.g., "Line 3 is missing Schedule").
+      2. **Commercial**: Missing Incoterms, vague payment terms, missing warranty.
+      3. **Strategic**: Single sourcing risks, unfeasible delivery times, incomplete project description.
+      
+      OUTPUT:
+      Return a structured JSON list of specific recommendations.
+      Language: ${targetLang}
+    `;
+
+    // Construct a concise context payload
+    const rfqContext = {
+        project: rfq.project_name,
+        description: rfq.project_description,
+        commercial: rfq.commercial,
+        // Send a summary of items to save tokens, highlighting potential missing data points
+        items: rfq.line_items.map(i => ({
+            line: i.line,
+            desc: i.description,
+            grade: i.material_grade || "MISSING",
+            qty: i.quantity,
+            type: i.product_type
+        }))
+    };
+
+    try {
+        const response = await ai.models.generateContent({
+            model: MODEL_FAST,
+            contents: JSON.stringify(rfqContext),
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            category: { type: Type.STRING, enum: ['Technical', 'Commercial', 'Strategic'] },
+                            risk: { type: Type.STRING },
+                            recommendation: { type: Type.STRING },
+                            impact_level: { type: Type.STRING, enum: ['High', 'Medium', 'Low'] }
+                        }
+                    }
+                }
+            }
+        });
+
+        const clean = cleanJson(response.text || "[]");
+        const parsed: RiskAnalysisItem[] = JSON.parse(clean);
+        return parsed;
+    } catch (e) {
+        console.error("Risk Analysis Error", e);
+        // Return a fallback error as a risk item if AI fails
+        return [{
+            category: "Technical",
+            risk: "AI Analysis Failed",
+            recommendation: "Please review specs manually. The AI service encountered an error.",
+            impact_level: "Low"
+        }];
+    }
+};
+
 export const clarifyRequest = async (rfq: Rfq, userMessage: string, lang: Language = 'en'): Promise<string> => {
     // Legacy function, might not be needed if parseRequest handles conversation
     const targetLang = getLanguageName(lang);
@@ -305,5 +384,40 @@ export const auditRfqSpecs = async (rfq: Rfq, lang: Language = 'en'): Promise<st
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       return [];
+    }
+};
+
+export const editImage = async (base64Image: string, mimeType: string, prompt: string): Promise<string | null> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: MODEL_IMAGE,
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            data: base64Image,
+                            mimeType: mimeType,
+                        },
+                    },
+                    {
+                        text: prompt,
+                    },
+                ],
+            },
+        });
+        
+        // Find image part
+        const candidate = response.candidates?.[0];
+        if (candidate?.content?.parts) {
+            for (const part of candidate.content.parts) {
+                if (part.inlineData && part.inlineData.data) {
+                    return `data:image/png;base64,${part.inlineData.data}`;
+                }
+            }
+        }
+        return null;
+    } catch (e) {
+        console.error("Image Edit Error", e);
+        throw e;
     }
 };

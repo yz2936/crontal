@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, Language, FileAttachment } from '../types';
@@ -238,9 +237,12 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
             <div className="md:w-64 flex-shrink-0 flex flex-col gap-4">
                  <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
                     <div className="flex items-center gap-3 mb-6">
-                        <div className="h-8 w-8 rounded-lg bg-accent/10 border border-accent flex items-center justify-center">
-                            <span className="text-accent font-bold text-lg">C</span>
-                        </div>
+                        <svg viewBox="0 0 40 40" fill="none" className="h-8 w-8 rounded-lg shadow-sm">
+                            <rect width="40" height="40" rx="8" fill="#0B1121"/>
+                            <path d="M12 20C12 15.5817 15.5817 12 20 12C22.25 12 24.28 12.93 25.76 14.43" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+                            <path d="M12 20C12 24.4183 15.5817 28 20 28C22.25 28 24.28 27.07 25.76 25.57" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+                            <path d="M22 20H32M32 20L28 16M32 20L28 24" stroke="#F97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
                         <div>
                             <h1 className="text-sm font-bold text-slate-900">Supplier Portal</h1>
                         </div>

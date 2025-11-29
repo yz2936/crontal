@@ -1,10 +1,11 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage } from '../types';
-import { parseRequest } from '../services/geminiService';
+import { parseRequest, analyzeRfqRisks, RiskAnalysisItem } from '../services/geminiService';
 import { storageService } from '../services/storageService';
 import { t } from '../utils/i18n';
 import LZString from 'lz-string';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 interface BuyerViewProps {
@@ -24,13 +25,18 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const chatContainerRef = useRef<HTMLDivElement>(null);
     
     // Navigation & View State
-    const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(2);
+    const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
     const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
     
     // Comparison State
     const [viewQuoteDetails, setViewQuoteDetails] = useState<Quote | null>(null);
+
+    // Risk Analysis State
+    const [isRiskAnalyzing, setIsRiskAnalyzing] = useState(false);
+    const [riskReport, setRiskReport] = useState<RiskAnalysisItem[] | null>(null);
+    const [showRiskModal, setShowRiskModal] = useState(false);
 
     // UI State
     const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); 
@@ -197,6 +203,75 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             setChatHistory(prev => [...prev, { role: 'assistant', content: t(lang, 'analyzing_error') }]);
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const handleRiskAnalysis = async () => {
+        if (!rfq) return;
+        setIsRiskAnalyzing(true);
+        try {
+            const report = await analyzeRfqRisks(rfq, lang);
+            setRiskReport(report);
+            setShowRiskModal(true);
+        } catch (e) {
+            console.error("Risk analysis failed", e);
+            alert("Analysis failed. Please try again.");
+        } finally {
+            setIsRiskAnalyzing(false);
+        }
+    };
+
+    const handleIgnoreRisk = (index: number) => {
+        if (!riskReport) return;
+        const newReport = [...riskReport];
+        newReport.splice(index, 1);
+        setRiskReport(newReport);
+        if (newReport.length === 0) setShowRiskModal(false);
+    };
+
+    const handleMitigateRisk = (item: RiskAnalysisItem, index: number) => {
+        setShowRiskModal(false);
+        
+        // Remove from list as we are addressing it
+        handleIgnoreRisk(index);
+
+        // Simple routing logic based on category
+        if (item.category === 'Commercial') {
+            setIsHeaderInfoOpen(true);
+            setTimeout(() => {
+                 document.getElementById('commercial-section')?.scrollIntoView({ behavior: 'smooth' });
+                 // Try to focus specific fields based on keywords
+                 if (item.risk.toLowerCase().includes('payment')) document.querySelector<HTMLInputElement>('input[value="' + (rfq?.commercial.paymentTerm || '') + '"]')?.focus();
+                 if (item.risk.toLowerCase().includes('incoterm')) document.querySelector<HTMLInputElement>('input[value="' + (rfq?.commercial.incoterm || '') + '"]')?.focus();
+                 if (item.risk.toLowerCase().includes('destination')) document.querySelector<HTMLInputElement>('input[value="' + (rfq?.commercial.destination || '') + '"]')?.focus();
+            }, 300);
+        } else if (item.category === 'Strategic') {
+            setIsHeaderInfoOpen(true);
+             setTimeout(() => {
+                 document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Provide context for suppliers..."]')?.focus();
+            }, 300);
+        } else {
+            // Technical -> Table
+            // Try to find line number in text "Line X", "Item X" etc
+            const match = item.risk.match(/(?:Line|Item)\s+(\d+)/i);
+            if (match && match[1]) {
+                 const lineIdx = parseInt(match[1]) - 1;
+                 setTimeout(() => {
+                     const row = document.getElementById(`cell-description-${lineIdx}`);
+                     if (row) {
+                         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                         row.focus();
+                         // Highlight effect
+                         row.classList.add('ring-2', 'ring-accent', 'ring-offset-2');
+                         setTimeout(() => row.classList.remove('ring-2', 'ring-accent', 'ring-offset-2'), 2000);
+                     }
+                 }, 300);
+            } else {
+                // Focus first item description
+                 setTimeout(() => {
+                     document.getElementById('cell-description-0')?.focus();
+                 }, 300);
+            }
         }
     };
 
@@ -525,7 +600,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-100px)] gap-0 overflow-hidden">
+        <div className="flex flex-col h-[calc(100vh-100px)] gap-0 overflow-hidden relative">
             
             {/* TOP BAR: STEPS & NAVIGATION */}
             <div className="flex items-center justify-between px-2 pb-4 shrink-0">
@@ -886,11 +961,11 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                 </div>
                             ) : (
                                 // --- REVIEW TABLE (STEP 1 & 2) ---
-                                <div className="flex flex-col h-full">
+                                <div className="flex flex-col h-full relative">
                                     <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex flex-col gap-3">
                                         <div className="flex justify-between items-center">
                                             <div className="flex items-center gap-2">
-                                                <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold">{currentStep}</span>
+                                                <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold">2</span>
                                                 <div className="flex items-center gap-3">
                                                     <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'live_preview')}</span>
                                                     <div className="h-4 w-px bg-slate-300"></div>
@@ -903,6 +978,25 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                 </div>
                                             </div>
                                             <div className="flex gap-2">
+                                                {/* NEW: RISK ANALYSIS BUTTON */}
+                                                <button 
+                                                    onClick={handleRiskAnalysis}
+                                                    disabled={isRiskAnalyzing}
+                                                    className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition shadow-sm flex items-center gap-2 ${isRiskAnalyzing ? 'bg-indigo-50 border-indigo-100 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300'}`}
+                                                >
+                                                    {isRiskAnalyzing ? (
+                                                        <>
+                                                            <span className="w-3 h-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin"></span>
+                                                            Analyzing...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                                                            Analyze Risks
+                                                        </>
+                                                    )}
+                                                </button>
+
                                                 <button 
                                                     onClick={() => setIsHeaderInfoOpen(!isHeaderInfoOpen)}
                                                     className={`text-xs px-3 py-1.5 rounded-lg border transition ${isHeaderInfoOpen ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
@@ -921,7 +1015,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
                                         {/* EXPANDABLE RFP DETAILS PANEL */}
                                         {isHeaderInfoOpen && (
-                                            <div className="bg-white border border-slate-200 rounded-lg p-4 animate-in slide-in-from-top-2 text-xs shadow-sm">
+                                            <div id="commercial-section" className="bg-white border border-slate-200 rounded-lg p-4 animate-in slide-in-from-top-2 text-xs shadow-sm">
                                                 <div className="grid grid-cols-2 gap-4 mb-4">
                                                     <div>
                                                         <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'project_description')}</label>
@@ -978,10 +1072,10 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                         {tableConfig.filter(c => c.visible).map(col => {
                                                             const cellClass = "px-2 py-2 border-r border-slate-200 align-middle";
                                                             const inputClass = "w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 placeholder-slate-300 focus:bg-white focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all";
-                                                            const inputId = `cell-${col.id}-${index}`;
+                                                            const inputId = col.id === 'description' ? `cell-description-${index}` : `cell-${col.id}-${index}`;
 
                                                             if (col.id === 'line') return <td key={col.id} className={`${cellClass} text-center bg-slate-50/50 text-slate-400 font-mono w-24`}>{item.line}</td>;
-                                                            if (col.id === 'shape') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.product_type || ''} onChange={(e) => handleUpdateLineItem(index, 'product_type', e.target.value)} className={inputClass} placeholder="-" /></td>;
+                                                            if (col.id === 'shape') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={`cell-shape-${index}`} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.product_type || ''} onChange={(e) => handleUpdateLineItem(index, 'product_type', e.target.value)} className={inputClass} placeholder="-" /></td>;
                                                             if (col.id === 'description') return <td key={col.id} className={`${cellClass} w-64`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.description} onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)} className={`${inputClass} font-medium`} /></td>;
                                                             if (col.id === 'grade') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.material_grade || ''} onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)} className={inputClass} /></td>;
                                                             if (col.id === 'tolerance') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.tolerance || ''} onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)} placeholder="-" className={`${inputClass} text-center`} /></td>;
@@ -1004,6 +1098,89 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                             </tbody>
                                         </table>
                                     </div>
+
+                                    {/* RISK REPORT MODAL */}
+                                    {showRiskModal && riskReport && (
+                                        <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+                                            <div className="bg-white w-full max-w-3xl h-full max-h-[80vh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                                                
+                                                {/* Header */}
+                                                <div className="bg-slate-900 text-white p-6 shrink-0 flex justify-between items-start">
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
+                                                                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                            </div>
+                                                            <h2 className="text-xl font-bold">Procurement Risk Analysis</h2>
+                                                        </div>
+                                                        <p className="text-indigo-200 text-sm">AI-driven audit of technical & commercial gaps.</p>
+                                                    </div>
+                                                    <button onClick={() => setShowRiskModal(false)} className="text-white/60 hover:text-white transition">
+                                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                    </button>
+                                                </div>
+
+                                                {/* Body */}
+                                                <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+                                                    <div className="space-y-4">
+                                                        {riskReport.length === 0 ? (
+                                                            <div className="text-center p-12 text-slate-500">
+                                                                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                                                </div>
+                                                                <h3 className="font-bold text-slate-900">No Major Risks Detected</h3>
+                                                                <p className="text-sm mt-2">The AI found no obvious technical or commercial gaps.</p>
+                                                            </div>
+                                                        ) : (
+                                                            riskReport.map((item, i) => (
+                                                                <div key={i} className={`p-5 rounded-xl border flex gap-4 bg-white ${item.impact_level === 'High' ? 'border-red-200 shadow-sm' : item.impact_level === 'Medium' ? 'border-amber-200' : 'border-slate-200'}`}>
+                                                                    <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
+                                                                        item.impact_level === 'High' ? 'bg-red-100 text-red-600' : 
+                                                                        item.impact_level === 'Medium' ? 'bg-amber-100 text-amber-600' : 
+                                                                        'bg-blue-100 text-blue-600'
+                                                                    }`}>
+                                                                        {item.impact_level === 'High' ? '!' : 'i'}
+                                                                    </div>
+                                                                    <div className="flex-1">
+                                                                        <div className="flex justify-between items-start mb-1">
+                                                                            <h4 className="font-bold text-slate-900">{item.risk}</h4>
+                                                                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                                                                                 item.impact_level === 'High' ? 'bg-red-50 text-red-600' : 
+                                                                                 item.impact_level === 'Medium' ? 'bg-amber-50 text-amber-600' : 
+                                                                                 'bg-blue-50 text-blue-600'
+                                                                            }`}>{item.category} • {item.impact_level} Risk</span>
+                                                                        </div>
+                                                                        <p className="text-sm text-slate-600 leading-relaxed mb-4">{item.recommendation}</p>
+                                                                        <div className="flex gap-3">
+                                                                            <button 
+                                                                                onClick={() => handleMitigateRisk(item, i)}
+                                                                                className="text-xs font-bold bg-slate-900 text-white px-3 py-1.5 rounded hover:bg-slate-700 transition"
+                                                                            >
+                                                                                Mitigate & Fix
+                                                                            </button>
+                                                                            <button 
+                                                                                onClick={() => handleIgnoreRisk(i)}
+                                                                                className="text-xs font-bold text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded border border-transparent hover:border-slate-200 transition"
+                                                                            >
+                                                                                Ignore
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Footer */}
+                                                <div className="p-4 border-t border-slate-200 bg-white flex justify-end gap-3">
+                                                    <button onClick={() => setShowRiskModal(false)} className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition">
+                                                        Close
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

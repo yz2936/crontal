@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface AboutProps {
@@ -12,13 +11,13 @@ export default function About({ onBack, onStart }: AboutProps) {
              {/* Nav */}
              <nav className="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center border-b border-slate-100">
                 <div className="flex items-center gap-2 cursor-pointer" onClick={onBack}>
-                    <svg viewBox="0 0 40 40" fill="none" className="h-8 w-8 rounded-lg">
+                    <svg viewBox="0 0 40 40" fill="none" className="h-8 w-8 rounded-lg shadow-sm">
                         <rect width="40" height="40" rx="8" fill="#0B1121"/>
                         <path d="M12 20C12 15.5817 15.5817 12 20 12C22.25 12 24.28 12.93 25.76 14.43" stroke="white" strokeWidth="3" strokeLinecap="round"/>
                         <path d="M12 20C12 24.4183 15.5817 28 20 28C22.25 28 24.28 27.07 25.76 25.57" stroke="white" strokeWidth="3" strokeLinecap="round"/>
                         <path d="M22 20H32M32 20L28 16M32 20L28 24" stroke="#F97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
-                    <span className="font-bold text-lg">Crontal</span>
+                    <span className="font-bold text-lg tracking-tight">Crontal</span>
                 </div>
                 <button onClick={onStart} className="text-sm font-semibold text-brandOrange hover:underline">Start Demo</button>
             </nav>

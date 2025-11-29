@@ -1,4 +1,6 @@
 
+
+
 export interface Dimension {
     value: number | null;
     unit: string | null;
@@ -97,7 +99,8 @@ export interface Dimension {
     name: string;
   }
   
-  export type ViewMode = 'HOME' | 'BUYER' | 'SUPPLIER' | 'TECH' | 'ABOUT' | 'ROI' | 'SUPPLIER_LANDING' | 'QUALITY' | 'PRIVACY' | 'TERMS';
+  // Removed IMAGE_EDIT from ViewMode
+  export type ViewMode = 'HOME' | 'BUYER' | 'SUPPLIER' | 'TECH' | 'ABOUT' | 'ROI' | 'SUPPLIER_LANDING' | 'QUALITY' | 'PRIVACY' | 'TERMS' | 'BLOG';
   
   export interface TourStep {
     selector: string;

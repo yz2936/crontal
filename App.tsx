@@ -1,4 +1,7 @@
 
+
+
+
 import React, { useState, useEffect } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, ViewMode, Language, User } from './types';
@@ -13,6 +16,7 @@ import RoiPage from './views/RoiPage';
 import SupplierLandingPage from './views/SupplierLandingPage';
 import PrivacyPolicy from './views/PrivacyPolicy';
 import TermsOfService from './views/TermsOfService';
+import BlogPage from './views/BlogPage'; 
 import { Layout } from './components/Layout';
 import { authService } from './services/authService';
 import { storageService } from './services/storageService';
@@ -26,6 +30,7 @@ export default function App() {
   const [lang, setLang] = useState<Language>('en');
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  // ... (existing code)
   // Load quotes whenever the active RFQ changes
   useEffect(() => {
     if (rfq?.id) {
@@ -42,7 +47,6 @@ export default function App() {
         const mode = params.get('mode');
         const encodedData = params.get('data');
         
-        // 1. Supplier Mode: Loading an RFQ to quote on
         if (mode === 'supplier' && encodedData) {
             try {
                 const decompressed = LZString.decompressFromEncodedURIComponent(encodedData);
@@ -58,26 +62,19 @@ export default function App() {
             }
         }
 
-        // 2. Buyer Mode: Loading a Quote Response from a Supplier
         if (mode === 'quote_response' && encodedData) {
             try {
                 const decompressed = LZString.decompressFromEncodedURIComponent(encodedData);
                 if (decompressed) {
                     const incomingQuote: Quote = JSON.parse(decompressed);
-                    
-                    // Attempt to find the original RFQ in local storage to contextually load it
                     const storedRfqStr = localStorage.getItem(`rfq_${incomingQuote.rfqId}`);
                     
                     if (storedRfqStr) {
                         const originalRfq = JSON.parse(storedRfqStr);
                         setRfq(originalRfq);
-                        
-                        // Save quote to persistent storage for comparison
                         storageService.saveReceivedQuote(incomingQuote);
-                        // Reload list
                         const updatedQuotes = storageService.getReceivedQuotes(incomingQuote.rfqId);
                         setQuotes(updatedQuotes);
-                        
                         alert(t('en', 'quote_imported_success', { supplier: incomingQuote.supplierName }));
                     } else {
                         alert("Quote received, but the original RFQ was not found on this device.");
@@ -88,7 +85,6 @@ export default function App() {
             }
         }
 
-        // 3. Standard Auth Check
         const currentUser = authService.getCurrentUser();
         setUser(currentUser);
         setCheckingAuth(false);
@@ -96,6 +92,7 @@ export default function App() {
 
     handleUrlState();
   }, []);
+
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
@@ -112,8 +109,6 @@ export default function App() {
 
   const handleRfqUpdate = (updatedRfq: Rfq | null) => {
     setRfq(updatedRfq);
-    // Also save to local storage for the buyer's own history
-    // Null check added to prevent reading 'id' of null
     if (updatedRfq && updatedRfq.id) {
         localStorage.setItem(`rfq_${updatedRfq.id}`, JSON.stringify(updatedRfq));
     }
@@ -131,44 +126,18 @@ export default function App() {
       return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400 text-sm">Loading Crontal...</div>;
   }
 
-  // Standalone Views
-  if (view === 'TECH') {
-      return <TechCapabilities onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
-  }
-
-  if (view === 'QUALITY') {
-      return <QualityStandards onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
-  }
-
-  if (view === 'ABOUT') {
-      return <About onBack={() => setView('HOME')} onStart={() => setView('BUYER')} />;
-  }
-
-  if (view === 'ROI') {
-      return <RoiPage onBack={() => setView('HOME')} onStart={() => setView('BUYER')} />;
-  }
-
-  if (view === 'SUPPLIER_LANDING') {
-      return <SupplierLandingPage onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
-  }
-
-  if (view === 'PRIVACY') {
-      return <PrivacyPolicy onBack={() => setView('HOME')} />;
-  }
-
-  if (view === 'TERMS') {
-      return <TermsOfService onBack={() => setView('HOME')} />;
-  }
+  // Routing Logic
+  if (view === 'TECH') return <TechCapabilities onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
+  if (view === 'QUALITY') return <QualityStandards onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
+  if (view === 'ABOUT') return <About onBack={() => setView('HOME')} onStart={() => setView('BUYER')} />;
+  if (view === 'ROI') return <RoiPage onBack={() => setView('HOME')} onStart={() => setView('BUYER')} />;
+  if (view === 'SUPPLIER_LANDING') return <SupplierLandingPage onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
+  if (view === 'PRIVACY') return <PrivacyPolicy onBack={() => setView('HOME')} />;
+  if (view === 'TERMS') return <TermsOfService onBack={() => setView('HOME')} />;
+  if (view === 'BLOG') return <BlogPage onBack={() => setView('HOME')} />;
 
   if (view === 'SUPPLIER') {
-      return (
-          <SupplierView 
-            rfq={rfq} 
-            onSubmitQuote={handleQuoteSubmit}
-            lang={lang}
-            onExit={handleSupplierExit}
-          />
-      );
+      return <SupplierView rfq={rfq} onSubmitQuote={handleQuoteSubmit} lang={lang} onExit={handleSupplierExit} />;
   }
   
   if (view === 'HOME' && !user) {
@@ -182,53 +151,30 @@ export default function App() {
             onSupplierPage={() => setView('SUPPLIER_LANDING')}
             onPrivacy={() => setView('PRIVACY')}
             onTerms={() => setView('TERMS')}
+            onBlog={() => setView('BLOG')}
             lang={lang} 
         />
       );
   }
 
-  // Auth View 
   if (view === 'BUYER' && !user) {
     return <AuthView onLogin={handleLogin} onBack={() => setView('HOME')} />;
   }
 
-  // Main App Layout (Logged in or viewing Buyer Demo)
   return (
-    <Layout 
-      view={view} 
-      setView={setView} 
-      lang={lang} 
-      setLang={setLang}
-      user={user}
-      onLogout={handleLogout}
-    >
+    <Layout view={view} setView={setView} lang={lang} setLang={setLang} user={user} onLogout={handleLogout}>
       {view === 'HOME' && user && (
          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-in fade-in duration-700">
           <div className="h-20 w-20 rounded-2xl bg-accent/10 border border-accent flex items-center justify-center mb-4">
             <span className="text-accent font-bold text-4xl">C</span>
           </div>
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">
-            {t(lang, 'home_welcome', { name: user.name })}
-          </h1>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{t(lang, 'home_welcome', { name: user.name })}</h1>
           <div className="flex gap-4 mt-8">
-            <button 
-              onClick={() => setView('BUYER')}
-              className="px-6 py-3 rounded-xl bg-accent text-white font-medium hover:bg-accent/90 transition shadow-lg shadow-accent/20"
-            >
-              {t(lang, 'start_rfq')}
-            </button>
+            <button onClick={() => setView('BUYER')} className="px-6 py-3 rounded-xl bg-accent text-white font-medium hover:bg-accent/90 transition shadow-lg shadow-accent/20">{t(lang, 'start_rfq')}</button>
           </div>
         </div>
       )}
-
-      {view === 'BUYER' && (
-        <BuyerView 
-          rfq={rfq} 
-          setRfq={handleRfqUpdate} 
-          quotes={quotes} 
-          lang={lang}
-        />
-      )}
+      {view === 'BUYER' && <BuyerView rfq={rfq} setRfq={handleRfqUpdate} quotes={quotes} lang={lang} />}
     </Layout>
   );
 }

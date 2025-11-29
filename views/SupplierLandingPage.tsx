@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface SupplierLandingPageProps {
@@ -13,7 +12,7 @@ export default function SupplierLandingPage({ onBack, onStartDemo }: SupplierLan
       {/* Navbar */}
       <nav className="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center border-b border-slate-100 sticky top-0 bg-white/80 backdrop-blur z-50">
         <div className="flex items-center gap-2 cursor-pointer" onClick={onBack}>
-          <svg viewBox="0 0 40 40" fill="none" className="h-8 w-8 rounded-lg">
+          <svg viewBox="0 0 40 40" fill="none" className="h-8 w-8 rounded-lg shadow-sm">
                 <rect width="40" height="40" rx="8" fill="#0B1121"/>
                 <path d="M12 20C12 15.5817 15.5817 12 20 12C22.25 12 24.28 12.93 25.76 14.43" stroke="white" strokeWidth="3" strokeLinecap="round"/>
                 <path d="M12 20C12 24.4183 15.5817 28 20 28C22.25 28 24.28 27.07 25.76 25.57" stroke="white" strokeWidth="3" strokeLinecap="round"/>
