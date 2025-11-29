@@ -10,6 +10,11 @@ export const storageService = {
         const existingStr = localStorage.getItem(BUYER_RFQ_KEY);
         let list: Rfq[] = existingStr ? JSON.parse(existingStr) : [];
         
+        // Ensure list is valid
+        if (!Array.isArray(list)) list = [];
+        // Filter out nulls first
+        list = list.filter(item => item !== null && item !== undefined);
+
         const index = list.findIndex(item => item.id === rfq.id);
         if (index > -1) {
             list[index] = rfq;
@@ -26,16 +31,26 @@ export const storageService = {
 
     getRfqs: (): Rfq[] => {
         const existingStr = localStorage.getItem(BUYER_RFQ_KEY);
-        return existingStr ? JSON.parse(existingStr) : [];
+        try {
+            const parsed = existingStr ? JSON.parse(existingStr) : [];
+            return Array.isArray(parsed) ? parsed.filter(item => item !== null && item !== undefined) : [];
+        } catch (e) {
+            return [];
+        }
     },
 
     deleteRfq: (id: string) => {
         const existingStr = localStorage.getItem(BUYER_RFQ_KEY);
         if (!existingStr) return [];
-        let list: Rfq[] = JSON.parse(existingStr);
-        list = list.filter(item => item.id !== id);
-        localStorage.setItem(BUYER_RFQ_KEY, JSON.stringify(list));
-        return list;
+        try {
+            let list: Rfq[] = JSON.parse(existingStr);
+            if (!Array.isArray(list)) list = [];
+            list = list.filter(item => item && item.id !== id);
+            localStorage.setItem(BUYER_RFQ_KEY, JSON.stringify(list));
+            return list;
+        } catch (e) {
+            return [];
+        }
     },
 
     // Buyer Methods - Received Quotes (For Comparison)
@@ -44,6 +59,9 @@ export const storageService = {
         const existingStr = localStorage.getItem(key);
         let list: Quote[] = existingStr ? JSON.parse(existingStr) : [];
         
+        if (!Array.isArray(list)) list = [];
+        list = list.filter(q => q !== null && q !== undefined);
+
         // Check duplicates based on ID
         const index = list.findIndex(item => item.id === quote.id);
         if (index > -1) {
@@ -59,7 +77,12 @@ export const storageService = {
     getReceivedQuotes: (rfqId: string): Quote[] => {
         const key = `crontal_received_quotes_${rfqId}`;
         const existingStr = localStorage.getItem(key);
-        return existingStr ? JSON.parse(existingStr) : [];
+        try {
+            const parsed = existingStr ? JSON.parse(existingStr) : [];
+            return Array.isArray(parsed) ? parsed.filter(q => q !== null && q !== undefined) : [];
+        } catch (e) {
+            return [];
+        }
     },
 
     // Supplier Methods - Outgoing Quotes
@@ -67,6 +90,9 @@ export const storageService = {
         const existingStr = localStorage.getItem(SUPPLIER_QUOTE_KEY);
         let list: Quote[] = existingStr ? JSON.parse(existingStr) : [];
         
+        if (!Array.isArray(list)) list = [];
+        list = list.filter(q => q !== null && q !== undefined);
+
         // Check duplicates based on ID
         const index = list.findIndex(item => item.id === quote.id);
         if (index > -1) {
@@ -82,6 +108,11 @@ export const storageService = {
 
     getQuotes: (): Quote[] => {
         const existingStr = localStorage.getItem(SUPPLIER_QUOTE_KEY);
-        return existingStr ? JSON.parse(existingStr) : [];
+        try {
+            const parsed = existingStr ? JSON.parse(existingStr) : [];
+            return Array.isArray(parsed) ? parsed.filter(q => q !== null && q !== undefined) : [];
+        } catch (e) {
+            return [];
+        }
     }
 };

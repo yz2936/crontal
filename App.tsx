@@ -110,10 +110,10 @@ export default function App() {
     window.history.pushState({}, '', window.location.pathname);
   };
 
-  const handleRfqUpdate = (updatedRfq: Rfq) => {
+  const handleRfqUpdate = (updatedRfq: Rfq | null) => {
     setRfq(updatedRfq);
     // Also save to local storage for the buyer's own history
-    if (updatedRfq.id) {
+    if (updatedRfq && updatedRfq.id) {
         localStorage.setItem(`rfq_${updatedRfq.id}`, JSON.stringify(updatedRfq));
     }
   };

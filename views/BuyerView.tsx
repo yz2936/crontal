@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage } from '../types';
 import { parseRequest } from '../services/geminiService';
@@ -24,10 +23,11 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const chatEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     
-    // Sidebar State
-    const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
-    const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
+    // Navigation & View State
+    const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(2); // Default to Review
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
+    const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
     
     // UI State
     const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); 
@@ -86,7 +86,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             const newFiles = Array.from(e.target.files);
             setAttachedFiles(prev => [...prev, ...newFiles]);
         }
-        // Reset input so the same file can be selected again if needed
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -131,7 +130,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         const currentInput = inputText;
         const currentFiles = [...attachedFiles];
         
-        // Optimistic UI updates
         setInputText(''); 
         setAttachedFiles([]);
         setIsProcessing(true);
@@ -145,7 +143,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             const currentItems = rfq ? rfq.line_items : [];
             const projectName = rfq ? rfq.project_name : null;
 
-            // Updated service call returns { rfqUpdates, responseText }
             const result = await parseRequest(currentInput, projectName, processedFiles, lang, currentItems);
             
             let newItemCount = 0;
@@ -186,8 +183,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             }
             
             setIsHeaderInfoOpen(true); 
-            
-            // Use the natural language response from the AI
             const aiMessage: ChatMessage = { 
                 role: 'assistant', 
                 content: result.responseText 
@@ -286,6 +281,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         };
         setRfq(sampleRfq);
         setIsHeaderInfoOpen(true);
+        setCurrentStep(2);
         setChatHistory([{ role: 'user', content: "Load sample piping data." }, { role: 'assistant', content: t(lang, 'rfq_created_msg', { count: '2' }) }]);
     };
 
@@ -294,6 +290,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         setInputText('');
         setChatHistory([]);
         setIsHeaderInfoOpen(true);
+        setCurrentStep(1);
     };
 
     const handleSaveRfq = () => {
@@ -304,11 +301,12 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     };
 
     const handleSelectRfq = (id: string) => {
-        const selected = savedRfqs.find(r => r.id === id);
+        const selected = savedRfqs.find(r => r && r.id === id);
         if (selected) {
             setRfq(selected);
             setChatHistory([]); 
             setIsHeaderInfoOpen(true);
+            setCurrentStep(2);
         }
     };
 
@@ -382,9 +380,11 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         }
     };
 
-    const handleGeneratePO = () => {
+    const handleGenerateAwardPO = (winningQuote: Quote) => {
         if (!rfq) return;
         const doc = new jsPDF();
+        
+        // --- Header ---
         doc.setFontSize(22);
         doc.setFont("times", "bold");
         doc.text("PURCHASE ORDER", 14, 20);
@@ -396,87 +396,129 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 23);
         doc.text(`Page 1 of 1`, 140, 28);
 
-        doc.setFillColor(11, 17, 33);
+        // Logo / Brand
+        doc.setFillColor(11, 17, 33); // Navy
         doc.roundedRect(14, 25, 30, 10, 1, 1, 'F');
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(12);
         doc.text("CRONTAL", 16, 31.5);
         doc.setTextColor(0, 0, 0);
 
+        // --- Address Blocks ---
         const startY = 45;
         doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
-        doc.text("BUYER:", 14, startY);
+        doc.text("VENDOR:", 14, startY);
         doc.setFont("helvetica", "normal");
-        doc.text("INDUSTRIAL PROCUREMENT CORP", 14, startY + 5);
-        doc.text("123 Engineering Way", 14, startY + 10);
-        doc.text("Houston, TX 77001, USA", 14, startY + 15);
+        doc.text(winningQuote.supplierName, 14, startY + 5);
+        doc.text(winningQuote.email || "Email: N/A", 14, startY + 10);
         
         doc.setFont("helvetica", "bold");
         doc.text("DELIVERY TO:", 110, startY);
         doc.setFont("helvetica", "normal");
         doc.text(rfq.commercial.destination || "See Below", 110, startY + 5);
+        doc.text("INDUSTRIAL PROCUREMENT CORP", 110, startY + 10);
         
         doc.setFont("helvetica", "bold");
-        doc.text("RFP Name:", 14, startY + 25);
+        doc.text("Project Ref:", 14, startY + 25);
         doc.setFont("helvetica", "normal");
         doc.text(rfq.project_name || "N/A", 35, startY + 25);
 
-        const tableBody = rfq.line_items.map(item => [
-            `${item.description} \n${item.product_type || ''} ${item.material_grade || ''} \n${item.tolerance ? `Tol: ${item.tolerance}` : ''} ${item.test_reqs?.length ? `Tests: ${item.test_reqs.join(',')}` : ''}`,
-            item.size.outer_diameter.value?.toString() || '-',
-            item.size.wall_thickness.value?.toString() || '-',
-            item.size.length.value?.toString() || '-',
-            item.quantity?.toString() || '0',
-            "-",
-            item.uom || 'pcs',
-            "-",
-            "-"
-        ]);
+        // --- Line Items Table with Pricing ---
+        const tableBody = rfq.line_items.map(item => {
+            const quoteItem = winningQuote.items.find(qi => qi.line === item.line);
+            const unitPrice = quoteItem?.unitPrice || 0;
+            const lineTotal = (quoteItem?.unitPrice || 0) * (item.quantity || 0);
+            
+            return [
+                `${item.description} \n${item.product_type || ''} ${item.material_grade || ''}`,
+                item.size.outer_diameter.value?.toString() || '-',
+                item.size.wall_thickness.value?.toString() || '-',
+                item.size.length.value?.toString() || '-',
+                item.quantity?.toString() || '0',
+                item.uom || 'pcs',
+                `${winningQuote.currency} ${unitPrice.toFixed(2)}`,
+                `${winningQuote.currency} ${lineTotal.toFixed(2)}`
+            ];
+        });
 
         autoTable(doc, {
             startY: startY + 30,
-            head: [['Description & Specs', 'OD', 'WT', 'L', 'Qty', 'N.W', 'UOM', 'Price', 'Amount']],
+            head: [['Description', 'OD', 'WT', 'L', 'Qty', 'UOM', 'Unit Price', 'Amount']],
             body: tableBody,
             theme: 'grid',
             headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1 },
             styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, valign: 'middle' },
             columnStyles: {
-                0: { cellWidth: 60 },
                 4: { halign: 'right' },
-                7: { halign: 'right' },
-                8: { halign: 'right' }
+                6: { halign: 'right' },
+                7: { halign: 'right', fontStyle: 'bold' }
             }
         });
 
+        // --- Totals ---
         // @ts-ignore
-        let finalY = doc.lastAutoTable.finalY + 10;
-        doc.setFontSize(9);
+        let finalY = doc.lastAutoTable.finalY + 5;
+        doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
-        doc.text("Delivery Condition:", 14, finalY);
-        doc.setFont("helvetica", "normal");
-        doc.text("Standard Export Packing", 50, finalY);
-        finalY += 5;
-        doc.setFont("helvetica", "bold");
-        doc.text("Payment:", 14, finalY);
-        doc.setFont("helvetica", "normal");
-        doc.text(rfq.commercial.paymentTerm || "Net 30 Days", 50, finalY);
-        finalY += 5;
-        doc.setFont("helvetica", "bold");
-        doc.text("Incoterm:", 14, finalY);
-        doc.setFont("helvetica", "normal");
-        doc.text(rfq.commercial.incoterm || "Ex Works", 50, finalY);
-        finalY += 5;
-        doc.setFont("helvetica", "bold");
-        doc.text("Documents:", 14, finalY);
-        doc.setFont("helvetica", "normal");
-        doc.text("Comm. Invoice, Packing List, MTC 3.1", 50, finalY);
+        doc.text("TOTAL:", 140, finalY + 5);
+        doc.text(`${winningQuote.currency} ${winningQuote.total.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 170, finalY + 5, { align: 'right' });
+
+        // --- Footer Terms ---
         finalY += 15;
+        doc.setFontSize(9);
+        
+        const terms = [
+            `Delivery Condition: Standard Export Packing`,
+            `Payment: ${winningQuote.payment || rfq.commercial.paymentTerm || "Net 30 Days"}`,
+            `Lead Time: ${winningQuote.leadTime || "TBD"} Days`,
+            `Incoterm: ${rfq.commercial.incoterm || "Ex Works"}`,
+            `Documents: Comm. Invoice, Packing List, MTC 3.1`
+        ];
+
+        terms.forEach((term, i) => {
+            doc.text(term, 14, finalY + (i * 5));
+        });
+
+        // Signature
+        finalY += 30;
         doc.setLineWidth(0.5);
         doc.line(120, finalY, 190, finalY);
         doc.setFontSize(8);
         doc.text("AUTHORIZED SIGNATURE", 120, finalY + 5);
-        doc.save(`PO_${rfq.id}.pdf`);
+        
+        doc.save(`PO_${rfq.id}_${winningQuote.supplierName.replace(/\s+/g, '_')}.pdf`);
+    };
+
+    // Helper for generating Generic PDF (No prices)
+    const handleGenerateGenericPO = () => {
+       if (!rfq) return;
+        const doc = new jsPDF();
+        doc.setFontSize(22); doc.setFont("times", "bold"); doc.text("REQUEST FOR QUOTATION", 14, 20);
+        
+        doc.setFontSize(10); doc.setFont("helvetica", "normal");
+        doc.text(`RFQ Number: ${rfq.id}`, 140, 18);
+        doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 23);
+
+        const startY = 40;
+        doc.text(`Project: ${rfq.project_name || "N/A"}`, 14, startY);
+        doc.text(`Destination: ${rfq.commercial.destination || "N/A"}`, 14, startY + 5);
+
+        const tableBody = rfq.line_items.map(item => [
+            `${item.description} ${item.product_type} ${item.material_grade}`,
+            item.size.outer_diameter.value ? `${item.size.outer_diameter.value} ${item.size.outer_diameter.unit}` : '-',
+            item.size.wall_thickness.value ? `${item.size.wall_thickness.value} ${item.size.wall_thickness.unit}` : '-',
+            item.quantity,
+            item.uom
+        ]);
+
+        autoTable(doc, {
+            startY: startY + 15,
+            head: [['Description', 'OD', 'WT', 'Qty', 'UOM']],
+            body: tableBody,
+        });
+        
+        doc.save(`RFQ_${rfq.id}.pdf`);
     };
 
     return (
@@ -494,24 +536,36 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                     </button>
                     {/* Flow Steps */}
                     <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 text-white rounded-full text-xs font-bold shadow-sm">
-                            <span className="w-5 h-5 flex items-center justify-center bg-brandOrange rounded-full text-[10px]">1</span>
+                        {/* Step 1 */}
+                        <button 
+                            onClick={() => setCurrentStep(1)}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold shadow-sm transition ${currentStep === 1 ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                        >
+                            <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] ${currentStep === 1 ? 'bg-brandOrange' : 'bg-slate-100'}`}>1</span>
                             <span>{t(lang, 'step1_short')}</span>
-                        </div>
-                        <div className="w-8 h-8 flex items-center justify-center text-slate-300">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                        </div>
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 text-slate-500 rounded-full text-xs font-medium">
-                            <span className="w-5 h-5 flex items-center justify-center bg-slate-100 rounded-full text-[10px]">2</span>
+                        </button>
+                        
+                        <div className="w-4 flex justify-center text-slate-300">›</div>
+                        
+                        {/* Step 2 */}
+                        <button 
+                            onClick={() => setCurrentStep(2)}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold shadow-sm transition ${currentStep === 2 ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                        >
+                            <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] ${currentStep === 2 ? 'bg-brandOrange' : 'bg-slate-100'}`}>2</span>
                             <span>{t(lang, 'step2_short')}</span>
-                        </div>
-                        <div className="w-8 h-8 flex items-center justify-center text-slate-300">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                        </div>
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 text-slate-500 rounded-full text-xs font-medium">
-                            <span className="w-5 h-5 flex items-center justify-center bg-slate-100 rounded-full text-[10px]">3</span>
+                        </button>
+
+                        <div className="w-4 flex justify-center text-slate-300">›</div>
+
+                        {/* Step 3 */}
+                        <button 
+                            onClick={() => setCurrentStep(3)}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold shadow-sm transition ${currentStep === 3 ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                        >
+                            <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] ${currentStep === 3 ? 'bg-brandOrange' : 'bg-slate-100'}`}>3</span>
                             <span>{t(lang, 'step3_short')}</span>
-                        </div>
+                        </button>
                     </div>
                 </div>
                 
@@ -537,26 +591,15 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
                     <div className="bg-white rounded-xl border border-slate-200 flex-1 flex flex-col shadow-sm overflow-hidden">
                         <div className="flex border-b border-slate-100">
-                            <button 
-                                onClick={() => setActiveTab('active')}
-                                className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition ${activeTab === 'active' ? 'bg-white text-slate-900 border-b-2 border-slate-900' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
-                            >
-                                {t(lang, 'nav_active')}
-                            </button>
-                            <button 
-                                onClick={() => setActiveTab('archived')}
-                                className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition ${activeTab === 'archived' ? 'bg-white text-slate-900 border-b-2 border-slate-900' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
-                            >
-                                {t(lang, 'nav_archived')}
-                            </button>
+                            <button onClick={() => setActiveTab('active')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition ${activeTab === 'active' ? 'bg-white text-slate-900 border-b-2 border-slate-900' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>{t(lang, 'nav_active')}</button>
+                            <button onClick={() => setActiveTab('archived')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition ${activeTab === 'archived' ? 'bg-white text-slate-900 border-b-2 border-slate-900' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>{t(lang, 'nav_archived')}</button>
                         </div>
-                        
                         <div className="flex-1 overflow-y-auto p-2 space-y-1">
                             {savedRfqs.filter(r => (activeTab === 'active' ? r.status !== 'archived' : r.status === 'archived')).length === 0 ? (
                                 <div className="text-center text-slate-300 text-xs italic mt-10">No RFPs found</div>
                             ) : (
                                 savedRfqs
-                                    .filter(r => (activeTab === 'active' ? r.status !== 'archived' : r.status === 'archived'))
+                                    .filter(r => r && (activeTab === 'active' ? r.status !== 'archived' : r.status === 'archived'))
                                     .map(r => (
                                         <button 
                                             key={r.id}
@@ -575,63 +618,35 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                     </div>
                 </div>
 
-                {/* COLUMN 2: DRAFTING ASSISTANT */}
+                {/* COLUMN 2: DRAFTING ASSISTANT (Always Visible) */}
                 <div className="flex-1 flex flex-col min-w-[300px] max-w-[400px] gap-4">
                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
                         <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
                             <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold">1</span>
                             <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'drafting_assistant')}</span>
-                            <span className="ml-auto text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-bold cursor-pointer hover:bg-slate-300">{t(lang, 'guide_me')}</span>
                         </div>
-                        
                         <div className="flex-1 p-4 flex flex-col gap-4 overflow-y-auto" ref={chatContainerRef}>
-                            <div className="bg-slate-50 p-3 rounded-2xl rounded-tl-none border border-slate-100 text-sm text-slate-600">
-                                {t(lang, 'initial_greeting')}
-                            </div>
-                            {/* Chat History */}
+                            <div className="bg-slate-50 p-3 rounded-2xl rounded-tl-none border border-slate-100 text-sm text-slate-600">{t(lang, 'initial_greeting')}</div>
                             {chatHistory.map((msg, idx) => (
                                 <div key={idx} className={`text-sm p-3 rounded-2xl max-w-[90%] shadow-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-slate-900 text-white self-end rounded-tr-none' : 'bg-slate-50 text-slate-600 self-start rounded-tl-none border border-slate-100'}`}>
                                     {msg.content}
                                 </div>
                             ))}
-                            {isProcessing && (
-                                <div className="bg-slate-50 text-slate-500 p-3 rounded-2xl rounded-tl-none border border-slate-100 self-start text-xs flex items-center gap-2">
-                                    <div className="flex gap-1">
-                                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
-                                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-100"></span>
-                                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-200"></span>
-                                    </div>
-                                    Thinking...
-                                </div>
-                            )}
+                            {isProcessing && <div className="bg-slate-50 text-slate-500 p-3 rounded-2xl rounded-tl-none border border-slate-100 self-start text-xs flex items-center gap-2">Thinking...</div>}
                             <div ref={chatEndRef} />
                         </div>
-
                         <div className="p-4 border-t border-slate-100 bg-slate-50/50">
-                            {/* Visible File List */}
                             {attachedFiles.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mb-2 animate-in fade-in slide-in-from-bottom-1">
+                                <div className="flex flex-wrap gap-2 mb-2 animate-in fade-in">
                                     {attachedFiles.map((file, i) => (
                                         <div key={i} className="flex items-center gap-1 bg-white border border-slate-200 text-slate-600 text-[10px] px-2 py-1 rounded-full shadow-sm">
                                             <span className="truncate max-w-[120px]">{file.name}</span>
-                                            <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full w-4 h-4 flex items-center justify-center transition">×</button>
+                                            <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">×</button>
                                         </div>
                                     ))}
                                 </div>
                             )}
-
-                            <textarea 
-                                value={inputText}
-                                onChange={(e) => setInputText(e.target.value)}
-                                placeholder={t(lang, 'chat_placeholder')}
-                                className="w-full h-24 rounded-xl border border-slate-300 p-3 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none resize-none shadow-sm mb-2"
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        handleSend();
-                                    }
-                                }}
-                            />
+                            <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder={t(lang, 'chat_placeholder')} className="w-full h-24 rounded-xl border border-slate-300 p-3 text-sm focus:border-accent focus:ring-1 outline-none resize-none shadow-sm mb-2" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }}} />
                             <div className="flex justify-between items-center">
                                 <div className="flex items-center gap-2">
                                     <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
@@ -640,246 +655,278 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                         {t(lang, 'upload_file')}
                                     </button>
                                 </div>
-                                <button 
-                                    onClick={handleSend} 
-                                    disabled={isProcessing || (!inputText && attachedFiles.length === 0)}
-                                    className={`px-4 py-2 rounded-lg text-white text-xs font-bold transition shadow-sm flex items-center gap-1 ${isProcessing ? 'bg-slate-400' : 'bg-slate-700 hover:bg-slate-900'}`}
-                                >
-                                    {isProcessing ? 'Processing...' : t(lang, 'send')}
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                </button>
+                                <button onClick={handleSend} disabled={isProcessing || (!inputText && attachedFiles.length === 0)} className={`px-4 py-2 rounded-lg text-white text-xs font-bold transition shadow-sm flex items-center gap-1 ${isProcessing ? 'bg-slate-400' : 'bg-slate-700 hover:bg-slate-900'}`}>{isProcessing ? 'Processing...' : t(lang, 'send')}</button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* COLUMN 3: DASHBOARD / TABLE */}
+                {/* COLUMN 3: CONTENT SWITCHER (Dashboard/Table/Comparison) */}
                 <div className="flex-1 flex flex-col gap-4 overflow-hidden">
                     
                     {!rfq ? (
-                        // EMPTY STATE: DASHBOARD
+                        // EMPTY DASHBOARD
                         <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex flex-col items-center justify-center animate-in fade-in">
                             <h2 className="text-xl font-bold text-slate-900 mb-2">{t(lang, 'dashboard_title')}</h2>
                             <p className="text-slate-500 text-sm mb-10 text-center max-w-md">Select an option to begin your procurement process.</p>
                             
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
-                                <button onClick={handleLoadSample} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-blue-50 hover:border-blue-100 transition-all flex flex-col items-center text-center gap-4">
-                                    <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                                    </div>
-                                    <div>
-                                        <div className="font-bold text-slate-800 text-sm">{t(lang, 'action_sample_title')}</div>
-                                        <div className="text-xs text-slate-500 mt-1">{t(lang, 'action_sample_desc')}</div>
-                                    </div>
-                                </button>
-
+                                {/* Option 1: Natural Language */}
                                 <button onClick={() => document.querySelector('textarea')?.focus()} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-purple-50 hover:border-purple-100 transition-all flex flex-col items-center text-center gap-4">
                                     <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center">
                                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                                     </div>
                                     <div>
-                                        <div className="font-bold text-slate-800 text-sm">{t(lang, 'action_chat_title')}</div>
-                                        <div className="text-xs text-slate-500 mt-1">{t(lang, 'action_chat_desc')}</div>
+                                        <div className="font-bold text-slate-800 text-sm">Describe in Natural Language</div>
+                                        <div className="text-xs text-slate-500 mt-1">Type requirements and let AI structure it</div>
                                     </div>
                                 </button>
 
+                                {/* Option 2: Upload */}
                                 <button onClick={() => fileInputRef.current?.click()} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-green-50 hover:border-green-100 transition-all flex flex-col items-center text-center gap-4">
                                     <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                                     </div>
                                     <div>
-                                        <div className="font-bold text-slate-800 text-sm">{t(lang, 'action_upload_title')}</div>
-                                        <div className="text-xs text-slate-500 mt-1">{t(lang, 'action_upload_desc')}</div>
+                                        <div className="font-bold text-slate-800 text-sm">Upload Documentation</div>
+                                        <div className="text-xs text-slate-500 mt-1">Parse PDF drawings, Excel, or MTOs</div>
                                     </div>
                                 </button>
-                            </div>
 
-                            <div className="mt-6 w-full max-w-md">
-                                 <button onClick={handleAddItem} className="group w-full p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-orange-50 hover:border-orange-100 transition-all flex flex-col items-center text-center gap-4">
+                                {/* Option 3: Manual */}
+                                <button onClick={handleAddItem} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-orange-50 hover:border-orange-100 transition-all flex flex-col items-center text-center gap-4">
                                     <div className="w-12 h-12 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                                     </div>
                                     <div>
-                                        <div className="font-bold text-slate-800 text-sm">{t(lang, 'add_line_item')}</div>
-                                        <div className="text-xs text-slate-500 mt-1">Manually create a new list</div>
+                                        <div className="font-bold text-slate-800 text-sm">Add Items Manually</div>
+                                        <div className="text-xs text-slate-500 mt-1">Create your list line-by-line</div>
                                     </div>
                                 </button>
                             </div>
+
+                            {/* Footer Link for Sample Data */}
+                            <button onClick={handleLoadSample} className="mt-8 text-xs text-slate-400 hover:text-slate-600 underline">
+                                {t(lang, 'load_sample')}
+                            </button>
                         </div>
                     ) : (
-                        // ACTIVE STATE: TABLE VIEW
+                        // CONTENT SWITCH
                         <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden animate-in fade-in">
-                            <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex flex-col gap-3">
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold">2</span>
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'live_preview')}</span>
-                                            <div className="h-4 w-px bg-slate-300"></div>
-                                            <input 
-                                                value={rfq.project_name || ''}
-                                                onChange={(e) => setRfq({ ...rfq, project_name: e.target.value })}
-                                                className="font-bold text-sm text-slate-800 bg-transparent border-none p-0 focus:ring-0 placeholder-slate-300 w-48 focus:border-b focus:border-accent"
-                                                placeholder="Untitled RFP"
-                                            />
+                            
+                            {currentStep === 3 ? (
+                                // --- COMPARISON VIEW (STEP 3) ---
+                                <div className="flex flex-col h-full">
+                                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-5 h-5 flex items-center justify-center bg-brandOrange text-white rounded-full text-[10px] font-bold">3</span>
+                                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'received_quotes')}</span>
                                         </div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <button 
-                                            onClick={() => setIsHeaderInfoOpen(!isHeaderInfoOpen)}
-                                            className={`text-xs px-3 py-1.5 rounded-lg border transition ${isHeaderInfoOpen ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
-                                        >
-                                            {isHeaderInfoOpen ? t(lang, 'hide_details') : t(lang, 'rfp_details')}
-                                        </button>
-                                        <button 
-                                            onClick={handleAddItem}
-                                            className="text-xs bg-brandOrange text-white font-bold px-4 py-1.5 rounded-lg hover:bg-orange-600 transition shadow-sm flex items-center gap-1"
-                                        >
-                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                                            {t(lang, 'add_line_item')}
-                                        </button>
-                                        <button 
-                                            onClick={handleGeneratePO}
-                                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
-                                            title={t(lang, 'generate_po_pdf')}
-                                        >
-                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                                        </button>
+                                    
+                                    {quotes.length === 0 ? (
+                                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 text-center">
+                                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-2xl">📭</div>
+                                            <p className="text-sm">No quotes received yet.</p>
+                                            <p className="text-xs mt-2">Share the link with suppliers to get started.</p>
+                                            <button onClick={handleShare} className="mt-6 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold">{t(lang, 'share_link')}</button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex-1 overflow-auto p-6">
+                                            <div className="flex gap-6 min-w-max pb-4">
+                                                {/* Labels Column */}
+                                                <div className="w-48 pt-14 flex flex-col gap-4 text-right text-sm font-semibold text-slate-500 shrink-0">
+                                                    <div className="h-8">Total Price</div>
+                                                    <div className="h-8">Lead Time</div>
+                                                    <div className="h-8">Payment</div>
+                                                    <div className="h-8">Validity</div>
+                                                    <div className="border-t border-slate-200 my-2"></div>
+                                                    {rfq.line_items.map(item => (
+                                                        <div key={item.item_id} className="h-12 flex items-center justify-end text-xs font-normal">
+                                                            Line {item.line} ({item.uom})
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Supplier Columns */}
+                                                {quotes.map((quote, idx) => {
+                                                    const isBestPrice = quote.total === Math.min(...quotes.map(q => q.total));
+                                                    const isFastest = parseInt(quote.leadTime) === Math.min(...quotes.map(q => parseInt(q.leadTime) || 999));
+
+                                                    return (
+                                                        <div key={quote.id} className="w-64 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-all flex flex-col shrink-0 relative overflow-hidden">
+                                                            {/* Best Badges */}
+                                                            {isBestPrice && <div className="absolute top-0 right-0 bg-green-500 text-white text-[9px] px-2 py-0.5 rounded-bl-lg font-bold">BEST PRICE</div>}
+                                                            {isFastest && !isBestPrice && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[9px] px-2 py-0.5 rounded-bl-lg font-bold">FASTEST</div>}
+
+                                                            <div className="p-4 border-b border-slate-100 bg-slate-50/50 text-center">
+                                                                <div className="font-bold text-slate-900">{quote.supplierName}</div>
+                                                                <div className="text-xs text-slate-500">{new Date(quote.timestamp).toLocaleDateString()}</div>
+                                                                <button 
+                                                                    onClick={() => handleGenerateAwardPO(quote)}
+                                                                    className="mt-3 w-full bg-slate-900 text-white py-1.5 rounded-lg text-xs font-bold hover:bg-slate-700 transition"
+                                                                >
+                                                                    Award & Generate PO
+                                                                </button>
+                                                            </div>
+                                                            
+                                                            <div className="p-4 flex flex-col gap-4 text-center text-sm">
+                                                                <div className="h-8 font-bold text-lg text-slate-900">{quote.currency} {quote.total.toLocaleString()}</div>
+                                                                <div className="h-8 text-slate-600">{quote.leadTime} Days</div>
+                                                                <div className="h-8 text-slate-600 text-xs">{quote.payment}</div>
+                                                                <div className="h-8 text-slate-600 text-xs">{quote.validity}</div>
+                                                                <div className="border-t border-slate-100 my-2"></div>
+                                                                
+                                                                {/* Line Item Prices */}
+                                                                {rfq.line_items.map(item => {
+                                                                    const qItem = quote.items.find(i => i.line === item.line);
+                                                                    return (
+                                                                        <div key={item.item_id} className="h-12 flex flex-col justify-center items-center bg-slate-50 rounded border border-slate-100">
+                                                                            <span className="font-bold text-slate-800">{quote.currency} {qItem?.unitPrice?.toFixed(2) || '-'}</span>
+                                                                            <span className="text-[9px] text-slate-400">Total: {(qItem?.lineTotal || 0).toLocaleString()}</span>
+                                                                        </div>
+                                                                    );
+                                                                })}
+
+                                                                {/* Attachments */}
+                                                                {quote.attachments && quote.attachments.length > 0 && (
+                                                                    <div className="mt-2 pt-2 border-t border-slate-100 text-xs">
+                                                                        <div className="font-bold text-slate-500 mb-1">Attachments:</div>
+                                                                        {quote.attachments.map((att, i) => (
+                                                                            <div key={i} className="text-blue-600 truncate">{att.name}</div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                // --- REVIEW TABLE (STEP 1 & 2) ---
+                                <div className="flex flex-col h-full">
+                                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex flex-col gap-3">
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold">{currentStep}</span>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'live_preview')}</span>
+                                                    <div className="h-4 w-px bg-slate-300"></div>
+                                                    <input 
+                                                        value={rfq.project_name || ''}
+                                                        onChange={(e) => setRfq({ ...rfq, project_name: e.target.value })}
+                                                        className="font-bold text-sm text-slate-800 bg-transparent border-none p-0 focus:ring-0 placeholder-slate-300 w-48 focus:border-b focus:border-accent"
+                                                        placeholder="Untitled RFP"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => setIsHeaderInfoOpen(!isHeaderInfoOpen)}
+                                                    className={`text-xs px-3 py-1.5 rounded-lg border transition ${isHeaderInfoOpen ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                                                >
+                                                    {isHeaderInfoOpen ? t(lang, 'hide_details') : t(lang, 'rfp_details')}
+                                                </button>
+                                                <button onClick={handleAddItem} className="text-xs bg-brandOrange text-white font-bold px-4 py-1.5 rounded-lg hover:bg-orange-600 transition shadow-sm flex items-center gap-1">
+                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                                    {t(lang, 'add_line_item')}
+                                                </button>
+                                                <button onClick={handleGenerateGenericPO} className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition" title={t(lang, 'generate_po_pdf')}>
+                                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* EXPANDABLE RFP DETAILS PANEL */}
+                                        {isHeaderInfoOpen && (
+                                            <div className="bg-white border border-slate-200 rounded-lg p-4 animate-in slide-in-from-top-2 text-xs shadow-sm">
+                                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                                    <div>
+                                                        <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'project_description')}</label>
+                                                        <textarea 
+                                                            className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700"
+                                                            rows={3}
+                                                            value={rfq.project_description || ''}
+                                                            onChange={(e) => setRfq({ ...rfq, project_description: e.target.value })}
+                                                            placeholder="Provide context for suppliers..."
+                                                        />
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'destination')}</label>
+                                                            <input className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700" value={rfq.commercial.destination || ''} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, destination: e.target.value } })} />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'incoterm')}</label>
+                                                            <input className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700" value={rfq.commercial.incoterm || ''} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, incoterm: e.target.value } })} />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'payment_terms')}</label>
+                                                            <input className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700" value={rfq.commercial.paymentTerm || ''} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, paymentTerm: e.target.value } })} />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-slate-500 font-semibold mb-1">Warranty</label>
+                                                            <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700" value={rfq.commercial.warranty_months || 12} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, warranty_months: parseInt(e.target.value) } })} />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-4 border-t border-slate-100 pt-3">
+                                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={rfq.commercial.req_mtr} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_mtr: e.target.checked } })} className="rounded text-accent focus:ring-accent" /><span className="text-slate-600">{t(lang, 'req_mtr')}</span></label>
+                                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={rfq.commercial.req_avl} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_avl: e.target.checked } })} className="rounded text-accent focus:ring-accent" /><span className="text-slate-600">{t(lang, 'req_avl')}</span></label>
+                                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={rfq.commercial.req_tpi} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_tpi: e.target.checked } })} className="rounded text-accent focus:ring-accent" /><span className="text-slate-600">{t(lang, 'req_tpi')}</span></label>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* TABLE */}
+                                    <div className="flex-1 overflow-auto">
+                                        <table className="w-full text-xs text-left border-collapse table-fixed">
+                                            <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 sticky top-0 z-20 shadow-sm">
+                                                <tr>
+                                                    {tableConfig.filter(c => c.visible).map((col) => (
+                                                        <th key={col.id} className={`px-2 py-3 border-b border-slate-200 bg-slate-50 border-r border-slate-200 text-center ${getWidthClass(col.width)}`}>{col.label}</th>
+                                                    ))}
+                                                    <th className="px-2 py-3 text-center w-12 bg-white border-b border-slate-200 sticky right-0 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] border-l border-slate-200 z-30"><span className="sr-only">Actions</span></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-200 bg-white">
+                                                {rfq.line_items.map((item, index) => (
+                                                    <tr key={item.item_id} className="hover:bg-blue-50/10 transition-colors group">
+                                                        {tableConfig.filter(c => c.visible).map(col => {
+                                                            const cellClass = "px-2 py-2 border-r border-slate-200 align-middle";
+                                                            const inputClass = "w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 placeholder-slate-300 focus:bg-white focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all";
+                                                            const inputId = `cell-${col.id}-${index}`;
+
+                                                            if (col.id === 'line') return <td key={col.id} className={`${cellClass} text-center bg-slate-50/50 text-slate-400 font-mono w-24`}>{item.line}</td>;
+                                                            if (col.id === 'shape') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.product_type || ''} onChange={(e) => handleUpdateLineItem(index, 'product_type', e.target.value)} className={inputClass} placeholder="-" /></td>;
+                                                            if (col.id === 'description') return <td key={col.id} className={`${cellClass} w-64`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.description} onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)} className={`${inputClass} font-medium`} /></td>;
+                                                            if (col.id === 'grade') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.material_grade || ''} onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)} className={inputClass} /></td>;
+                                                            if (col.id === 'tolerance') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.tolerance || ''} onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)} placeholder="-" className={`${inputClass} text-center`} /></td>;
+                                                            if (col.id === 'tests') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.test_reqs?.join(', ') || ''} onChange={(e) => handleUpdateLineItem(index, 'test_reqs', e.target.value.split(',').map(s => s.trim()))} placeholder="-" className={inputClass} /></td>;
+                                                            if (col.id === 'od') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.outer_diameter.value || ''} onChange={(e) => handleUpdateDimension(index, 'outer_diameter', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.outer_diameter.unit}</span></div></td>;
+                                                            if (col.id === 'wt') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.wall_thickness.value || ''} onChange={(e) => handleUpdateDimension(index, 'wall_thickness', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.wall_thickness.unit}</span></div></td>;
+                                                            if (col.id === 'length') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.length.value || ''} onChange={(e) => handleUpdateDimension(index, 'length', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.length.unit}</span></div></td>;
+                                                            if (col.id === 'qty') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.quantity || 0} onChange={(e) => handleUpdateLineItem(index, 'quantity', Number(e.target.value))} className={`${inputClass} text-right font-bold text-slate-800`} /></td>;
+                                                            if (col.id === 'uom') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.uom || ''} onChange={(e) => handleUpdateLineItem(index, 'uom', e.target.value)} className={`${inputClass} text-center text-slate-500`} /></td>;
+                                                            if (col.isCustom) return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.custom_fields?.[col.id] || ''} onChange={(e) => handleUpdateCustomField(index, col.id, e.target.value)} className={inputClass} placeholder="-" /></td>;
+                                                            return null;
+                                                        })}
+                                                        <td className="px-2 py-2 text-center w-12 sticky right-0 bg-white group-hover:bg-slate-50 transition-colors shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] align-middle z-10 border-l border-slate-200">
+                                                            <button onClick={() => handleDeleteItem(index)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-all" title={t(lang, 'delete_item')}>
+                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
-
-                                {/* EXPANDABLE RFP DETAILS PANEL */}
-                                {isHeaderInfoOpen && (
-                                    <div className="bg-white border border-slate-200 rounded-lg p-4 animate-in slide-in-from-top-2 text-xs shadow-sm">
-                                        <div className="grid grid-cols-2 gap-4 mb-4">
-                                            <div>
-                                                <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'project_description')}</label>
-                                                <textarea 
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700"
-                                                    rows={3}
-                                                    value={rfq.project_description || ''}
-                                                    onChange={(e) => setRfq({ ...rfq, project_description: e.target.value })}
-                                                    placeholder="Provide context for suppliers..."
-                                                />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'destination')}</label>
-                                                    <input 
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700"
-                                                        value={rfq.commercial.destination || ''}
-                                                        onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, destination: e.target.value } })}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'incoterm')}</label>
-                                                    <input 
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700"
-                                                        value={rfq.commercial.incoterm || ''}
-                                                        onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, incoterm: e.target.value } })}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'payment_terms')}</label>
-                                                    <input 
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700"
-                                                        value={rfq.commercial.paymentTerm || ''}
-                                                        onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, paymentTerm: e.target.value } })}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-slate-500 font-semibold mb-1">Warranty (Months)</label>
-                                                    <input 
-                                                        type="number"
-                                                        className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700"
-                                                        value={rfq.commercial.warranty_months || 12}
-                                                        onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, warranty_months: parseInt(e.target.value) } })}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-4 border-t border-slate-100 pt-3">
-                                            <label className="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" checked={rfq.commercial.req_mtr} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_mtr: e.target.checked } })} className="rounded text-accent focus:ring-accent" />
-                                                <span className="text-slate-600">{t(lang, 'req_mtr')}</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" checked={rfq.commercial.req_avl} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_avl: e.target.checked } })} className="rounded text-accent focus:ring-accent" />
-                                                <span className="text-slate-600">{t(lang, 'req_avl')}</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 cursor-pointer">
-                                                <input type="checkbox" checked={rfq.commercial.req_tpi} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_tpi: e.target.checked } })} className="rounded text-accent focus:ring-accent" />
-                                                <span className="text-slate-600">{t(lang, 'req_tpi')}</span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* TABLE */}
-                            <div className="flex-1 overflow-auto">
-                                <table className="w-full text-xs text-left border-collapse table-fixed">
-                                    <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 sticky top-0 z-20 shadow-sm">
-                                        <tr>
-                                            {tableConfig.filter(c => c.visible).map((col) => (
-                                                <th key={col.id} className={`px-2 py-3 border-b border-slate-200 bg-slate-50 border-r border-slate-200 text-center ${getWidthClass(col.width)}`}>
-                                                    {col.label}
-                                                </th>
-                                            ))}
-                                            <th className="px-2 py-3 text-center w-12 bg-white border-b border-slate-200 sticky right-0 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] border-l border-slate-200 z-30">
-                                                <span className="sr-only">Actions</span>
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-200 bg-white">
-                                        {rfq.line_items.map((item, index) => (
-                                            <tr key={item.item_id} className="hover:bg-blue-50/10 transition-colors group">
-                                                {tableConfig.filter(c => c.visible).map(col => {
-                                                    const cellClass = "px-2 py-2 border-r border-slate-200 align-middle";
-                                                    // Clean input box style with visible border
-                                                    const inputClass = "w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 placeholder-slate-300 focus:bg-white focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all";
-                                                    const inputId = `cell-${col.id}-${index}`;
-
-                                                    if (col.id === 'line') return <td key={col.id} className={`${cellClass} text-center bg-slate-50/50 text-slate-400 font-mono w-24`}>{item.line}</td>;
-                                                    
-                                                    if (col.id === 'shape') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.product_type || ''} onChange={(e) => handleUpdateLineItem(index, 'product_type', e.target.value)} className={inputClass} placeholder="-" /></td>;
-                                                    
-                                                    if (col.id === 'description') return <td key={col.id} className={`${cellClass} w-64`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.description} onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)} className={`${inputClass} font-medium`} /></td>;
-                                                    
-                                                    if (col.id === 'grade') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.material_grade || ''} onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)} className={inputClass} /></td>;
-                                                    
-                                                    if (col.id === 'tolerance') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.tolerance || ''} onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)} placeholder="-" className={`${inputClass} text-center`} /></td>;
-                                                    
-                                                    if (col.id === 'tests') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.test_reqs?.join(', ') || ''} onChange={(e) => handleUpdateLineItem(index, 'test_reqs', e.target.value.split(',').map(s => s.trim()))} placeholder="-" className={inputClass} /></td>;
-                                                    
-                                                    if (col.id === 'od') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.outer_diameter.value || ''} onChange={(e) => handleUpdateDimension(index, 'outer_diameter', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.outer_diameter.unit}</span></div></td>;
-                                                    
-                                                    if (col.id === 'wt') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.wall_thickness.value || ''} onChange={(e) => handleUpdateDimension(index, 'wall_thickness', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.wall_thickness.unit}</span></div></td>;
-                                                    
-                                                    if (col.id === 'length') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.length.value || ''} onChange={(e) => handleUpdateDimension(index, 'length', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.length.unit}</span></div></td>;
-                                                    
-                                                    if (col.id === 'qty') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.quantity || 0} onChange={(e) => handleUpdateLineItem(index, 'quantity', Number(e.target.value))} className={`${inputClass} text-right font-bold text-slate-800`} /></td>;
-                                                    
-                                                    if (col.id === 'uom') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.uom || ''} onChange={(e) => handleUpdateLineItem(index, 'uom', e.target.value)} className={`${inputClass} text-center text-slate-500`} /></td>;
-                                                    
-                                                    if (col.isCustom) return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.custom_fields?.[col.id] || ''} onChange={(e) => handleUpdateCustomField(index, col.id, e.target.value)} className={inputClass} placeholder="-" /></td>;
-                                                    
-                                                    return null;
-                                                })}
-                                                <td className="px-2 py-2 text-center w-12 sticky right-0 bg-white group-hover:bg-slate-50 transition-colors shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] align-middle z-10 border-l border-slate-200">
-                                                    <button 
-                                                        onClick={() => handleDeleteItem(index)}
-                                                        className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-all"
-                                                        title={t(lang, 'delete_item')}
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                            )}
                         </div>
                     )}
                 </div>
