@@ -39,6 +39,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
   const [newColumnName, setNewColumnName] = useState('');
   const [tableConfig, setTableConfig] = useState<ColumnConfig[]>([
       { id: 'line', label: t(lang, 'line'), visible: true, width: 'sm' },
+      { id: 'shape', label: t(lang, 'shape'), visible: true, width: 'md' },
       { id: 'description', label: t(lang, 'desc'), visible: true, width: 'lg' },
       { id: 'grade', label: t(lang, 'grade'), visible: true, width: 'md' },
       { id: 'tolerance', label: t(lang, 'tolerance'), visible: true, width: 'sm' },
@@ -212,17 +213,17 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
           line_items: [
               {
                   item_id: "L1", line: 1, quantity: 400, uom: "m", description: "Seamless Pipe, API 5L Gr. B", 
-                  material_grade: "API 5L Gr. B", tolerance: "+/- 12.5% WT", test_reqs: ["HIC Test", "SSC Test"], raw_description: "", other_requirements: [],
+                  material_grade: "API 5L Gr. B", product_type: "Pipe", tolerance: "+/- 12.5% WT", test_reqs: ["HIC Test", "SSC Test"], raw_description: "", other_requirements: [],
                   size: { outer_diameter: { value: 8, unit: "in" }, wall_thickness: { value: 0.322, unit: "in" }, length: { value: 12, unit: "m" } }
               },
               {
                   item_id: "L2", line: 2, quantity: 120, uom: "pcs", description: "Flange, Weld Neck, RF, Class 300", 
-                  material_grade: "ASTM A105", tolerance: "", test_reqs: ["Hardness < 22HRC"], raw_description: "", other_requirements: [],
+                  material_grade: "ASTM A105", product_type: "Flange", tolerance: "", test_reqs: ["Hardness < 22HRC"], raw_description: "", other_requirements: [],
                   size: { outer_diameter: { value: 8, unit: "in" }, wall_thickness: { value: null, unit: null }, length: { value: null, unit: null } }
               },
               {
                   item_id: "L3", line: 3, quantity: 50, uom: "pcs", description: "Elbow 90 deg, Long Radius", 
-                  material_grade: "ASTM A234 WPB", tolerance: "ASME B16.9", test_reqs: [], raw_description: "", other_requirements: [],
+                  material_grade: "ASTM A234 WPB", product_type: "Fitting", tolerance: "ASME B16.9", test_reqs: [], raw_description: "", other_requirements: [],
                   size: { outer_diameter: { value: 8, unit: "in" }, wall_thickness: { value: 0.322, unit: "in" }, length: { value: null, unit: null } }
               }
           ]
@@ -345,6 +346,51 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
           ...rfq,
           commercial: { ...rfq.commercial, [field]: value }
       });
+  };
+
+  const handleAddItem = () => {
+    let currentRfq = rfq;
+    if (!currentRfq) {
+        // Create new draft if empty
+        currentRfq = {
+            id: `RFQ-${Date.now().toString().slice(-4)}`,
+            status: 'draft',
+            created_at: Date.now(),
+            project_name: "New Project",
+            line_items: [],
+            commercial: { destination: '', incoterm: '', paymentTerm: '', otherRequirements: '', req_mtr: false, req_avl: false, req_tpi: false, warranty_months: 12 },
+            original_text: ""
+        };
+    }
+
+    const newItem: LineItem = {
+        item_id: `L${Date.now()}`,
+        line: currentRfq.line_items.length + 1,
+        raw_description: "",
+        description: "",
+        product_type: "",
+        material_grade: "",
+        tolerance: "",
+        test_reqs: [],
+        standard_or_spec: "",
+        size: {
+            outer_diameter: { value: null, unit: 'mm' },
+            wall_thickness: { value: null, unit: 'mm' },
+            length: { value: null, unit: 'mm' }
+        },
+        quantity: 1,
+        uom: 'pcs',
+        other_requirements: []
+    };
+
+    const updatedRfq = {
+        ...currentRfq,
+        line_items: [...currentRfq.line_items, newItem]
+    };
+    
+    setRfq(updatedRfq);
+    storageService.saveRfq(updatedRfq);
+    setSavedRfqs(storageService.getRfqs());
   };
 
   const handleGenerateSummary = async () => {
@@ -1063,6 +1109,16 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                             <p className="text-xs text-slate-500 mt-1">{t(lang, 'action_upload_desc')}</p>
                                         </div>
                                     </div>
+                                    
+                                    <div onClick={handleAddItem} className="group cursor-pointer bg-slate-50 hover:bg-white border border-slate-200 hover:border-accent/50 p-6 rounded-2xl transition-all shadow-sm hover:shadow-md text-center flex flex-col items-center gap-3">
+                                        <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 group-hover:scale-110 transition-transform">
+                                            <span className="text-2xl font-bold">+</span>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-semibold text-slate-900 text-sm">{t(lang, 'add_line_item')}</h4>
+                                            <p className="text-xs text-slate-500 mt-1">Manually create a new list</p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         ) : (
@@ -1186,7 +1242,15 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                 {/* Editable Items Table */}
                                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm flex-1 relative">
                                     <div className="text-[10px] font-medium text-slate-500 p-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                                        <span>{t(lang, 'edit_mode_hint')}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span>{t(lang, 'edit_mode_hint')}</span>
+                                            <button 
+                                                onClick={handleAddItem}
+                                                className="bg-white border border-slate-200 text-accent px-2 py-0.5 rounded shadow-sm hover:bg-accent hover:text-white transition flex items-center gap-1"
+                                            >
+                                                <span>+</span> {t(lang, 'add_line_item')}
+                                            </button>
+                                        </div>
                                         <div className="flex items-center gap-3">
                                             <span className="text-accent">{rfq.line_items.length} items</span>
                                             {/* Column Manager Button */}
@@ -1267,6 +1331,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                 <tr key={item.item_id} className="hover:bg-slate-50 transition-colors group">
                                                     {tableConfig.filter(c => c.visible).map(col => {
                                                         if (col.id === 'line') return <td key={col.id} className="px-4 py-2.5 text-center text-slate-400 bg-slate-50/30 border-r border-slate-50 font-mono text-[10px] w-20">{item.line}</td>;
+                                                        if (col.id === 'shape') return <td key={col.id} className="px-4 py-2.5 w-32"><input value={item.product_type || ''} onChange={(e) => handleUpdateLineItem(index, 'product_type', e.target.value)} className="w-full bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-600 transition-all" placeholder="Pipe/Flange" /></td>;
                                                         if (col.id === 'description') return <td key={col.id} className="px-4 py-2.5 w-64"><input value={item.description} onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)} className="w-full bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none font-medium text-slate-700 transition-all" /></td>;
                                                         if (col.id === 'grade') return <td key={col.id} className="px-4 py-2.5 w-32"><input value={item.material_grade || ''} onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)} className="w-full bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-600 transition-all" /></td>;
                                                         if (col.id === 'tolerance') return <td key={col.id} className="px-4 py-2.5 w-20"><input value={item.tolerance || ''} onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)} placeholder="-" className="w-full bg-transparent border border-transparent rounded px-1.5 py-0.5 hover:border-slate-200 focus:border-accent focus:bg-white focus:outline-none text-slate-500 text-[10px] transition-all" /></td>;

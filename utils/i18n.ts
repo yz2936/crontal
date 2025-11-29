@@ -25,6 +25,7 @@ export const translations = {
     payment: "Payment",
     line: "Line",
     desc: "Desc",
+    shape: "Shape",
     grade: "Grade",
     size: "Size",
     qty: "Qty",
@@ -145,6 +146,7 @@ export const translations = {
     // Table Management
     column_settings: "Table Settings",
     add_column: "Add Column",
+    add_line_item: "Add Item",
     col_width: "Width",
     col_visible: "Visible",
     custom_col_name: "Column Name",
@@ -173,6 +175,7 @@ export const translations = {
     payment: "Pago",
     line: "Línea",
     desc: "Desc",
+    shape: "Forma",
     grade: "Grado",
     size: "Tamaño",
     qty: "Cant",
@@ -289,6 +292,7 @@ export const translations = {
 
     column_settings: "Configuración de Tabla",
     add_column: "Añadir Columna",
+    add_line_item: "Agregar Ítem",
     col_width: "Ancho",
     col_visible: "Visible",
     custom_col_name: "Nombre Columna",
@@ -317,6 +321,7 @@ export const translations = {
     payment: "付款方式",
     line: "行",
     desc: "描述",
+    shape: "形状",
     grade: "等级",
     size: "尺寸",
     qty: "数量",
@@ -433,6 +438,7 @@ export const translations = {
 
     column_settings: "表格设置",
     add_column: "添加列",
+    add_line_item: "添加项目",
     col_width: "宽度",
     col_visible: "可见",
     custom_col_name: "列名",
