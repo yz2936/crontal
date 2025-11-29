@@ -18,7 +18,6 @@ const getLanguageName = (lang: Language): string => {
 // Helper to strip markdown code blocks if present
 const cleanJson = (text: string): string => {
     if (!text) return "{}";
-    // Remove ```json ... ``` or just ``` ... ``` or leading/trailing whitespace
     let cleaned = text.trim();
     if (cleaned.startsWith("```json")) {
         cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
@@ -48,48 +47,46 @@ export const parseRequest = async (
   files?: FileAttachment[], 
   lang: Language = 'en', 
   currentLineItems: LineItem[] = []
-): Promise<Partial<Rfq>> => {
+): Promise<{ rfqUpdates: Partial<Rfq>, responseText: string }> => {
   
   const isEditMode = currentLineItems.length > 0;
   const targetLang = getLanguageName(lang);
 
   const systemInstruction = `
-    You are Crontal's expert procurement AI. Your role is to extract or modify structured RFQ data from natural language or engineering documents.
+    You are Crontal's expert procurement AI. Your role is to interact naturally with the buyer AND extract/modify structured RFQ data.
 
     MODE: ${isEditMode ? "EDITING EXISTING LIST" : "CREATING NEW LIST"}
-    TARGET LANGUAGE FOR TEXT FIELDS: ${targetLang} (Strictly enforce this language for Description and Material Grade)
+    TARGET LANGUAGE FOR TEXT FIELDS & RESPONSE: ${targetLang}
 
     YOUR TASKS:
-    1. Analyze the text input and any attached engineering drawings/MTOs.
+    1. **CONVERSATIONAL RESPONSE (Priority)**:
+       - Generate a natural, helpful response in "conversational_response" field.
+       - Acknowledge the user's input directly (e.g., "I've added the 3 flanges you requested.").
+       - If the user asks a question, answer it.
+       - If specific details are missing (e.g., material grade), politely ask for them in the response.
+       - Keep it professional but conversational.
+
+    2. **DATA EXTRACTION / EDITING**:
+       - Analyze text and files.
+       ${isEditMode 
+        ? `- LOGIC: You are provided a [CURRENT LINE ITEMS] list.
+             * "Add...": APPEND new items.
+             * "Change line X...": MODIFY item with "line": X.
+             * "Delete line X": REMOVE item with "line": X.
+             * "Set name...": Update project_name.
+           - RETURN THE FULL, MERGED LIST in the "line_items" array. Do not return partial updates. Preserve IDs.` 
+        : `- LOGIC: Extract all line items from scratch.`}
     
-    2. ${isEditMode 
-        ? `CRITICAL EDITING LOGIC:
-           - You are provided a [CURRENT LINE ITEMS] list.
-           - User Input determines the change:
-             * "Add 5 pipes...": APPEND new items to the list.
-             * "Change line 2 to...": MODIFY item with "line": 2.
-             * "Delete line 3": REMOVE item with "line": 3.
-             * "Set RFP name to X": Update project_name, keep items unchanged.
-           - RETURN THE FULL, MERGED LIST. Do not return just the changes.
-           - Preserve existing item_ids for unchanged items.` 
-        : `Extract all line items from scratch.`}
+    3. **ENGINEERING INTELLIGENCE**:
+       - **Dimensions**: Split into OD, WT, Length. Normalize units.
+       - **Product Type**: Detect Pipe, Flange, Valve, etc.
+       - **Specs**: Extract Grade, Tolerance, Tests (HIC, SSC, MTR).
     
-    3. DIMENSION & SHAPE PARSING:
-       - Split dimensions into: **OD** (Outer Diameter), **WT** (Wall Thickness/Schedule), **Length**.
-       - Detect **Shape/Product Type** (e.g., Pipe, Flange, Elbow, Tee, Valve, Gasket).
-       - Normalize units to: 'mm', 'm', 'in', 'ft', 'pcs'.
-    
-    4. DEEP SPECIFICATION EXTRACTION (Crucial):
-       - **Tolerance**: Look for "+/-", "Min Wall", "Tol.".
-       - **Tests**: Look for "HIC", "SSC", "Impact", "Ultrasonic", "Radiography", "MTR".
-       - **Grade**: Extract full material grade (e.g., "API 5L Gr.B PSL2").
-    
-    5. COMMERCIAL TERMS:
+    4. **COMMERCIAL TERMS**:
        - Extract Destination, Incoterm, Payment Terms if mentioned.
 
     OUTPUT FORMAT:
     - Return ONLY valid JSON matching the schema.
-    - No Markdown formatting.
   `;
 
   try {
@@ -131,6 +128,7 @@ export const parseRequest = async (
         responseSchema: {
           type: Type.OBJECT,
           properties: {
+            conversational_response: { type: Type.STRING, description: "Natural language response to the user." },
             project_name: { type: Type.STRING, nullable: true },
             commercial: {
                 type: Type.OBJECT,
@@ -182,18 +180,16 @@ export const parseRequest = async (
         throw new Error("Failed to parse AI response");
     }
     
-    // Map response back to strict LineItem type
     const items: LineItem[] = (parsedData.line_items || []).map((li: any, idx: number) => {
-        // Try to preserve ID if returned, else generate new
         const id = li.item_id || `L${Date.now()}-${idx}`;
         
         return {
             item_id: id,
-            line: idx + 1, // Re-index lines sequentially
+            line: idx + 1,
             raw_description: li.description || "",
             description: li.description || "",
             product_category: null,
-            product_type: li.product_type || inferShape(li.description), // Fallback shape inference
+            product_type: li.product_type || inferShape(li.description),
             material_grade: li.material_grade,
             standard_or_spec: null,
             tolerance: li.tolerance,
@@ -214,37 +210,36 @@ export const parseRequest = async (
     });
 
     return {
-        project_name: parsedData.project_name,
-        commercial: {
-            destination: parsedData.commercial?.destination || "",
-            incoterm: parsedData.commercial?.incoterm || "",
-            paymentTerm: parsedData.commercial?.payment_terms || "",
-            otherRequirements: parsedData.commercial?.other_requirements || "",
-            req_mtr: false, // Defaults
-            req_avl: false,
-            req_tpi: false,
-            warranty_months: 12
+        rfqUpdates: {
+            project_name: parsedData.project_name,
+            commercial: {
+                destination: parsedData.commercial?.destination || "",
+                incoterm: parsedData.commercial?.incoterm || "",
+                paymentTerm: parsedData.commercial?.payment_terms || "",
+                otherRequirements: parsedData.commercial?.other_requirements || "",
+                req_mtr: false,
+                req_avl: false,
+                req_tpi: false,
+                warranty_months: 12
+            },
+            line_items: items
         },
-        line_items: items
+        responseText: parsedData.conversational_response || (lang === 'zh' ? "已处理您的请求。" : "Request processed.")
     };
 
   } catch (error) {
     console.error("Gemini Parse Error:", error);
-    // Return empty structure on error to prevent app crash
-    return { line_items: [] }; 
+    return { rfqUpdates: { line_items: [] }, responseText: "I encountered an error processing that request." }; 
   }
 };
 
 export const clarifyRequest = async (rfq: Rfq, userMessage: string, lang: Language = 'en'): Promise<string> => {
+    // Legacy function, might not be needed if parseRequest handles conversation
     const targetLang = getLanguageName(lang);
     const systemInstruction = `
     You are Crontal's RFQ assistant.
-    Goal: Confirm the user's action (edit/delete/add) and summarize the current state.
-    
+    Goal: Confirm the user's action and summarize the current state.
     CRITICAL: Output MUST be in ${targetLang}.
-    
-    Input Context: The table has ALREADY been updated. Just confirm the result.
-    Example: "I've added 3 items and updated the material to SS316."
     `;
 
     try {

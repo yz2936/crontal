@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage } from '../types';
 import { parseRequest } from '../services/geminiService';
@@ -21,6 +22,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const chatEndRef = useRef<HTMLDivElement>(null);
+    const chatContainerRef = useRef<HTMLDivElement>(null);
     
     // Sidebar State
     const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
@@ -28,7 +30,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     
     // UI State
-    const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); // Default to TRUE for visibility
+    const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); 
     const prevItemCount = useRef(0);
 
     // Load drafts on mount
@@ -38,13 +40,14 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
     // Scroll to bottom of chat
     useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        if (chatEndRef.current) {
+            chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
     }, [chatHistory, isProcessing]);
 
     // Auto-focus logic for new items
     useEffect(() => {
         if (rfq && rfq.line_items.length > prevItemCount.current) {
-            // Item was added, focus the new row's first input
             const newIndex = rfq.line_items.length - 1;
             setTimeout(() => {
                 const el = document.getElementById(`cell-shape-${newIndex}`);
@@ -80,8 +83,10 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+            const newFiles = Array.from(e.target.files);
+            setAttachedFiles(prev => [...prev, ...newFiles]);
         }
+        // Reset input so the same file can be selected again if needed
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -115,9 +120,9 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         let displayContent = inputText;
         if (attachedFiles.length > 0) {
             const fileNames = attachedFiles.map(f => f.name).join(', ');
-            displayContent = displayContent 
-                ? `${displayContent} \n[Attached: ${fileNames}]`
-                : `[Attached: ${fileNames}]`;
+            displayContent = displayContent.trim()
+                ? `${displayContent}\n\n[Files Attached: ${fileNames}]`
+                : `[Files Attached: ${fileNames}]`;
         }
 
         const userMessage: ChatMessage = { role: 'user', content: displayContent };
@@ -126,6 +131,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         const currentInput = inputText;
         const currentFiles = [...attachedFiles];
         
+        // Optimistic UI updates
         setInputText(''); 
         setAttachedFiles([]);
         setIsProcessing(true);
@@ -139,6 +145,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             const currentItems = rfq ? rfq.line_items : [];
             const projectName = rfq ? rfq.project_name : null;
 
+            // Updated service call returns { rfqUpdates, responseText }
             const result = await parseRequest(currentInput, projectName, processedFiles, lang, currentItems);
             
             let newItemCount = 0;
@@ -146,29 +153,29 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             if (rfq) {
                 const updatedRfq: Rfq = {
                     ...rfq,
-                    project_name: result.project_name || rfq.project_name,
-                    line_items: result.line_items || [],
+                    project_name: result.rfqUpdates.project_name || rfq.project_name,
+                    line_items: result.rfqUpdates.line_items || [],
                     commercial: {
                         ...rfq.commercial,
-                        ...(result.commercial?.destination ? { destination: result.commercial.destination } : {}),
+                        ...(result.rfqUpdates.commercial?.destination ? { destination: result.rfqUpdates.commercial.destination } : {}),
                     }
                 };
                 setRfq(updatedRfq);
-                newItemCount = result.line_items ? result.line_items.length : 0;
+                newItemCount = result.rfqUpdates.line_items ? result.rfqUpdates.line_items.length : 0;
             } else {
-                newItemCount = result.line_items ? result.line_items.length : 0;
+                newItemCount = result.rfqUpdates.line_items ? result.rfqUpdates.line_items.length : 0;
                 const newRfq: Rfq = {
                     id: `RFQ-${Date.now()}`,
-                    project_name: result.project_name || "New RFP",
+                    project_name: result.rfqUpdates.project_name || "New RFP",
                     status: 'draft',
-                    line_items: result.line_items || [],
+                    line_items: result.rfqUpdates.line_items || [],
                     original_text: currentInput,
                     created_at: Date.now(),
                     commercial: {
-                        destination: result.commercial?.destination || "",
-                        incoterm: result.commercial?.incoterm || "",
-                        paymentTerm: result.commercial?.paymentTerm || "",
-                        otherRequirements: result.commercial?.otherRequirements || "",
+                        destination: result.rfqUpdates.commercial?.destination || "",
+                        incoterm: result.rfqUpdates.commercial?.incoterm || "",
+                        paymentTerm: result.rfqUpdates.commercial?.paymentTerm || "",
+                        otherRequirements: result.rfqUpdates.commercial?.otherRequirements || "",
                         req_mtr: false,
                         req_avl: false,
                         req_tpi: false,
@@ -178,10 +185,12 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 setRfq(newRfq);
             }
             
-            setIsHeaderInfoOpen(true); // Ensure details are visible after AI draft
+            setIsHeaderInfoOpen(true); 
+            
+            // Use the natural language response from the AI
             const aiMessage: ChatMessage = { 
                 role: 'assistant', 
-                content: t(lang, 'rfq_created_msg', { count: newItemCount.toString() }) 
+                content: result.responseText 
             };
             setChatHistory(prev => [...prev, aiMessage]);
 
@@ -241,7 +250,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 }
             };
             setRfq(newRfq);
-            setIsHeaderInfoOpen(true); // Ensure details are visible for new manual items
+            setIsHeaderInfoOpen(true); 
         }
     };
 
@@ -575,16 +584,26 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                             <span className="ml-auto text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-bold cursor-pointer hover:bg-slate-300">{t(lang, 'guide_me')}</span>
                         </div>
                         
-                        <div className="flex-1 p-4 flex flex-col gap-4 overflow-y-auto">
+                        <div className="flex-1 p-4 flex flex-col gap-4 overflow-y-auto" ref={chatContainerRef}>
                             <div className="bg-slate-50 p-3 rounded-2xl rounded-tl-none border border-slate-100 text-sm text-slate-600">
                                 {t(lang, 'initial_greeting')}
                             </div>
                             {/* Chat History */}
                             {chatHistory.map((msg, idx) => (
-                                <div key={idx} className={`text-sm p-3 rounded-2xl max-w-[90%] shadow-sm ${msg.role === 'user' ? 'bg-slate-900 text-white self-end rounded-tr-none' : 'bg-slate-50 text-slate-600 self-start rounded-tl-none border border-slate-100'}`}>
+                                <div key={idx} className={`text-sm p-3 rounded-2xl max-w-[90%] shadow-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-slate-900 text-white self-end rounded-tr-none' : 'bg-slate-50 text-slate-600 self-start rounded-tl-none border border-slate-100'}`}>
                                     {msg.content}
                                 </div>
                             ))}
+                            {isProcessing && (
+                                <div className="bg-slate-50 text-slate-500 p-3 rounded-2xl rounded-tl-none border border-slate-100 self-start text-xs flex items-center gap-2">
+                                    <div className="flex gap-1">
+                                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
+                                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-100"></span>
+                                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-200"></span>
+                                    </div>
+                                    Thinking...
+                                </div>
+                            )}
                             <div ref={chatEndRef} />
                         </div>
 
