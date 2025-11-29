@@ -15,6 +15,33 @@ const getLanguageName = (lang: Language): string => {
     }
 };
 
+// Helper to strip markdown code blocks if present
+const cleanJson = (text: string): string => {
+    if (!text) return "{}";
+    // Remove ```json ... ``` or just ``` ... ``` or leading/trailing whitespace
+    let cleaned = text.trim();
+    if (cleaned.startsWith("```json")) {
+        cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleaned.startsWith("```")) {
+        cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    return cleaned;
+};
+
+// Simple regex fallback for shape if AI misses it
+const inferShape = (desc: string): string => {
+    if (!desc) return "";
+    const d = desc.toLowerCase();
+    if (d.includes("pipe") || d.includes("tube")) return "Pipe";
+    if (d.includes("flange") || d.includes("wn") || d.includes("blind") || d.includes("slip-on")) return "Flange";
+    if (d.includes("elbow") || d.includes("tee") || d.includes("reducer") || d.includes("cap")) return "Fitting";
+    if (d.includes("valve") || d.includes("ball") || d.includes("gate") || d.includes("check")) return "Valve";
+    if (d.includes("gasket")) return "Gasket";
+    if (d.includes("bolt") || d.includes("stud")) return "Bolt";
+    if (d.includes("plate") || d.includes("sheet")) return "Plate";
+    return "Other";
+};
+
 export const parseRequest = async (
   text: string, 
   projectName: string | null, 
@@ -27,41 +54,42 @@ export const parseRequest = async (
   const targetLang = getLanguageName(lang);
 
   const systemInstruction = `
-    You are Crontal's expert procurement AI. Your role is to extract or modify structured RFQ data.
+    You are Crontal's expert procurement AI. Your role is to extract or modify structured RFQ data from natural language or engineering documents.
 
     MODE: ${isEditMode ? "EDITING EXISTING LIST" : "CREATING NEW LIST"}
     TARGET LANGUAGE FOR TEXT FIELDS: ${targetLang} (Strictly enforce this language for Description and Material Grade)
 
     YOUR TASKS:
-    1. Analyze the text input and any files.
+    1. Analyze the text input and any attached engineering drawings/MTOs.
+    
     2. ${isEditMode 
-        ? `CRITICAL INSTRUCTION FOR EDITING:
-           - You have been provided a list of [CURRENT LINE ITEMS].
-           - Your goal is to RETURN THE FULL LIST including both unchanged items and modified/new items.
-           - IF user says "Delete line X" or "Remove item X": Exclude it from the returned list.
-           - IF user says "Change quantity/grade/size...": Update the specific item in the list.
-           - IF user provides new specs: Append them as NEW items to the list.
-           - DO NOT return only the new items. You must merge them with the existing list.
+        ? `CRITICAL EDITING LOGIC:
+           - You are provided a [CURRENT LINE ITEMS] list.
+           - User Input determines the change:
+             * "Add 5 pipes...": APPEND new items to the list.
+             * "Change line 2 to...": MODIFY item with "line": 2.
+             * "Delete line 3": REMOVE item with "line": 3.
+             * "Set project name to X": Update project_name, keep items unchanged.
+           - RETURN THE FULL, MERGED LIST. Do not return just the changes.
            - Preserve existing item_ids for unchanged items.` 
         : `Extract all line items from scratch.`}
     
-    3. DIMENSION HANDLING:
-       - You MUST split dimensions into: 
-         * OD (Outer Diameter)
-         * WT (Wall Thickness)
-         * Length
+    3. DIMENSION & SHAPE PARSING:
+       - Split dimensions into: **OD** (Outer Diameter), **WT** (Wall Thickness/Schedule), **Length**.
+       - Detect **Shape/Product Type** (e.g., Pipe, Flange, Elbow, Tee, Valve, Gasket).
        - Normalize units to: 'mm', 'm', 'in', 'ft', 'pcs'.
     
-    4. DEEP SPECIFICATION EXTRACTION:
-       - Extract **Tolerances** (e.g., "+/- 12.5%", "Min Wall").
-       - Extract **Testing Requirements** (e.g., "HIC", "SSC", "Impact Test @ -50C", "Ultrasonic Test").
+    4. DEEP SPECIFICATION EXTRACTION (Crucial):
+       - **Tolerance**: Look for "+/-", "Min Wall", "Tol.".
+       - **Tests**: Look for "HIC", "SSC", "Impact", "Ultrasonic", "Radiography", "MTR".
+       - **Grade**: Extract full material grade (e.g., "API 5L Gr.B PSL2").
     
     5. COMMERCIAL TERMS:
        - Extract Destination, Incoterm, Payment Terms if mentioned.
 
     OUTPUT FORMAT:
     - Return ONLY valid JSON matching the schema.
-    - If inferring description text or project names, write them in ${targetLang} unless the technical spec requires English.
+    - No Markdown formatting.
   `;
 
   try {
@@ -70,8 +98,15 @@ export const parseRequest = async (
     let promptText = `USER REQUEST:\n"""${text}"""\n\nProject Name Context: ${projectName || "N/A"}\n`;
     
     if (isEditMode) {
-        const cleanList = currentLineItems.map(({line, raw_description, ...rest}) => rest);
-        promptText += `\n\n[CURRENT LINE ITEMS DATA - APPLY CHANGES TO THIS LIST]:\n${JSON.stringify(cleanList, null, 2)}\n`;
+        // Send a simplified version of current items to save tokens, but keep IDs
+        const cleanList = currentLineItems.map(item => ({
+            line: item.line,
+            item_id: item.item_id,
+            description: item.description,
+            qty: item.quantity,
+            grade: item.material_grade
+        }));
+        promptText += `\n\n[CURRENT LINE ITEMS DATA]:\n${JSON.stringify(cleanList)}\n`;
     }
 
     parts.push({ text: promptText });
@@ -111,7 +146,7 @@ export const parseRequest = async (
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  item_id: { type: Type.STRING },
+                  item_id: { type: Type.STRING, nullable: true },
                   description: { type: Type.STRING },
                   product_type: { type: Type.STRING, nullable: true },
                   material_grade: { type: Type.STRING, nullable: true },
@@ -138,24 +173,31 @@ export const parseRequest = async (
       }
     });
 
-    const parsedData = JSON.parse(response.text || "{}");
+    const cleanText = cleanJson(response.text || "{}");
+    let parsedData;
+    try {
+        parsedData = JSON.parse(cleanText);
+    } catch (parseError) {
+        console.error("JSON Parse Error:", parseError, cleanText);
+        throw new Error("Failed to parse AI response");
+    }
     
+    // Map response back to strict LineItem type
     const items: LineItem[] = (parsedData.line_items || []).map((li: any, idx: number) => {
+        // Try to preserve ID if returned, else generate new
+        const id = li.item_id || `L${Date.now()}-${idx}`;
+        
         return {
-            item_id: li.item_id || `L${Date.now()}-${idx}`,
-            line: idx + 1,
+            item_id: id,
+            line: idx + 1, // Re-index lines sequentially
             raw_description: li.description || "",
             description: li.description || "",
-            grade: li.material_grade || "",
-            product_type: li.product_type,
+            product_category: null,
+            product_type: li.product_type || inferShape(li.description), // Fallback shape inference
             material_grade: li.material_grade,
+            standard_or_spec: null,
             tolerance: li.tolerance,
             test_reqs: li.test_reqs || [],
-            standard_or_spec: "",
-            delivery_location: "",
-            required_delivery_date: "",
-            incoterm: "",
-            payment_terms: "",
             size: {
                 outer_diameter: { value: li.size?.od_val, unit: li.size?.od_unit },
                 wall_thickness: { value: li.size?.wt_val, unit: li.size?.wt_unit },
@@ -163,6 +205,10 @@ export const parseRequest = async (
             },
             quantity: li.quantity,
             uom: li.uom,
+            delivery_location: null,
+            required_delivery_date: null,
+            incoterm: null,
+            payment_terms: null,
             other_requirements: []
         };
     });
@@ -174,7 +220,7 @@ export const parseRequest = async (
             incoterm: parsedData.commercial?.incoterm || "",
             paymentTerm: parsedData.commercial?.payment_terms || "",
             otherRequirements: parsedData.commercial?.other_requirements || "",
-            req_mtr: false,
+            req_mtr: false, // Defaults
             req_avl: false,
             req_tpi: false,
             warranty_months: 12
@@ -184,7 +230,8 @@ export const parseRequest = async (
 
   } catch (error) {
     console.error("Gemini Parse Error:", error);
-    throw new Error("Failed to parse request");
+    // Return empty structure on error to prevent app crash
+    return { line_items: [] }; 
   }
 };
 
@@ -192,68 +239,44 @@ export const clarifyRequest = async (rfq: Rfq, userMessage: string, lang: Langua
     const targetLang = getLanguageName(lang);
     const systemInstruction = `
     You are Crontal's RFQ assistant.
-    Goal: Confirm the user's action (edit/delete/add) and summarize the current state of the RFQ.
+    Goal: Confirm the user's action (edit/delete/add) and summarize the current state.
     
-    Input Context: The table has ALREADY been updated by the parsing engine.
+    CRITICAL: Output MUST be in ${targetLang}.
     
-    CRITICAL INSTRUCTION: You MUST write your response in ${targetLang} ONLY.
-    Do not use English unless the user's selected language is English.
-    
-    Example (English): "I've removed line 3 as requested."
-    Example (Chinese): "我已经按要求删除了第3行。"
-    
-    Keep it short and professional.
+    Input Context: The table has ALREADY been updated. Just confirm the result.
+    Example: "I've added 3 items and updated the material to SS316."
     `;
-
-    const rfqSummary = JSON.stringify({
-        item_count: rfq.line_items.length,
-        items_sample: rfq.line_items.slice(0, 3).map(i => `${i.quantity} ${i.uom} ${i.description}`)
-    });
 
     try {
         const response = await ai.models.generateContent({
             model: MODEL_FAST,
-            contents: `Updated RFQ State: ${rfqSummary}\n\nUser Action: ${userMessage}`,
+            contents: `User said: "${userMessage}". RFQ now has ${rfq.line_items.length} items.`,
             config: { systemInstruction }
         });
-        return response.text || (lang === 'zh' ? "表格已更新，请查看详情。" : "I've updated the table. Please review the details.");
+        return cleanJson(response.text || "");
     } catch (e) {
-        return lang === 'zh' ? "已处理您的请求，请查看右侧表格。" : "I've processed your request. Please check the table on the right.";
+        return lang === 'zh' ? "表格已更新。" : "Table updated.";
     }
 }
 
 export const generateRfqSummary = async (rfq: Rfq, lang: Language = 'en'): Promise<string> => {
   const targetLang = getLanguageName(lang);
   const systemInstruction = `
-    You are an expert Procurement Manager.
-    Your task is to write a concise, professional Executive Summary for an RFQ (Request for Quotation) that will be sent to suppliers.
-    
-    Inputs:
-    - Project Name: ${rfq.project_name}
-    - Project Description: ${rfq.project_description || "Not provided"}
-    - Line Items: ${rfq.line_items.length} items
-    - Key Materials: ${Array.from(new Set(rfq.line_items.map(i => i.material_grade))).join(', ')}
-    
-    Requirements:
-    - Language: ${targetLang} (Strictly output in this language)
-    - Length: Under 80 words.
-    - Tone: Professional, Urgent, Clear.
-    - Content: Summarize what is being bought, the scale of the project, and the urgency. Do NOT list every single item. Focus on the "Big Picture" for the supplier.
+    Role: Procurement Manager.
+    Task: Write an Executive Summary for Suppliers.
+    Language: ${targetLang}.
+    Length: <80 words.
+    Focus: Project scale, key materials, urgency.
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: MODEL_FAST,
-      contents: "Generate executive summary.",
-      config: { 
-        systemInstruction,
-        maxOutputTokens: 200,
-        temperature: 0.7 
-      }
+      contents: `Project: ${rfq.project_name}. Items: ${rfq.line_items.length}. Descs: ${rfq.line_items.slice(0,5).map(i=>i.description).join('; ')}`,
+      config: { systemInstruction }
     });
-    return response.text || "";
+    return cleanJson(response.text || "");
   } catch (e) {
-    console.error("Summary Generation Error", e);
     return "";
   }
 };
@@ -261,45 +284,31 @@ export const generateRfqSummary = async (rfq: Rfq, lang: Language = 'en'): Promi
 export const auditRfqSpecs = async (rfq: Rfq, lang: Language = 'en'): Promise<string[]> => {
     const targetLang = getLanguageName(lang);
     const systemInstruction = `
-      You are an expert EPC Quality Assurance (QA) Engineer.
-      Your job is to audit an RFQ for missing specifications that could lead to procurement errors.
+      Role: EPC QA Engineer.
+      Task: Audit RFQ for missing specs.
+      Output: JSON Array of warning strings in ${targetLang}.
       
-      Look for:
-      1. Pipes missing Schedule (Wall Thickness) or Material Grade.
-      2. Flanges missing Pressure Class (e.g., #150, #300) or Facing (RF, RTJ).
-      3. Valves missing Trim details or Pressure ratings.
-      4. Ambiguous descriptions (e.g., just "Pipe 4 inch" without standard).
-      
-      Inputs:
-      ${JSON.stringify(rfq.line_items)}
-
-      Output:
-      Return a JSON array of strings. Each string is a warning message referencing the Line Number.
-      The warning messages MUST be in ${targetLang}.
-      
-      Example (English): "Line 1: Missing Schedule (WT)."
-      Example (Chinese): "第1行：缺少壁厚（Schedule）。"
-      
-      If perfect, return empty array [].
+      Checks:
+      - Pipes: Missing Schedule/WT?
+      - Flanges: Missing Class (#150)?
+      - Materials: Missing Grade?
+      - Valves: Missing Trim?
     `;
   
     try {
       const response = await ai.models.generateContent({
         model: MODEL_FAST,
-        contents: "Audit these specs.",
+        contents: JSON.stringify(rfq.line_items),
         config: { 
           systemInstruction,
           responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-          }
+          responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } }
         }
       });
-      const parsed = JSON.parse(response.text || "[]");
+      const clean = cleanJson(response.text || "[]");
+      const parsed = JSON.parse(clean);
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
-      console.error("Audit Error", e);
       return [];
     }
-  };
+};
