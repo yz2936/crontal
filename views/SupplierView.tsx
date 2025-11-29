@@ -128,7 +128,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
       const quote: Quote = {
           id: uniqueId,
           rfqId: rfq.id,
-          projectName: rfq.project_name || "Untitled Project",
+          projectName: rfq.project_name || "Untitled RFP",
           supplierName: formData.supplierName || "Unnamed Supplier",
           currency: formData.currency,
           total: calculateTotal(),
@@ -284,7 +284,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                 quoteHistory.map(q => (
                                     <div key={q.id} className="p-4 hover:bg-slate-50 flex justify-between items-center">
                                         <div>
-                                            <div className="font-medium text-slate-900">{q.projectName || "Untitled RFQ"}</div>
+                                            <div className="font-medium text-slate-900">{q.projectName || "Untitled RFP"}</div>
                                             <div className="text-xs text-slate-500">Ref: {q.rfqId} • {new Date(q.timestamp).toLocaleDateString()}</div>
                                         </div>
                                         <div className="text-right">

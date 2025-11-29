@@ -69,7 +69,7 @@ export const parseRequest = async (
              * "Add 5 pipes...": APPEND new items to the list.
              * "Change line 2 to...": MODIFY item with "line": 2.
              * "Delete line 3": REMOVE item with "line": 3.
-             * "Set project name to X": Update project_name, keep items unchanged.
+             * "Set RFP name to X": Update project_name, keep items unchanged.
            - RETURN THE FULL, MERGED LIST. Do not return just the changes.
            - Preserve existing item_ids for unchanged items.` 
         : `Extract all line items from scratch.`}
@@ -95,7 +95,7 @@ export const parseRequest = async (
   try {
     const parts: any[] = [];
     
-    let promptText = `USER REQUEST:\n"""${text}"""\n\nProject Name Context: ${projectName || "N/A"}\n`;
+    let promptText = `USER REQUEST:\n"""${text}"""\n\nRFP Name Context: ${projectName || "N/A"}\n`;
     
     if (isEditMode) {
         // Send a simplified version of current items to save tokens, but keep IDs
@@ -272,7 +272,7 @@ export const generateRfqSummary = async (rfq: Rfq, lang: Language = 'en'): Promi
   try {
     const response = await ai.models.generateContent({
       model: MODEL_FAST,
-      contents: `Project: ${rfq.project_name}. Items: ${rfq.line_items.length}. Descs: ${rfq.line_items.slice(0,5).map(i=>i.description).join('; ')}`,
+      contents: `RFP Name: ${rfq.project_name}. Items: ${rfq.line_items.length}. Descs: ${rfq.line_items.slice(0,5).map(i=>i.description).join('; ')}`,
       config: { systemInstruction }
     });
     return cleanJson(response.text || "");

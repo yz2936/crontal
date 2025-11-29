@@ -86,7 +86,7 @@ export const AutoDemo: React.FC = () => {
             {/* Left Sidebar (Static) */}
             <div className="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col p-4 gap-2">
                 <div className="w-full h-8 bg-accent text-white rounded-lg flex items-center justify-center text-xs font-bold shadow-sm">
-                    + New Project
+                    + New RFP
                 </div>
                 <div className="space-y-2 mt-4">
                     <div className="h-6 w-3/4 bg-slate-100 rounded"></div>

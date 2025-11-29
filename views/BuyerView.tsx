@@ -183,7 +183,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
   const handleDeleteProject = (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
-      if (confirm("Are you sure you want to delete this project?")) {
+      if (confirm("Are you sure you want to delete this RFP?")) {
           const newList = storageService.deleteRfq(id);
           setSavedRfqs(newList);
           if (rfq?.id === id) {
@@ -263,7 +263,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 id: `RFQ-${Date.now().toString().slice(-4)}`,
                 status: 'draft',
                 created_at: Date.now(),
-                project_name: partial.project_name || "New Project",
+                project_name: partial.project_name || "New RFP",
                 line_items: partial.line_items as LineItem[] || [],
                 commercial: partial.commercial || { destination: '', incoterm: '', paymentTerm: '', otherRequirements: '', req_mtr: false, req_avl: false, req_tpi: false, warranty_months: 12 },
                 original_text: text
@@ -356,7 +356,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             id: `RFQ-${Date.now().toString().slice(-4)}`,
             status: 'draft',
             created_at: Date.now(),
-            project_name: "New Project",
+            project_name: "New RFP",
             line_items: [],
             commercial: { destination: '', incoterm: '', paymentTerm: '', otherRequirements: '', req_mtr: false, req_avl: false, req_tpi: false, warranty_months: 12 },
             original_text: ""
@@ -522,7 +522,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     doc.setTextColor(0);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text(`Project: ${rfq.project_name || 'N/A'}`, 14, 42);
+    doc.text(`RFP Name: ${rfq.project_name || 'N/A'}`, 14, 42);
     
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
@@ -836,7 +836,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1 min-h-[300px]">
               {filteredRfqs.length === 0 && (
-                  <p className="px-3 py-4 text-xs text-slate-400 italic text-center">No projects found</p>
+                  <p className="px-3 py-4 text-xs text-slate-400 italic text-center">No RFPs found</p>
               )}
               {filteredRfqs.map(item => (
                   <div 
@@ -847,7 +847,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                     }`}
                   >
                       <div className="truncate flex-1 min-w-0 pr-2">
-                          <div className="truncate">{item.project_name || "Untitled"}</div>
+                          <div className="truncate">{item.project_name || "Untitled RFP"}</div>
                           <div className="text-[10px] text-slate-400">{new Date(item.created_at).toLocaleDateString()} • {item.status || 'draft'}</div>
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1036,7 +1036,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                              {/* Show Project Name in Header if Info is Hidden */}
                              {!isInfoVisible && rfq && (
                                 <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
-                                     <span className="text-sm font-bold text-slate-800">{rfq.project_name || "Untitled Project"}</span>
+                                     <span className="text-sm font-bold text-slate-800">{rfq.project_name || "Untitled RFP"}</span>
                                      <span className={`text-[10px] px-2 py-0.5 rounded-full border ${rfq.status === 'awarded' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-slate-200 text-slate-600 border-slate-300'}`}>
                                         {rfq.status || 'draft'}
                                      </span>
@@ -1153,7 +1153,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                         value={rfq.project_name || ''}
                                                         onChange={(e) => setRfq({...rfq, project_name: e.target.value})}
                                                         className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 hover:border-slate-300 focus:border-accent focus:ring-1 focus:ring-accent outline-none font-medium text-sm transition"
-                                                        placeholder="Enter project name"
+                                                        placeholder="Enter RFP name"
                                                     />
                                                 </div>
                                                 <div className="group">
