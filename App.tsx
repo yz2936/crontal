@@ -113,6 +113,7 @@ export default function App() {
   const handleRfqUpdate = (updatedRfq: Rfq | null) => {
     setRfq(updatedRfq);
     // Also save to local storage for the buyer's own history
+    // Null check added to prevent reading 'id' of null
     if (updatedRfq && updatedRfq.id) {
         localStorage.setItem(`rfq_${updatedRfq.id}`, JSON.stringify(updatedRfq));
     }

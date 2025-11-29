@@ -15,7 +15,7 @@ export const storageService = {
         // Filter out nulls first
         list = list.filter(item => item !== null && item !== undefined);
 
-        const index = list.findIndex(item => item.id === rfq.id);
+        const index = list.findIndex(item => item && item.id === rfq.id);
         if (index > -1) {
             list[index] = rfq;
         } else {
@@ -33,7 +33,8 @@ export const storageService = {
         const existingStr = localStorage.getItem(BUYER_RFQ_KEY);
         try {
             const parsed = existingStr ? JSON.parse(existingStr) : [];
-            return Array.isArray(parsed) ? parsed.filter(item => item !== null && item !== undefined) : [];
+            // Robust null check
+            return Array.isArray(parsed) ? parsed.filter(item => item !== null && item !== undefined && item.id) : [];
         } catch (e) {
             return [];
         }
@@ -63,7 +64,7 @@ export const storageService = {
         list = list.filter(q => q !== null && q !== undefined);
 
         // Check duplicates based on ID
-        const index = list.findIndex(item => item.id === quote.id);
+        const index = list.findIndex(item => item && item.id === quote.id);
         if (index > -1) {
             list[index] = quote;
         } else {
@@ -94,7 +95,7 @@ export const storageService = {
         list = list.filter(q => q !== null && q !== undefined);
 
         // Check duplicates based on ID
-        const index = list.findIndex(item => item.id === quote.id);
+        const index = list.findIndex(item => item && item.id === quote.id);
         if (index > -1) {
             list[index] = quote;
         } else {
