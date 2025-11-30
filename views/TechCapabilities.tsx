@@ -93,14 +93,14 @@ export default function TechCapabilities({ onBack, onStartDemo, onNavigate }: Te
 
             {/* Visual Side */}
             <div className="relative h-[600px] w-full flex items-center justify-center">
-                 {/* Visuals omitted for brevity but should be same as before with updated styling if needed */}
                  <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-slate-600 font-mono text-sm animate-pulse">Physics Engine Visualizations Active</div>
                  </div>
             </div>
         </div>
-
-        <MarketingFooter onNavigate={onNavigate} darkMode={true} />
+      </div>
+      
+      <MarketingFooter onNavigate={onNavigate} darkMode={true} />
     </div>
   );
 }
