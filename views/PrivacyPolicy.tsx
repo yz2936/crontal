@@ -1,29 +1,19 @@
+
 import React from 'react';
+import { MarketingNavbar } from '../components/MarketingNavbar';
+import { MarketingFooter } from '../components/MarketingFooter';
 
 interface PrivacyPolicyProps {
     onBack: () => void;
+    onNavigate: (page: string) => void;
 }
 
-export default function PrivacyPolicy({ onBack }: PrivacyPolicyProps) {
+export default function PrivacyPolicy({ onBack, onNavigate }: PrivacyPolicyProps) {
     return (
-        <div className="min-h-screen bg-white text-slate-900 font-sans">
-             {/* Nav */}
-             <nav className="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center border-b border-slate-100 sticky top-0 bg-white/90 backdrop-blur z-50">
-                <div className="flex items-center gap-2 cursor-pointer" onClick={onBack}>
-                    <svg viewBox="0 0 40 40" fill="none" className="h-8 w-8 rounded-lg shadow-sm">
-                        <rect width="40" height="40" rx="8" fill="#0B1121"/>
-                        <path d="M12 20C12 15.5817 15.5817 12 20 12C22.25 12 24.28 12.93 25.76 14.43" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-                        <path d="M12 20C12 24.4183 15.5817 28 20 28C22.25 28 24.28 27.07 25.76 25.57" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-                        <path d="M22 20H32M32 20L28 16M32 20L28 24" stroke="#F97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <span className="font-bold text-lg">Crontal <span className="text-slate-400 font-normal">| Privacy Policy</span></span>
-                </div>
-                <button onClick={onBack} className="text-sm font-semibold text-slate-600 hover:text-accent">
-                    Close
-                </button>
-            </nav>
+        <div className="min-h-screen bg-white text-slate-900 font-sans flex flex-col">
+             <MarketingNavbar onStart={onBack} onNavigate={onNavigate} />
 
-            <div className="max-w-3xl mx-auto px-6 py-16">
+            <div className="flex-1 max-w-3xl mx-auto px-6 py-16">
                 <h1 className="text-4xl font-bold mb-4">Privacy Policy</h1>
                 <p className="text-slate-500 mb-8">Last Updated: October 24, 2023</p>
 
@@ -72,6 +62,8 @@ export default function PrivacyPolicy({ onBack }: PrivacyPolicyProps) {
                     </p>
                 </div>
             </div>
+
+            <MarketingFooter onNavigate={onNavigate} />
         </div>
     );
 }

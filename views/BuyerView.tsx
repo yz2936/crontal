@@ -35,7 +35,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
     // Risk Analysis State
     const [isRiskAnalyzing, setIsRiskAnalyzing] = useState(false);
-    const [riskReport, setRiskReport] = useState<RiskAnalysisItem[] | null>(null);
     const [showRiskModal, setShowRiskModal] = useState(false);
 
     // UI State
@@ -206,12 +205,26 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         }
     };
 
+    const calculateRiskScore = (risks: RiskAnalysisItem[]) => {
+        let score = 100;
+        risks.forEach(r => {
+            if (r.impact_level === 'High') score -= 15;
+            else if (r.impact_level === 'Medium') score -= 5;
+            else if (r.impact_level === 'Low') score -= 2;
+        });
+        return Math.max(0, Math.min(100, score));
+    };
+
     const handleRiskAnalysis = async () => {
         if (!rfq) return;
         setIsRiskAnalyzing(true);
         try {
             const report = await analyzeRfqRisks(rfq, lang);
-            setRiskReport(report);
+            // Save to RFQ object so it persists
+            setRfq({
+                ...rfq,
+                risks: report
+            });
             setShowRiskModal(true);
         } catch (e) {
             console.error("Risk analysis failed", e);
@@ -222,11 +235,14 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     };
 
     const handleIgnoreRisk = (index: number) => {
-        if (!riskReport) return;
-        const newReport = [...riskReport];
-        newReport.splice(index, 1);
-        setRiskReport(newReport);
-        if (newReport.length === 0) setShowRiskModal(false);
+        if (!rfq || !rfq.risks) return;
+        const newRisks = [...rfq.risks];
+        newRisks.splice(index, 1);
+        setRfq({
+            ...rfq,
+            risks: newRisks
+        });
+        if (newRisks.length === 0) setShowRiskModal(false);
     };
 
     const handleMitigateRisk = (item: RiskAnalysisItem, index: number) => {
@@ -599,6 +615,10 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         doc.save(`RFQ_${rfq.id}.pdf`);
     };
 
+    // Derived Risk Score
+    const riskScore = rfq?.risks ? calculateRiskScore(rfq.risks) : 100;
+    const riskColorClass = riskScore >= 80 ? 'bg-green-100 text-green-700' : riskScore >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700';
+
     return (
         <div className="flex flex-col h-[calc(100vh-100px)] gap-0 overflow-hidden relative">
             
@@ -746,7 +766,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                         // EMPTY DASHBOARD
                         <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex flex-col items-center justify-center animate-in fade-in">
                             <h2 className="text-xl font-bold text-slate-900 mb-2">{t(lang, 'dashboard_title')}</h2>
-                            <p className="text-slate-500 text-sm mb-10 text-center max-w-md">Select an option to begin your procurement process.</p>
+                            <p className="text-slate-500 text-sm mb-10 text-center max-w-md">Select An Option To Begin Your Procurement Process.</p>
                             
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
                                 {/* Option 1: Natural Language */}
@@ -755,8 +775,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                                     </div>
                                     <div>
-                                        <div className="font-bold text-slate-800 text-sm">Describe in Natural Language</div>
-                                        <div className="text-xs text-slate-500 mt-1">Type requirements and let AI structure it</div>
+                                        <div className="font-bold text-slate-800 text-sm">Describe In Natural Language</div>
+                                        <div className="text-xs text-slate-500 mt-1">Type Requirements And Let AI Structure It</div>
                                     </div>
                                 </button>
 
@@ -767,7 +787,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                     </div>
                                     <div>
                                         <div className="font-bold text-slate-800 text-sm">Upload Documentation</div>
-                                        <div className="text-xs text-slate-500 mt-1">Parse PDF drawings, Excel, or MTOs</div>
+                                        <div className="text-xs text-slate-500 mt-1">Parse PDF Drawings, Excel, Or MTOs</div>
                                     </div>
                                 </button>
 
@@ -778,7 +798,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                     </div>
                                     <div>
                                         <div className="font-bold text-slate-800 text-sm">Add Items Manually</div>
-                                        <div className="text-xs text-slate-500 mt-1">Create your list line-by-line</div>
+                                        <div className="text-xs text-slate-500 mt-1">Create Your List Line-By-Line</div>
                                     </div>
                                 </button>
                             </div>
@@ -890,8 +910,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                     {quotes.length === 0 ? (
                                         <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 text-center">
                                             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-2xl">📭</div>
-                                            <p className="text-sm">No quotes received yet.</p>
-                                            <p className="text-xs mt-2">Share the link with suppliers to get started.</p>
+                                            <p className="text-sm">No Quotes Received Yet.</p>
+                                            <p className="text-xs mt-2">Share The Link With Suppliers To Get Started.</p>
                                             <button onClick={handleShare} className="mt-6 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold">{t(lang, 'share_link')}</button>
                                         </div>
                                     ) : (
@@ -978,24 +998,32 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                 </div>
                                             </div>
                                             <div className="flex gap-2">
-                                                {/* NEW: RISK ANALYSIS BUTTON */}
-                                                <button 
-                                                    onClick={handleRiskAnalysis}
-                                                    disabled={isRiskAnalyzing}
-                                                    className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition shadow-sm flex items-center gap-2 ${isRiskAnalyzing ? 'bg-indigo-50 border-indigo-100 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300'}`}
-                                                >
-                                                    {isRiskAnalyzing ? (
-                                                        <>
-                                                            <span className="w-3 h-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin"></span>
-                                                            Analyzing...
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-                                                            Analyze Risks
-                                                        </>
+                                                {/* NEW: RISK ANALYSIS BUTTON WITH SCORE */}
+                                                <div className="flex items-center gap-2">
+                                                    {rfq?.risks && rfq.risks.length > 0 && (
+                                                        <div className={`px-2 py-1 rounded text-[10px] font-bold border ${riskColorClass} flex items-center gap-1`}>
+                                                            <span>Risk Score:</span>
+                                                            <span>{riskScore}</span>
+                                                        </div>
                                                     )}
-                                                </button>
+                                                    <button 
+                                                        onClick={handleRiskAnalysis}
+                                                        disabled={isRiskAnalyzing}
+                                                        className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition shadow-sm flex items-center gap-2 ${isRiskAnalyzing ? 'bg-indigo-50 border-indigo-100 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300'}`}
+                                                    >
+                                                        {isRiskAnalyzing ? (
+                                                            <>
+                                                                <span className="w-3 h-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin"></span>
+                                                                Analyzing...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                                                                {rfq?.risks && rfq.risks.length > 0 ? "View Risks" : "Analyze Risks"}
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
 
                                                 <button 
                                                     onClick={() => setIsHeaderInfoOpen(!isHeaderInfoOpen)}
@@ -1100,7 +1128,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                     </div>
 
                                     {/* RISK REPORT MODAL */}
-                                    {showRiskModal && riskReport && (
+                                    {showRiskModal && (rfq.risks || []).length >= 0 && (
                                         <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
                                             <div className="bg-white w-full max-w-3xl h-full max-h-[80vh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
                                                 
@@ -1113,7 +1141,12 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                             </div>
                                                             <h2 className="text-xl font-bold">Procurement Risk Analysis</h2>
                                                         </div>
-                                                        <p className="text-indigo-200 text-sm">AI-driven audit of technical & commercial gaps.</p>
+                                                        <div className="flex gap-4 items-center">
+                                                            <p className="text-indigo-200 text-sm">AI-Driven Audit Of Technical & Commercial Gaps.</p>
+                                                            <div className={`px-2 py-0.5 rounded text-xs font-bold border ${riskScore >= 80 ? 'bg-green-500/20 text-green-300 border-green-500/30' : riskScore >= 50 ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-red-500/20 text-red-300 border-red-500/30'}`}>
+                                                                Health Score: {riskScore}/100
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                     <button onClick={() => setShowRiskModal(false)} className="text-white/60 hover:text-white transition">
                                                         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1123,16 +1156,16 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                 {/* Body */}
                                                 <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
                                                     <div className="space-y-4">
-                                                        {riskReport.length === 0 ? (
+                                                        {(!rfq.risks || rfq.risks.length === 0) ? (
                                                             <div className="text-center p-12 text-slate-500">
                                                                 <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                                                     <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                                                                 </div>
                                                                 <h3 className="font-bold text-slate-900">No Major Risks Detected</h3>
-                                                                <p className="text-sm mt-2">The AI found no obvious technical or commercial gaps.</p>
+                                                                <p className="text-sm mt-2">The AI Found No Obvious Technical Or Commercial Gaps.</p>
                                                             </div>
                                                         ) : (
-                                                            riskReport.map((item, i) => (
+                                                            rfq.risks.map((item, i) => (
                                                                 <div key={i} className={`p-5 rounded-xl border flex gap-4 bg-white ${item.impact_level === 'High' ? 'border-red-200 shadow-sm' : item.impact_level === 'Medium' ? 'border-amber-200' : 'border-slate-200'}`}>
                                                                     <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
                                                                         item.impact_level === 'High' ? 'bg-red-100 text-red-600' : 

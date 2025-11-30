@@ -1,38 +1,26 @@
-import React, { useState, useEffect } from 'react';
+
+import React from 'react';
+import { MarketingNavbar } from '../components/MarketingNavbar';
+import { MarketingFooter } from '../components/MarketingFooter';
 
 interface QualityStandardsProps {
   onBack: () => void;
   onStartDemo: () => void;
+  onNavigate: (page: string) => void;
 }
 
-export default function QualityStandards({ onBack, onStartDemo }: QualityStandardsProps) {
-  const [scanning, setScanning] = useState(true);
-
+export default function QualityStandards({ onBack, onStartDemo, onNavigate }: QualityStandardsProps) {
   return (
-    <div className="min-h-screen bg-slate-900 text-white font-sans overflow-hidden relative">
+    <div className="min-h-screen bg-slate-900 text-white font-sans overflow-hidden relative flex flex-col">
       
       {/* Background Tech Elements */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(11,17,33,0.95),rgba(11,17,33,0.95)),url('https://grainy-gradients.vercel.app/noise.svg')] z-0"></div>
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(11,17,33,0.95),rgba(11,17,33,0.95)),url('https://grainy-gradients.vercel.app/noise.svg')] z-0 pointer-events-none"></div>
       <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
       <div className="absolute bottom-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
 
-      {/* Navbar */}
-      <nav className="relative z-20 max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
-        <div className="flex items-center gap-2 cursor-pointer" onClick={onBack}>
-          <svg viewBox="0 0 40 40" fill="none" className="h-10 w-10 shadow-[0_0_20px_rgba(59,130,246,0.5)] rounded-lg">
-                <rect width="40" height="40" rx="8" fill="#3b82f6"/>
-                <path d="M12 20C12 15.5817 15.5817 12 20 12C22.25 12 24.28 12.93 25.76 14.43" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-                <path d="M12 20C12 24.4183 15.5817 28 20 28C22.25 28 24.28 27.07 25.76 25.57" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-                <path d="M22 20H32M32 20L28 16M32 20L28 24" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          <span className="text-xl font-bold tracking-tight">Crontal <span className="text-blue-400 font-mono text-xs ml-1">/// QUALITY_CORE</span></span>
-        </div>
-        <button onClick={onStartDemo} className="bg-white text-slate-900 px-6 py-2 rounded-full text-sm font-bold hover:bg-blue-50 transition">
-          Launch Demo
-        </button>
-      </nav>
+      <MarketingNavbar onStart={onStartDemo} onNavigate={onNavigate} darkMode={true} />
 
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-16">
+      <div className="relative z-10 max-w-7xl mx-auto px-6 py-16 flex-1">
         
         {/* Header */}
         <div className="text-center mb-16 max-w-3xl mx-auto">
@@ -180,8 +168,9 @@ export default function QualityStandards({ onBack, onStartDemo }: QualityStandar
                  ))}
             </div>
         </div>
-
       </div>
+      
+      <MarketingFooter onNavigate={onNavigate} darkMode={true} />
     </div>
   );
 }

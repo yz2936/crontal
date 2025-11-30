@@ -1,10 +1,14 @@
+
 import React from 'react';
+import { MarketingNavbar } from '../components/MarketingNavbar';
+import { MarketingFooter } from '../components/MarketingFooter';
 
 interface BlogPageProps {
   onBack: () => void;
+  onNavigate: (page: string) => void;
 }
 
-export default function BlogPage({ onBack }: BlogPageProps) {
+export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
   const posts = [
     {
       category: "FUTURE TECH",
@@ -79,25 +83,12 @@ export default function BlogPage({ onBack }: BlogPageProps) {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      <nav className="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center border-b border-slate-200 bg-white sticky top-0 z-50">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={onBack}>
-          <svg viewBox="0 0 40 40" fill="none" className="h-8 w-8 rounded-lg shadow-sm">
-                <rect width="40" height="40" rx="8" fill="#0B1121"/>
-                <path d="M12 20C12 15.5817 15.5817 12 20 12C22.25 12 24.28 12.93 25.76 14.43" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-                <path d="M12 20C12 24.4183 15.5817 28 20 28C22.25 28 24.28 27.07 25.76 25.57" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-                <path d="M22 20H32M32 20L28 16M32 20L28 24" stroke="#F97316" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <span className="font-bold text-lg tracking-tight">Crontal <span className="text-slate-400 font-normal">| Insights</span></span>
-        </div>
-        <button onClick={onBack} className="text-sm font-bold text-slate-500 hover:text-slate-900 transition">
-          Back to Home
-        </button>
-      </nav>
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
+      <MarketingNavbar onStart={onBack} onNavigate={onNavigate} />
 
-      <div className="max-w-7xl mx-auto px-6 py-16">
+      <div className="flex-1 max-w-7xl mx-auto px-6 py-16">
         <div className="text-center mb-16 max-w-2xl mx-auto">
-          <div className="inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-4">Engineering Blog</div>
+          <div className="inline-block px-3 py-1 rounded-full bg-white border border-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-4">Engineering Blog</div>
           <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-6 tracking-tight">The Future of Industrial Procurement</h1>
           <p className="text-lg text-slate-500 leading-relaxed">
             Deep dives into AI, procurement automation, and the future of the industrial supply chain.
@@ -197,6 +188,8 @@ export default function BlogPage({ onBack }: BlogPageProps) {
              </div>
         </div>
       </div>
+      
+      <MarketingFooter onNavigate={onNavigate} />
     </div>
   );
 }

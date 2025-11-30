@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useEffect } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, ViewMode, Language, User } from './types';
@@ -30,7 +27,12 @@ export default function App() {
   const [lang, setLang] = useState<Language>('en');
   const [checkingAuth, setCheckingAuth] = useState(true);
 
-  // ... (existing code)
+  // Central Navigation Handler
+  const handleNavigate = (target: string) => {
+    setView(target as ViewMode);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // Load quotes whenever the active RFQ changes
   useEffect(() => {
     if (rfq?.id) {
@@ -46,6 +48,13 @@ export default function App() {
         const params = new URLSearchParams(window.location.search);
         const mode = params.get('mode');
         const encodedData = params.get('data');
+        const viewParam = params.get('view');
+        
+        if (viewParam) {
+            setView(viewParam as ViewMode);
+            setCheckingAuth(false);
+            return;
+        }
         
         if (mode === 'supplier' && encodedData) {
             try {
@@ -126,15 +135,23 @@ export default function App() {
       return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400 text-sm">Loading Crontal...</div>;
   }
 
+  // Marketing Pages Navigation Props
+  const navProps = {
+      onBack: () => handleNavigate('HOME'),
+      onNavigate: handleNavigate,
+      onStart: () => handleNavigate('BUYER'),
+      onStartDemo: () => handleNavigate('BUYER')
+  };
+
   // Routing Logic
-  if (view === 'TECH') return <TechCapabilities onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
-  if (view === 'QUALITY') return <QualityStandards onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
-  if (view === 'ABOUT') return <About onBack={() => setView('HOME')} onStart={() => setView('BUYER')} />;
-  if (view === 'ROI') return <RoiPage onBack={() => setView('HOME')} onStart={() => setView('BUYER')} />;
-  if (view === 'SUPPLIER_LANDING') return <SupplierLandingPage onBack={() => setView('HOME')} onStartDemo={() => setView('BUYER')} />;
-  if (view === 'PRIVACY') return <PrivacyPolicy onBack={() => setView('HOME')} />;
-  if (view === 'TERMS') return <TermsOfService onBack={() => setView('HOME')} />;
-  if (view === 'BLOG') return <BlogPage onBack={() => setView('HOME')} />;
+  if (view === 'TECH') return <TechCapabilities {...navProps} />;
+  if (view === 'QUALITY') return <QualityStandards {...navProps} />;
+  if (view === 'ABOUT') return <About {...navProps} />;
+  if (view === 'ROI') return <RoiPage {...navProps} />;
+  if (view === 'SUPPLIER_LANDING') return <SupplierLandingPage {...navProps} />;
+  if (view === 'PRIVACY') return <PrivacyPolicy {...navProps} />;
+  if (view === 'TERMS') return <TermsOfService {...navProps} />;
+  if (view === 'BLOG') return <BlogPage {...navProps} />;
 
   if (view === 'SUPPLIER') {
       return <SupplierView rfq={rfq} onSubmitQuote={handleQuoteSubmit} lang={lang} onExit={handleSupplierExit} />;
@@ -143,22 +160,23 @@ export default function App() {
   if (view === 'HOME' && !user) {
       return (
         <LandingPage 
-            onStart={() => setView('BUYER')} 
-            onTechDemo={() => setView('TECH')} 
-            onQuality={() => setView('QUALITY')}
-            onAbout={() => setView('ABOUT')}
-            onRoi={() => setView('ROI')}
-            onSupplierPage={() => setView('SUPPLIER_LANDING')}
-            onPrivacy={() => setView('PRIVACY')}
-            onTerms={() => setView('TERMS')}
-            onBlog={() => setView('BLOG')}
+            onStart={() => setView('BUYER')}
+            onNavigate={handleNavigate} 
+            onTechDemo={() => handleNavigate('TECH')} 
+            onQuality={() => handleNavigate('QUALITY')}
+            onAbout={() => handleNavigate('ABOUT')}
+            onRoi={() => handleNavigate('ROI')}
+            onSupplierPage={() => handleNavigate('SUPPLIER_LANDING')}
+            onPrivacy={() => handleNavigate('PRIVACY')}
+            onTerms={() => handleNavigate('TERMS')}
+            onBlog={() => handleNavigate('BLOG')}
             lang={lang} 
         />
       );
   }
 
   if (view === 'BUYER' && !user) {
-    return <AuthView onLogin={handleLogin} onBack={() => setView('HOME')} />;
+    return <AuthView onLogin={handleLogin} onBack={() => handleNavigate('HOME')} />;
   }
 
   return (

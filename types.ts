@@ -1,5 +1,6 @@
 
 
+import { RiskAnalysisItem } from './services/geminiService';
 
 export interface Dimension {
     value: number | null;
@@ -52,7 +53,8 @@ export interface Dimension {
     project_name: string | null;
     project_description?: string; 
     ai_summary?: string;
-    audit_warnings?: string[]; // AI Engineering Audit results
+    audit_warnings?: string[]; // Legacy
+    risks?: RiskAnalysisItem[]; // New Structured Risk Data
     line_items: LineItem[];
     original_text: string;
     commercial: CommercialTerms;
