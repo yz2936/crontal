@@ -14,7 +14,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
       category: "FUTURE TECH",
       date: "NOV 02, 2024",
       readTime: "7 MIN READ",
-      title: "Generative AI in Procurement: Beyond the Hype",
+      title: "Generative AI In Procurement: Beyond The Hype",
       excerpt: "Everyone is talking about ChatGPT, but how does it actually apply to a structured purchase order? We explore the practical applications of Large Language Models (LLMs) in parsing technical line items and standardizing unstructured supply chain data.",
       author: "Alex Chen",
       role: "CTO, Crontal",
@@ -24,7 +24,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
       category: "INDUSTRY ANALYSIS",
       date: "OCT 24, 2024",
       readTime: "5 MIN READ",
-      title: "The Death of the PDF RFQ: Why Structured Data is Inevitable",
+      title: "The Death Of The PDF RFQ: Why Structured Data Is Inevitable",
       excerpt: "For decades, the industrial supply chain has run on PDF attachments. This manual friction costs the EPC industry billions in delays and errors. Here is why generative AI is finally killing the unsearchable document and enabling real-time bidding.",
       author: "Alex Chen",
       role: "CTO, Crontal",
@@ -34,7 +34,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
       category: "ENGINEERING",
       date: "OCT 18, 2024",
       readTime: "6 MIN READ",
-      title: "Validating API 5L Specs with Computer Vision",
+      title: "Validating API 5L Specs With Computer Vision",
       excerpt: "Large Language Models are now capable of reading complex mill test reports (MTRs) and validating them against API 5L PSL2 standards. We explore the accuracy of AI in detecting chemical composition deviations in high-pressure piping.",
       author: "Sarah Jenkins",
       role: "Lead Engineer",
@@ -44,7 +44,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
       category: "COST ANALYSIS",
       date: "OCT 12, 2024",
       readTime: "8 MIN READ",
-      title: "The Hidden Cost of 'Free' Manual Bidding",
+      title: "The Hidden Cost Of 'Free' Manual Bidding",
       excerpt: "Procurement teams often ignore the internal cost of manual data entry. Our analysis shows that for every $1M in spend, $45k is wasted on administrative friction and rework due to copy-paste errors in Excel.",
       author: "Michael Rossi",
       role: "Procurement Director",
@@ -54,7 +54,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
       category: "CASE STUDY",
       date: "SEP 28, 2024",
       readTime: "4 MIN READ",
-      title: "How Mid-Sized EPCs are Outpacing Giants",
+      title: "How Mid-Sized EPCs Are Outpacing Giants",
       excerpt: "By automating the RFQ-to-Quote loop, smaller firms are reducing bid cycle times by 70%, allowing them to compete with global giants on agility and responsiveness. Read the case study on Texas LNG expansion projects.",
       author: "Alex Chen",
       role: "CTO, Crontal",
@@ -64,7 +64,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
       category: "SUPPLY CHAIN",
       date: "SEP 15, 2024",
       readTime: "5 MIN READ",
-      title: "From Reactive to Predictive Sourcing",
+      title: "From Reactive To Predictive Sourcing",
       excerpt: "Once your procurement data is structured, you can stop reacting to shortages and start predicting price fluctuations based on raw material trends. How to build a data lake from your historical RFQs.",
       author: "Dr. Elena Volkov",
       role: "Data Scientist",
@@ -74,7 +74,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
       category: "STRATEGY",
       date: "SEP 02, 2024",
       readTime: "4 MIN READ",
-      title: "AI as a Co-Pilot, Not an Autopilot",
+      title: "AI As A Co-Pilot, Not An Autopilot",
       excerpt: "Why the 'Human-in-the-Loop' is critical for industrial safety. We discuss why full automation is dangerous for critical piping components and how Crontal keeps engineers in control of the final decision.",
       author: "James Wright",
       role: "CEO",
@@ -89,7 +89,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
       <div className="flex-1 max-w-7xl mx-auto px-6 py-16">
         <div className="text-center mb-16 max-w-2xl mx-auto">
           <div className="inline-block px-3 py-1 rounded-full bg-white border border-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-4">Engineering Blog</div>
-          <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-6 tracking-tight">The Future of Industrial Procurement</h1>
+          <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-6 tracking-tight">The Future Of Industrial Procurement</h1>
           <p className="text-lg text-slate-500 leading-relaxed">
             Deep dives into AI, procurement automation, and the future of the industrial supply chain.
             Straight from the engineers building the next generation of tools.
@@ -101,7 +101,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
             <div className="bg-slate-900 rounded-3xl overflow-hidden shadow-2xl grid md:grid-cols-2">
                 <div className="p-8 md:p-12 flex flex-col justify-center">
                     <div className="text-brandOrange font-bold text-xs uppercase tracking-widest mb-4">Featured Article</div>
-                    <h2 className="text-3xl font-bold text-white mb-6">Generative AI in Procurement: Beyond the Hype</h2>
+                    <h2 className="text-3xl font-bold text-white mb-6">Generative AI In Procurement: Beyond The Hype</h2>
                     <p className="text-slate-400 mb-8 leading-relaxed">
                         Everyone is talking about ChatGPT, but how does it actually apply to a structured purchase order? We explore the practical applications of Large Language Models (LLMs) in parsing technical line items and standardizing unstructured supply chain data.
                     </p>
@@ -173,7 +173,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
              <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/20 rounded-full blur-[80px] translate-y-1/2 -translate-x-1/2"></div>
              
              <div className="relative z-10">
-                <h2 className="text-3xl font-bold text-white mb-4">Subscribe to Engineering Intelligence</h2>
+                <h2 className="text-3xl font-bold text-white mb-4">Subscribe To Engineering Intelligence</h2>
                 <p className="text-slate-400 mb-8 max-w-lg mx-auto">Get the latest whitepapers and case studies delivered to your inbox. No spam, just specs.</p>
                 <div className="flex flex-col sm:flex-row justify-center gap-4 max-w-md mx-auto">
                     <input 

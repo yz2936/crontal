@@ -17,7 +17,7 @@ export default function About({ onBack, onStart, onNavigate }: AboutProps) {
             <div className="flex-1 max-w-4xl mx-auto px-6 py-20">
                 <div className="inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-wider mb-6">Our Vision</div>
                 <h1 className="text-4xl md:text-6xl font-bold mb-8 leading-tight">
-                    The "Human-in-the-Loop" <br/>
+                    The "Human-In-The-Loop" <br/>
                     <span className="text-brandOrange">Procurement Pilot.</span>
                 </h1>
                 
@@ -58,7 +58,7 @@ export default function About({ onBack, onStart, onNavigate }: AboutProps) {
                         onClick={onStart}
                         className="bg-slate-900 text-white px-8 py-4 rounded-xl font-bold hover:bg-slate-800 transition shadow-lg"
                     >
-                        Experience the Pilot
+                        Experience The Pilot
                     </button>
                 </div>
             </div>

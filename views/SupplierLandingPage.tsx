@@ -22,8 +22,8 @@ export default function SupplierLandingPage({ onBack, onStartDemo, onNavigate }:
                       Zero Friction
                   </div>
                   <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight text-slate-900">
-                      Stop struggling with <br/>
-                      <span className="text-brandOrange">clunky portals.</span>
+                      Stop Struggling With <br/>
+                      <span className="text-brandOrange">Clunky Portals.</span>
                   </h1>
                   <p className="text-xl text-slate-500 mb-10 leading-relaxed">
                       Crontal is the first procurement platform suppliers actually love. No logins to remember. No passwords to reset. Just a secure link and a clean interface.
@@ -34,7 +34,7 @@ export default function SupplierLandingPage({ onBack, onStartDemo, onNavigate }:
                           <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0">1</div>
                           <div>
                               <h3 className="font-bold text-lg">Receive Link</h3>
-                              <p className="text-slate-500 text-sm">Get a secure RFQ link via email or WhatsApp.</p>
+                              <p className="text-slate-500 text-sm">Get A Secure RFQ Link Via Email Or WhatsApp.</p>
                           </div>
                       </div>
                       <div className="h-8 border-l-2 border-slate-100 ml-4"></div>
@@ -42,7 +42,7 @@ export default function SupplierLandingPage({ onBack, onStartDemo, onNavigate }:
                           <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0">2</div>
                           <div>
                               <h3 className="font-bold text-lg">Input Pricing</h3>
-                              <p className="text-slate-500 text-sm">Fill in unit prices directly in your browser. Mobile friendly.</p>
+                              <p className="text-slate-500 text-sm">Fill In Unit Prices Directly In Your Browser. Mobile Friendly.</p>
                           </div>
                       </div>
                       <div className="h-8 border-l-2 border-slate-100 ml-4"></div>
@@ -50,7 +50,7 @@ export default function SupplierLandingPage({ onBack, onStartDemo, onNavigate }:
                           <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold shrink-0">3</div>
                           <div>
                               <h3 className="font-bold text-lg">Instant Submit</h3>
-                              <p className="text-slate-500 text-sm">Click submit. The buyer gets your quote instantly. Done.</p>
+                              <p className="text-slate-500 text-sm">Click Submit. The Buyer Gets Your Quote Instantly. Done.</p>
                           </div>
                       </div>
                   </div>
