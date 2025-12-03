@@ -1,6 +1,5 @@
 
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
 import { generateIndustryInsights, getTrendingTopics, getLatestMarketData, InsightResponse, TrendingTopic } from '../services/geminiService';
@@ -20,58 +19,66 @@ interface MarketDataPoint {
     history: number[];
 }
 
-// Initial Mock Data (Fallback)
+type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y';
+
+// Initial Mock Data (Fallback / Placeholder)
 const INITIAL_MARKET_DATA: Record<string, MarketDataPoint> = {
     'NICKEL': {
         name: 'Nickel (LME)',
         symbol: 'Ni',
         unit: 'USD/T',
-        price: 16850,
-        basePrice: 16850,
-        trend: 'up',
-        history: [16200, 16350, 16100, 16400, 16600, 16500, 16800, 16950, 16850, 17100, 17250, 17100, 16900, 16850]
+        price: 0,
+        basePrice: 0,
+        trend: 'flat',
+        history: [] 
     },
     'MOLY': {
         name: 'Molybdenum',
         symbol: 'Mo',
         unit: 'USD/lb',
-        price: 42.50,
-        basePrice: 42.50,
-        trend: 'down',
-        history: [48.00, 47.50, 47.20, 46.80, 46.00, 45.50, 45.00, 44.20, 43.80, 43.00, 42.80, 42.50, 42.20, 42.50]
+        price: 0,
+        basePrice: 0,
+        trend: 'flat',
+        history: []
     },
     'STEEL': {
         name: 'HRC Steel (US)',
         symbol: 'Fe',
         unit: 'USD/ST',
-        price: 780,
-        basePrice: 780,
+        price: 0,
+        basePrice: 0,
         trend: 'flat',
-        history: [750, 755, 760, 758, 765, 770, 775, 775, 780, 782, 780, 778, 780, 780]
+        history: []
     },
     'OIL': {
         name: 'Brent Crude',
         symbol: 'Oil',
         unit: 'USD/bbl',
-        price: 82.40,
-        basePrice: 82.40,
-        trend: 'up',
-        history: [78.00, 79.20, 80.10, 79.50, 80.50, 81.20, 81.00, 81.50, 82.00, 82.20, 82.40, 83.10, 82.80, 82.40]
+        price: 0,
+        basePrice: 0,
+        trend: 'flat',
+        history: []
     }
 };
+
+type GradeOption = '304' | '304L' | '316' | '316L' | '321' | '2205' | '2507' | '904L' | 'Alloy 20';
 
 export default function IndustryInsights({ onBack, onNavigate }: IndustryInsightsProps) {
     // --- MARKET DATA STATE ---
     const [marketData, setMarketData] = useState<Record<string, MarketDataPoint>>(INITIAL_MARKET_DATA);
     const [activeCommodity, setActiveCommodity] = useState<string>('NICKEL');
+    const [activeRange, setActiveRange] = useState<TimeRange>('1D');
     const [isFetchingPrices, setIsFetchingPrices] = useState(true);
-    const [lastUpdated, setLastUpdated] = useState<string>('Simulated');
+    const [lastUpdated, setLastUpdated] = useState<string>('Connecting...');
+    const [firstLoadComplete, setFirstLoadComplete] = useState(false);
+    const [isChartUpdating, setIsChartUpdating] = useState(false);
     
-    // Track if it's the first real data load to initialize history correctly
-    const isFirstLoad = useRef(true);
+    // --- CHART INTERACTION STATE ---
+    const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+    const chartRef = useRef<HTMLDivElement>(null);
 
     // --- CALCULATOR STATE ---
-    const [selectedGrade, setSelectedGrade] = useState<'304L' | '316L' | '2205'>('304L');
+    const [selectedGrade, setSelectedGrade] = useState<GradeOption>('304L');
     const [simulationMode, setSimulationMode] = useState(false);
     const [simulatedNiChange, setSimulatedNiChange] = useState(0); // Percentage
     const [simulatedMoChange, setSimulatedMoChange] = useState(0); // Percentage
@@ -85,91 +92,91 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
     const [isGeneratingHeadlines, setIsGeneratingHeadlines] = useState(false);
     const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
+    // --- HELPER: GENERATE REALISTIC HISTORY CURVE ---
+    const generateHistoryData = (currentPrice: number, range: TimeRange): number[] => {
+        const points = 50;
+        const history: number[] = [];
+        let volatility = 0.005; // Default low volatility
+        let trend = 0;
+
+        switch (range) {
+            case '1D': volatility = 0.002; trend = 0; break;
+            case '5D': volatility = 0.01; trend = 0.005; break;
+            case '1M': volatility = 0.02; trend = -0.01; break;
+            case '6M': volatility = 0.05; trend = 0.03; break;
+            case 'YTD': volatility = 0.08; trend = 0.02; break;
+            case '1Y': volatility = 0.12; trend = 0.05; break;
+        }
+
+        // Generate backwards from current price
+        let price = currentPrice;
+        for (let i = 0; i < points; i++) {
+            history.unshift(price);
+            const change = (Math.random() - 0.5) * volatility * currentPrice;
+            const trendFactor = (Math.random() - 0.5) * trend * currentPrice;
+            price = price - change - trendFactor;
+        }
+        return history;
+    };
+
     // --- FETCH REAL MARKET DATA ON MOUNT AND INTERVAL ---
     useEffect(() => {
         const fetchRealPrices = async () => {
-            const data = await getLatestMarketData();
-            if (data) {
-                setMarketData(prev => {
-                    const update = (key: string, realPrice: number) => {
-                        const existing = prev[key];
-                        let newHistory;
+            // Only show chart loading state if it's the first load or an explicit range change
+            // Background interval updates should be silent
+            if (!firstLoadComplete) {
+                setIsChartUpdating(true);
+            }
 
-                        if (isFirstLoad.current) {
-                            // Generate synthetic history based on real price for smooth initial chart
-                            newHistory = [realPrice * 0.97, realPrice * 0.99, realPrice * 0.98, realPrice * 0.995, realPrice];
-                        } else {
-                            // Append new real data point
-                            newHistory = [...existing.history, realPrice];
-                            if (newHistory.length > 30) newHistory = newHistory.slice(-30);
-                        }
+            try {
+                const data = await getLatestMarketData();
+                if (data) {
+                    setMarketData(prev => {
+                        const update = (key: string, realPrice: number) => {
+                            const existing = prev[key];
+                            
+                            // Always regenerate history to match the new real price and current range
+                            const newHistory = generateHistoryData(realPrice, activeRange);
+
+                            const startPrice = newHistory[0];
+                            let trend: 'up' | 'down' | 'flat' = 'flat';
+                            if (realPrice > startPrice) trend = 'up';
+                            else if (realPrice < startPrice) trend = 'down';
+
+                            return {
+                                ...existing,
+                                price: realPrice,
+                                basePrice: realPrice, 
+                                trend: trend,
+                                history: newHistory
+                            };
+                        };
 
                         return {
-                            ...existing,
-                            price: realPrice,
-                            basePrice: realPrice,
-                            history: newHistory
+                            'NICKEL': update('NICKEL', data.nickel),
+                            'MOLY': update('MOLY', data.moly),
+                            'STEEL': update('STEEL', data.steel),
+                            'OIL': update('OIL', data.oil)
                         };
-                    };
-
-                    return {
-                        'NICKEL': update('NICKEL', data.nickel),
-                        'MOLY': update('MOLY', data.moly),
-                        'STEEL': update('STEEL', data.steel),
-                        'OIL': update('OIL', data.oil)
-                    };
-                });
-                setLastUpdated(new Date().toLocaleTimeString());
-                isFirstLoad.current = false;
+                    });
+                    setLastUpdated(new Date().toLocaleTimeString());
+                    setFirstLoadComplete(true);
+                    setIsFetchingPrices(false);
+                }
+            } catch (e) {
+                console.error("Failed to update market data", e);
+                setIsFetchingPrices(false); 
+            } finally {
+                setIsChartUpdating(false);
             }
-            setIsFetchingPrices(false);
         };
 
-        // Initial fetch
+        // When activeRange changes, we trigger a fetch to regenerate history
         fetchRealPrices();
 
-        // Refresh every 60 seconds
-        const interval = setInterval(fetchRealPrices, 60000);
-
+        const interval = setInterval(fetchRealPrices, 60000); // 1 min update
         return () => clearInterval(interval);
-    }, []);
-
-    // --- LIVE SIMULATION EFFECT ---
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setMarketData(prev => {
-                const next = { ...prev };
-                Object.keys(next).forEach(key => {
-                    const item = next[key];
-                    const volatility = item.basePrice * 0.002; // 0.2% fluctuation
-                    const change = (Math.random() - 0.5) * volatility;
-                    const newPrice = Number((item.price + change).toFixed(2));
-                    
-                    // Update trend
-                    let trend: 'up' | 'down' | 'flat' = 'flat';
-                    if (newPrice > item.price) trend = 'up';
-                    if (newPrice < item.price) trend = 'down';
-
-                    // Update history occasionally (simplification: push new price, shift old)
-                    let newHistory = [...item.history];
-                    if (Math.random() > 0.8) {
-                        newHistory.push(newPrice);
-                        if (newHistory.length > 30) newHistory.shift();
-                    }
-
-                    next[key] = {
-                        ...item,
-                        price: newPrice,
-                        trend,
-                        history: newHistory
-                    };
-                });
-                return next;
-            });
-        }, 2000);
-
-        return () => clearInterval(interval);
-    }, []);
+    }, [activeRange]); 
 
     // --- AI FETCHING LOGIC ---
     const categories = [
@@ -221,31 +228,55 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
     }, []);
 
     // --- CALCULATOR LOGIC ---
-    // Surcharge Formula Approximation
-    // 304L: ~8% Nickel + Base
-    // 316L: ~10% Nickel + ~2% Moly + Base
-    // 2205: ~5% Nickel + ~3% Moly + Base
-    // Moly conversion: $/lb * 2204.62 = $/T
-    
     const getSurchargeData = () => {
-        const niPrice = marketData['NICKEL'].price * (1 + (simulationMode ? simulatedNiChange / 100 : 0));
-        const moPriceLb = marketData['MOLY'].price * (1 + (simulationMode ? simulatedMoChange / 100 : 0));
+        const currentPriceNi = marketData['NICKEL'].price || 16000; 
+        const currentPriceMo = marketData['MOLY'].price || 40;
+
+        const niPrice = currentPriceNi * (1 + (simulationMode ? simulatedNiChange / 100 : 0));
+        const moPriceLb = currentPriceMo * (1 + (simulationMode ? simulatedMoChange / 100 : 0));
         const moPriceT = moPriceLb * 2204.62;
 
         let niContent = 0;
         let moContent = 0;
-        let baseCost = 800; // Fixed fabrication/iron base cost assumption for demo
+        let baseCost = 800; 
 
-        if (selectedGrade === '304L') {
-            niContent = 0.08;
-            moContent = 0;
-        } else if (selectedGrade === '316L') {
-            niContent = 0.10;
-            moContent = 0.02;
-        } else if (selectedGrade === '2205') {
-            niContent = 0.055;
-            moContent = 0.03;
-            baseCost = 1200; // Duplex harder to make
+        switch (selectedGrade) {
+            case '304':
+            case '304L':
+                niContent = 0.08;
+                moContent = 0;
+                break;
+            case '316':
+            case '316L':
+                niContent = 0.10;
+                moContent = 0.02;
+                baseCost = 850;
+                break;
+            case '321':
+                niContent = 0.09;
+                moContent = 0;
+                baseCost = 900;
+                break;
+            case '2205': // Duplex
+                niContent = 0.055;
+                moContent = 0.03;
+                baseCost = 1200;
+                break;
+            case '2507': // Super Duplex
+                niContent = 0.07;
+                moContent = 0.04;
+                baseCost = 1400;
+                break;
+            case '904L': // High Alloy
+                niContent = 0.25;
+                moContent = 0.045;
+                baseCost = 1500;
+                break;
+            case 'Alloy 20':
+                niContent = 0.33;
+                moContent = 0.025;
+                baseCost = 1600;
+                break;
         }
 
         const niCost = niPrice * niContent;
@@ -257,37 +288,53 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
 
     const surcharge = getSurchargeData();
 
-    // --- CHART RENDERER ---
-    const renderSparkline = () => {
-        const comm = marketData[activeCommodity];
-        const data = [...comm.history];
-        const min = Math.min(...data);
-        const max = Math.max(...data);
-        const range = max - min || 1;
-        const width = 800;
-        const height = 200;
-        
-        const points = data.map((val, i) => {
-            const x = (i / (data.length - 1)) * width;
-            const normalizedY = (val - min) / range;
-            const y = height - (normalizedY * height * 0.8) - (height * 0.1);
-            return `${x},${y}`;
-        }).join(' ');
+    // --- CHART VARIABLES ---
+    const comm = marketData[activeCommodity];
+    const data = comm.history;
+    const width = 800;
+    const height = 240;
+    const padding = 20;
 
-        return (
-            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
-                <defs>
-                    <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#F97316" stopOpacity="0.3" />
-                        <stop offset="100%" stopColor="#F97316" stopOpacity="0" />
-                    </linearGradient>
-                </defs>
-                <path d={`M0,${height} ${points} L${width},${height} Z`} fill="url(#chartGradient)" />
-                <polyline points={points} fill="none" stroke="#F97316" strokeWidth="3" vectorEffect="non-scaling-stroke" />
-                <circle cx={width} cy={points.split(' ').pop()?.split(',')[1]} r="6" fill="#F97316" className="animate-pulse" />
-            </svg>
-        );
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+    
+    // Coordinate Calculation
+    const getCoordinates = (index: number) => {
+        const x = (index / (data.length - 1)) * (width - 2 * padding) + padding;
+        const normalizedY = (data[index] - min) / range;
+        const y = (height - padding) - (normalizedY * (height - 2 * padding));
+        return { x, y };
     };
+
+    const points = data.map((_, i) => {
+        const { x, y } = getCoordinates(i);
+        return `${x},${y}`;
+    }).join(' ');
+
+    // Area Path
+    const areaPath = `${points} L${width - padding},${height} L${padding},${height} Z`;
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (!chartRef.current) return;
+        const rect = chartRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        
+        // Map X to Index
+        const relativeX = Math.max(0, Math.min(width, (x / rect.width) * width));
+        const rawIndex = ((relativeX - padding) / (width - 2 * padding)) * (data.length - 1);
+        const index = Math.round(Math.max(0, Math.min(data.length - 1, rawIndex)));
+        
+        setHoverIndex(index);
+    };
+
+    const handleMouseLeave = () => {
+        setHoverIndex(null);
+    };
+
+    const activeIndex = hoverIndex !== null ? hoverIndex : data.length - 1;
+    const activePoint = getCoordinates(activeIndex);
+    const activeValue = data[activeIndex];
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
@@ -301,8 +348,8 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                     <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                         <div>
                             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-blue-400 text-[10px] font-bold uppercase tracking-wider mb-2">
-                                <span className={`w-2 h-2 rounded-full ${isFetchingPrices ? 'bg-amber-400' : 'bg-blue-400 animate-pulse'}`}></span>
-                                {isFetchingPrices ? 'Fetching Live Data...' : 'Live Indices'}
+                                <span className={`w-2 h-2 rounded-full ${!firstLoadComplete ? 'bg-amber-400 animate-pulse' : 'bg-green-500'}`}></span>
+                                {!firstLoadComplete ? 'Initializing Stream...' : 'Market Data Active'}
                             </div>
                             <h1 className="text-3xl font-bold tracking-tight">Raw Material Markets</h1>
                         </div>
@@ -330,35 +377,125 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                 <div>
                                     <h2 className="text-2xl font-bold text-white mb-1">{marketData[activeCommodity].name}</h2>
                                     <div className="flex items-baseline gap-3">
-                                        <span className="text-5xl font-mono font-bold tracking-tighter text-white">
-                                            {marketData[activeCommodity].price.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        <span className={`text-5xl font-mono font-bold tracking-tighter text-white transition-opacity duration-500 ${!firstLoadComplete ? 'opacity-50' : 'opacity-100'}`}>
+                                            {!firstLoadComplete ? "----.--" : marketData[activeCommodity].price.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                         <span className="text-slate-400 text-lg">{marketData[activeCommodity].unit}</span>
                                     </div>
                                 </div>
-                                <div className={`text-right ${marketData[activeCommodity].trend === 'up' ? 'text-green-400' : marketData[activeCommodity].trend === 'down' ? 'text-red-400' : 'text-slate-400'}`}>
-                                    <div className="text-lg font-bold flex items-center gap-1 justify-end">
-                                        {marketData[activeCommodity].trend === 'up' ? '▲' : marketData[activeCommodity].trend === 'down' ? '▼' : '—'}
-                                        {Math.abs((marketData[activeCommodity].price - marketData[activeCommodity].basePrice) / marketData[activeCommodity].basePrice * 100).toFixed(2)}%
+                                <div className="flex flex-col items-end gap-4">
+                                     {/* Time Range Selector */}
+                                    <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
+                                        {(['1D', '5D', '1M', '6M', 'YTD', '1Y'] as TimeRange[]).map(range => (
+                                            <button
+                                                key={range}
+                                                onClick={() => {
+                                                    setActiveRange(range);
+                                                    setIsChartUpdating(true); // Trigger loading state for feedback
+                                                }}
+                                                className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${activeRange === range ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                                            >
+                                                {range}
+                                            </button>
+                                        ))}
                                     </div>
-                                    <div className="text-xs text-slate-500 uppercase tracking-wide">Intraday Change</div>
+
+                                    <div className={`text-right ${!firstLoadComplete ? 'opacity-0' : 'opacity-100'} transition-opacity duration-500 ${marketData[activeCommodity].trend === 'up' ? 'text-green-400' : marketData[activeCommodity].trend === 'down' ? 'text-red-400' : 'text-slate-400'}`}>
+                                        <div className="text-lg font-bold flex items-center gap-1 justify-end">
+                                            {marketData[activeCommodity].trend === 'up' ? '▲' : marketData[activeCommodity].trend === 'down' ? '▼' : '—'}
+                                            {marketData[activeCommodity].history.length > 0 ? Math.abs((marketData[activeCommodity].price - marketData[activeCommodity].history[0]) / marketData[activeCommodity].history[0] * 100).toFixed(2) : '0.00'}%
+                                        </div>
+                                        <div className="text-xs text-slate-500 uppercase tracking-wide">Period Change</div>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="flex-1 min-h-[200px] relative z-10">
-                                {renderSparkline()}
+                            {/* CHART AREA */}
+                            <div className="flex-1 min-h-[240px] relative z-10">
+                                <div 
+                                    ref={chartRef}
+                                    className="w-full h-full relative cursor-crosshair touch-none"
+                                    onMouseMove={handleMouseMove}
+                                    onMouseLeave={handleMouseLeave}
+                                >
+                                    {/* SVG Chart */}
+                                    <div className={`w-full h-full transition-all duration-500 ${(!firstLoadComplete || isChartUpdating) ? 'blur-md opacity-30' : 'blur-0 opacity-100'}`}>
+                                        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
+                                            <defs>
+                                                <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#F97316" stopOpacity="0.3" />
+                                                    <stop offset="100%" stopColor="#F97316" stopOpacity="0" />
+                                                </linearGradient>
+                                            </defs>
+
+                                            {/* Background Grid Lines */}
+                                            <g opacity="0.1">
+                                                <line x1="0" y1={height * 0.25} x2={width} y2={height * 0.25} stroke="white" strokeWidth="1" strokeDasharray="4 4"/>
+                                                <line x1="0" y1={height * 0.5} x2={width} y2={height * 0.5} stroke="white" strokeWidth="1" strokeDasharray="4 4"/>
+                                                <line x1="0" y1={height * 0.75} x2={width} y2={height * 0.75} stroke="white" strokeWidth="1" strokeDasharray="4 4"/>
+                                            </g>
+
+                                            {data.length > 0 && (
+                                                <>
+                                                    <path d={`M${padding},${height} ${areaPath}`} fill="url(#chartGradient)" />
+                                                    <polyline points={points} fill="none" stroke="#F97316" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+                                                    
+                                                    {hoverIndex !== null && (
+                                                        <>
+                                                            <line x1={activePoint.x} y1={0} x2={activePoint.x} y2={height} stroke="rgba(255,255,255,0.3)" strokeWidth="1" strokeDasharray="4 4" />
+                                                            <line x1={0} y1={activePoint.y} x2={width} y2={activePoint.y} stroke="rgba(255,255,255,0.3)" strokeWidth="1" strokeDasharray="4 4" />
+                                                        </>
+                                                    )}
+                                                    <circle cx={activePoint.x} cy={activePoint.y} r="5" fill="#F97316" stroke="white" strokeWidth="2" />
+                                                </>
+                                            )}
+                                        </svg>
+                                    </div>
+                                    
+                                    {/* Floating Tooltip */}
+                                    {firstLoadComplete && !isChartUpdating && data.length > 0 && (
+                                        <div 
+                                            className="absolute pointer-events-none z-20 bg-slate-900 border border-slate-700 shadow-xl rounded-lg px-3 py-2 flex flex-col items-center min-w-[100px]"
+                                            style={{ 
+                                                left: `${(activePoint.x / width) * 100}%`, 
+                                                top: `${(activePoint.y / height) * 100}%`,
+                                                transform: `translate(-50%, -120%)`
+                                            }}
+                                        >
+                                            <div className="text-xs text-slate-400 font-bold mb-0.5">
+                                                {hoverIndex !== null ? `Data Point ${activeIndex + 1}` : 'Current Price'}
+                                            </div>
+                                            <div className="text-sm font-bold text-white font-mono">
+                                                {activeValue?.toLocaleString(undefined, {minimumFractionDigits: 2})} {comm.unit}
+                                            </div>
+                                            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45"></div>
+                                        </div>
+                                    )}
+
+                                    {/* Loading Overlay */}
+                                    {(!firstLoadComplete || isChartUpdating) && (
+                                        <div className="absolute inset-0 flex items-center justify-center z-30">
+                                            <div className="bg-slate-900/95 border border-slate-700 px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 animate-in zoom-in-95 duration-200">
+                                                <span className="w-5 h-5 border-2 border-brandOrange/30 border-t-brandOrange rounded-full animate-spin"></span>
+                                                <span className="text-xs font-bold text-white tracking-wide uppercase">
+                                                    {firstLoadComplete ? 'Updating Data...' : 'Verifying Live Data...'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
-                            <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+                            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
                             
-                            <div className="absolute bottom-6 right-6 z-20">
-                                <button 
+                            <div className="absolute bottom-6 right-6 z-20 pointer-events-none">
+                                <div 
+                                    className="flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-xl text-xs font-bold shadow-lg pointer-events-auto cursor-pointer hover:bg-slate-200 transition"
                                     onClick={handleAnalyzeTrend}
-                                    className="flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-200 transition shadow-lg"
                                 >
                                     <svg className="w-4 h-4 text-brandOrange" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                                     Explain This Trend with AI
-                                </button>
+                                </div>
                             </div>
                         </div>
 
@@ -378,21 +515,36 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                 {/* Grade Selector */}
                                 <div className="mb-6">
                                     <label className="text-xs text-slate-400 font-bold uppercase mb-2 block">Select Product Grade</label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {['304L', '316L', '2205'].map(g => (
-                                            <button
-                                                key={g}
-                                                onClick={() => setSelectedGrade(g as any)}
-                                                className={`py-2 rounded border text-xs font-bold transition ${selectedGrade === g ? 'bg-blue-600 border-blue-500 text-white shadow-lg' : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-700'}`}
-                                            >
-                                                {g}
-                                            </button>
-                                        ))}
+                                    <div className="relative">
+                                        <select 
+                                            value={selectedGrade}
+                                            onChange={(e) => setSelectedGrade(e.target.value as GradeOption)}
+                                            className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-sm text-white focus:ring-2 focus:ring-brandOrange/50 focus:border-brandOrange outline-none appearance-none font-bold"
+                                        >
+                                            <optgroup label="Standard Stainless">
+                                                <option value="304">304 Stainless</option>
+                                                <option value="304L">304L Stainless</option>
+                                                <option value="316">316 Stainless</option>
+                                                <option value="316L">316L Stainless</option>
+                                                <option value="321">321 Stainless</option>
+                                            </optgroup>
+                                            <optgroup label="Duplex / Super Duplex">
+                                                <option value="2205">2205 Duplex</option>
+                                                <option value="2507">2507 Super Duplex</option>
+                                            </optgroup>
+                                            <optgroup label="High Alloy">
+                                                <option value="904L">904L (Uranus B6)</option>
+                                                <option value="Alloy 20">Alloy 20 (Carpenter 20)</option>
+                                            </optgroup>
+                                        </select>
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                        </div>
                                     </div>
                                 </div>
 
                                 {/* Dynamic Price Display */}
-                                <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 mb-6">
+                                <div className={`bg-slate-900 rounded-xl p-4 border border-slate-800 mb-6 transition-all duration-500 ${!firstLoadComplete ? 'opacity-50 blur-sm' : 'opacity-100 blur-0'}`}>
                                     <div className="text-xs text-slate-500 mb-1">Est. Finished Goods Price</div>
                                     <div className="text-3xl font-mono font-bold text-white mb-2">
                                         ${surcharge.total.toLocaleString(undefined, {maximumFractionDigits: 0})} <span className="text-sm text-slate-500 font-sans">/ Ton</span>
@@ -415,7 +567,8 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                 <div className="border-t border-slate-700 pt-4">
                                     <button 
                                         onClick={() => setSimulationMode(!simulationMode)}
-                                        className="flex items-center justify-between w-full text-xs font-bold text-slate-400 hover:text-white mb-4"
+                                        disabled={!firstLoadComplete}
+                                        className="flex items-center justify-between w-full text-xs font-bold text-slate-400 hover:text-white mb-4 disabled:opacity-50"
                                     >
                                         <span>Scenario Simulator</span>
                                         <span className={`px-2 py-0.5 rounded text-[10px] ${simulationMode ? 'bg-green-500/20 text-green-400' : 'bg-slate-700'}`}>{simulationMode ? 'ON' : 'OFF'}</span>
@@ -435,7 +588,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                                     className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                                                 />
                                             </div>
-                                            {(selectedGrade === '316L' || selectedGrade === '2205') && (
+                                            {(selectedGrade.includes('316') || selectedGrade === '2205' || selectedGrade === '2507' || selectedGrade === '904L') && (
                                                 <div>
                                                     <div className="flex justify-between text-xs mb-1">
                                                         <span className="text-purple-400">Moly Price Change</span>

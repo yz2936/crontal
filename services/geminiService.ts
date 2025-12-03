@@ -50,25 +50,42 @@ const getLanguageName = (lang: Language): string => {
 
 // Helper to robustly extract JSON from potentially conversational text
 const cleanJson = (text: string): string => {
-    if (!text) return "{}";
-    const cleaned = text.trim();
+    if (!text) return "";
     
     // 1. Try to find markdown code block
-    const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (codeBlockMatch) {
-        return codeBlockMatch[1];
+        text = codeBlockMatch[1];
     }
 
-    // 2. Try to find the first '{' and last '}'
-    const firstBrace = cleaned.indexOf('{');
-    const lastBrace = cleaned.lastIndexOf('}');
+    // 2. Find start of JSON (Object or Array)
+    const firstBrace = text.indexOf('{');
+    const firstBracket = text.indexOf('[');
     
-    if (firstBrace !== -1 && lastBrace !== -1) {
-        return cleaned.substring(firstBrace, lastBrace + 1);
+    let start = -1;
+    // Check which comes first
+    if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+        start = firstBracket;
+    } else if (firstBrace !== -1) {
+        start = firstBrace;
     }
 
-    // 3. Fallback to original (likely will fail if not clean)
-    return cleaned;
+    if (start === -1) return text.trim();
+
+    // 3. Find end of JSON
+    let end = -1;
+    // If it started with [, look for ]. If it started with {, look for }.
+    if (text[start] === '[') {
+        end = text.lastIndexOf(']');
+    } else {
+        end = text.lastIndexOf('}');
+    }
+
+    if (end !== -1 && end >= start) {
+        return text.substring(start, end + 1);
+    }
+
+    return text.trim();
 };
 
 // Simple regex fallback for shape if AI misses it
@@ -516,7 +533,9 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
         4. Brent Crude Oil in USD per Barrel.
 
         OUTPUT FORMAT:
-        Return ONLY a raw JSON object. Do NOT include markdown formatting, code blocks, or conversational text.
+        Return ONLY a raw JSON object. Do NOT include markdown formatting, code blocks, or conversational text. 
+        Just the JSON.
+
         Structure:
         {
           "nickel": number,
