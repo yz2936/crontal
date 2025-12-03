@@ -1,3 +1,5 @@
+
+
 import React, { useState } from 'react';
 
 interface MarketingNavbarProps {
@@ -17,6 +19,7 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({ onStart, onNav
   const navItems = [
     { label: 'About', action: () => onNavigate('ABOUT') },
     { label: 'Blog', action: () => onNavigate('BLOG') },
+    { label: 'Insights', action: () => onNavigate('INSIGHTS') },
     { label: 'Suppliers', action: () => onNavigate('SUPPLIER_LANDING') },
     { label: 'Tech', action: () => onNavigate('TECH') },
     { label: 'ROI Calc', action: () => onNavigate('ROI') },

@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useEffect } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, ViewMode, Language, User } from './types';
@@ -14,6 +16,7 @@ import SupplierLandingPage from './views/SupplierLandingPage';
 import PrivacyPolicy from './views/PrivacyPolicy';
 import TermsOfService from './views/TermsOfService';
 import BlogPage from './views/BlogPage'; 
+import IndustryInsights from './views/IndustryInsights';
 import { Layout } from './components/Layout';
 import { authService } from './services/authService';
 import { storageService } from './services/storageService';
@@ -152,6 +155,7 @@ export default function App() {
   if (view === 'PRIVACY') return <PrivacyPolicy {...navProps} />;
   if (view === 'TERMS') return <TermsOfService {...navProps} />;
   if (view === 'BLOG') return <BlogPage {...navProps} />;
+  if (view === 'INSIGHTS') return <IndustryInsights {...navProps} />;
 
   if (view === 'SUPPLIER') {
       return <SupplierView rfq={rfq} onSubmitQuote={handleQuoteSubmit} lang={lang} onExit={handleSupplierExit} />;

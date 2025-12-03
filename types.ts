@@ -101,8 +101,8 @@ export interface Dimension {
     name: string;
   }
   
-  // Removed IMAGE_EDIT from ViewMode
-  export type ViewMode = 'HOME' | 'BUYER' | 'SUPPLIER' | 'TECH' | 'ABOUT' | 'ROI' | 'SUPPLIER_LANDING' | 'QUALITY' | 'PRIVACY' | 'TERMS' | 'BLOG';
+  // Added INSIGHTS to ViewMode
+  export type ViewMode = 'HOME' | 'BUYER' | 'SUPPLIER' | 'TECH' | 'ABOUT' | 'ROI' | 'SUPPLIER_LANDING' | 'QUALITY' | 'PRIVACY' | 'TERMS' | 'BLOG' | 'INSIGHTS';
   
   export interface TourStep {
     selector: string;

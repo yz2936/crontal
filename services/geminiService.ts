@@ -1,5 +1,3 @@
-
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Rfq, LineItem, FileAttachment, Language } from "../types";
 
@@ -17,6 +15,31 @@ export interface RiskAnalysisItem {
     impact_level: 'High' | 'Medium' | 'Low';
 }
 
+export interface InsightSource {
+    title: string;
+    uri: string;
+}
+
+export interface InsightResponse {
+    content: string;
+    sources: InsightSource[];
+}
+
+export interface TrendingTopic {
+    title: string;
+    subtitle: string;
+    tag: string;
+    impact: 'High' | 'Medium' | 'Low';
+}
+
+export interface MarketDataResponse {
+    nickel: number;
+    moly: number;
+    steel: number;
+    oil: number;
+    last_updated: string;
+}
+
 const getLanguageName = (lang: Language): string => {
     switch (lang) {
         case 'zh': return "Simplified Chinese (简体中文)";
@@ -25,15 +48,26 @@ const getLanguageName = (lang: Language): string => {
     }
 };
 
-// Helper to strip markdown code blocks if present
+// Helper to robustly extract JSON from potentially conversational text
 const cleanJson = (text: string): string => {
     if (!text) return "{}";
-    let cleaned = text.trim();
-    if (cleaned.startsWith("```json")) {
-        cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    } else if (cleaned.startsWith("```")) {
-        cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    const cleaned = text.trim();
+    
+    // 1. Try to find markdown code block
+    const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+        return codeBlockMatch[1];
     }
+
+    // 2. Try to find the first '{' and last '}'
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    
+    if (firstBrace !== -1 && lastBrace !== -1) {
+        return cleaned.substring(firstBrace, lastBrace + 1);
+    }
+
+    // 3. Fallback to original (likely will fail if not clean)
     return cleaned;
 };
 
@@ -419,5 +453,164 @@ export const editImage = async (base64Image: string, mimeType: string, prompt: s
     } catch (e) {
         console.error("Image Edit Error", e);
         throw e;
+    }
+};
+
+export const getTrendingTopics = async (category: string): Promise<TrendingTopic[]> => {
+    const systemInstruction = `
+        You are an industrial news curator for the Stainless Steel, Piping, and EPC sectors.
+        
+        TASK:
+        Generate 4 relevant, hypothetical (but realistic based on current market trends) news headlines/topics for the category: "${category}".
+        These should look like actionable intelligence items for a procurement manager.
+
+        Focus areas:
+        - "Regulatory": Carbon tax, CBAM, tariffs, ASTM updates.
+        - "Supply Chain": Nickel prices, freight rates, port congestion, mill lead times.
+        - "Innovation": Green steel, hydrogen piping, new alloys.
+
+        OUTPUT: JSON Array of 4 items.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: MODEL_FAST,
+            contents: `Give me 4 trending topics for ${category}`,
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            title: { type: Type.STRING, description: "Short punchy headline" },
+                            subtitle: { type: Type.STRING, description: "One sentence context" },
+                            tag: { type: Type.STRING, description: "e.g. Price Alert, Regulation, Tech" },
+                            impact: { type: Type.STRING, enum: ['High', 'Medium', 'Low'] }
+                        }
+                    }
+                }
+            }
+        });
+        
+        const clean = cleanJson(response.text || "[]");
+        return JSON.parse(clean);
+    } catch(e) {
+        console.error("News Fetch Error", e);
+        return [
+            { title: "Market Volatility Alert", subtitle: "Unable to fetch specific news. General caution advised.", tag: "System", impact: "Low" }
+        ];
+    }
+};
+
+export const getLatestMarketData = async (): Promise<MarketDataResponse | null> => {
+    const systemInstruction = `
+        You are a financial data assistant. 
+        TASK: Search for the LATEST available market prices for the following commodities using Google Search Grounding.
+        
+        REQUIRED DATA:
+        1. LME Nickel (Cash or 3-month) in USD per Ton.
+        2. Molybdenum Oxide in USD per Pound (lb).
+        3. US HRC Steel in USD per Short Ton (ST).
+        4. Brent Crude Oil in USD per Barrel.
+
+        OUTPUT FORMAT:
+        Return ONLY a raw JSON object. Do NOT include markdown formatting, code blocks, or conversational text.
+        Structure:
+        {
+          "nickel": number,
+          "moly": number,
+          "steel": number,
+          "oil": number,
+          "last_updated": "YYYY-MM-DD"
+        }
+        
+        Use approximate recent values if live data is strictly gated, but prioritize Grounding search results.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: MODEL_FAST,
+            contents: "Get latest prices for: LME Nickel USD/Ton, Molybdenum USD/lb, US HRC Steel USD/ST, Brent Crude USD/bbl",
+            config: {
+                systemInstruction,
+                tools: [{googleSearch: {}}]
+                // Note: responseMimeType and responseSchema are NOT supported when using tools.
+            }
+        });
+
+        const clean = cleanJson(response.text || "{}");
+        return JSON.parse(clean);
+    } catch (e) {
+        console.error("Market Data Fetch Error", e);
+        return null;
+    }
+};
+
+export const generateIndustryInsights = async (category: string, query: string): Promise<InsightResponse> => {
+    const systemInstruction = `
+        You are a Senior Industrial Analyst specializing in the stainless steel, heavy piping, and EPC (Engineering, Procurement, Construction) sectors.
+        
+        YOUR TASK:
+        Provide a concise, data-driven executive summary on the following topic:
+        Category: ${category}
+        Specific Focus: ${query || "General Market Overview"}
+
+        CONTEXTUAL FOCUS:
+        - Industries: Stainless Steel, Carbon Steel, Oil & Gas Piping, Industrial Manufacturing.
+        - Regions: Global market with focus on major hubs (EU, US, Asia).
+        - Regulatory Standards: ASTM, ASME, EN, ISO.
+        - USE THE SEARCH TOOLS to find the most recent pricing, news, and regulations.
+
+        OUTPUT STRUCTURE (Markdown):
+        ## 1. Executive Summary
+        [2-3 sentences summarizing the situation]
+
+        ## 2. Key Developments
+        - [Point 1: Recent price moves, supply shocks, or new regulations like CBAM/Section 232]
+        - [Point 2: Technology shifts or major project announcements]
+
+        ## 3. Market Impact
+        - **Pricing:** [Rising/Falling/Stable]
+        - **Lead Times:** [Increasing/Decreasing]
+        
+        ## 4. Strategic Advice for Procurement Managers
+        [Actionable bullet points on when to buy, stock up, or diversify suppliers]
+
+        TONE:
+        Professional, objective, forward-looking. Avoid generic fluff.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Generate insights for: ${query} in category: ${category}`,
+            config: { 
+                systemInstruction,
+                tools: [{googleSearch: {}}]
+            }
+        });
+
+        const text = response.text || "Unable to generate insights at this time.";
+        
+        // Extract Grounding Sources
+        const sources: InsightSource[] = [];
+        const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        
+        chunks.forEach((chunk: any) => {
+            if (chunk.web?.uri && chunk.web?.title) {
+                sources.push({
+                    title: chunk.web.title,
+                    uri: chunk.web.uri
+                });
+            }
+        });
+
+        return { content: text, sources };
+
+    } catch (e) {
+        console.error("Industry Insights Error", e);
+        return { content: "Service unavailable. Please try again later.", sources: [] };
     }
 };

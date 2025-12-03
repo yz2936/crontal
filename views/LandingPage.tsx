@@ -19,7 +19,13 @@ interface LandingPageProps {
   lang: Language;
 }
 
-const ShimmerButton = ({ children, onClick, className = "" }: { children: React.ReactNode, onClick: () => void, className?: string }) => {
+interface ShimmerButtonProps {
+    children: React.ReactNode;
+    onClick: () => void;
+    className?: string;
+}
+
+const ShimmerButton: React.FC<ShimmerButtonProps> = ({ children, onClick, className = "" }) => {
     return (
         <button
             onClick={onClick}
@@ -31,6 +37,38 @@ const ShimmerButton = ({ children, onClick, className = "" }: { children: React.
     );
 };
 
+const standards = [
+    { name: "ASTM", desc: "International", iconPath: "M12 2L2 7l10 5 10-5-10-5zm0 9l2-5 2 5-4 0zm-4.27 1.71L12 17l4.27-4.29L22 22H2l5.73-9.29z" },
+    { name: "ASME", desc: "Mechanical", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" },
+    { name: "API", desc: "Petroleum", iconPath: "M12 2L2 22h20L12 2zm0 3.5L18.5 20h-13L12 5.5z" },
+    { name: "ISO", desc: "Standardization", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" },
+    { name: "NACE", desc: "Corrosion", iconPath: "M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" },
+    { name: "DIN", desc: "Deutsches", iconPath: "M3 3h18v18H3V3zm2 2v14h14V5H5z" },
+    { name: "ANSI", desc: "National", iconPath: "M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" },
+    { name: "IEEE", desc: "Electrical", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-4-8h8" },
+    { name: "AWS", desc: "Welding", iconPath: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+    { name: "JIS", desc: "Japanese", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" },
+    { name: "BSI", desc: "British", iconPath: "M12 2l-5.5 9h11L12 2zm0 3.8L14.2 9H9.8L12 5.8zM5 20l5.5-9h-11L5 20z" },
+    { name: "CSA", desc: "Canadian", iconPath: "M12 2L2 19h20L12 2z" },
+    { name: "EN", desc: "European", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z M12 6l1.5 4.5h4.5L14.5 13l1.5 4.5-4-3-4 3 1.5-4.5L5.5 10.5h4.5z" }
+];
+
+interface StandardItemProps {
+    s: typeof standards[0];
+}
+
+const StandardItem: React.FC<StandardItemProps> = ({ s }) => (
+    <div className="flex items-center gap-3 px-2 group cursor-default">
+        <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 group-hover:text-slate-600 group-hover:border-slate-300 transition-all">
+             <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d={s.iconPath} /></svg>
+        </div>
+        <div className="flex flex-col text-left">
+            <span className="font-bold text-sm text-slate-700 group-hover:text-slate-900 transition-colors">{s.name}</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{s.desc}</span>
+        </div>
+    </div>
+);
+
 export default function LandingPage(props: LandingPageProps) {
   const [activeExample, setActiveExample] = useState<'email' | 'drawing'>('email');
 
@@ -40,7 +78,7 @@ export default function LandingPage(props: LandingPageProps) {
       <MarketingNavbar onStart={props.onStart} onNavigate={props.onNavigate} />
 
       {/* --- Section 1: Hero --- */}
-      <section className="relative pt-16 pb-32 px-6 max-w-7xl mx-auto overflow-hidden">
+      <section className="relative pt-16 pb-20 px-6 max-w-7xl mx-auto overflow-hidden">
          {/* Background Elements */}
         <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-gradient-to-bl from-brandOrange/10 to-transparent rounded-full blur-[100px] -z-10 translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
 
@@ -77,13 +115,35 @@ export default function LandingPage(props: LandingPageProps) {
         </div>
 
         {/* Hero Visual - Auto Demo */}
-        <div className="animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200">
+        <div className="animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200 mb-12">
             <AutoDemo />
         </div>
       </section>
 
+      {/* --- Standards Ticker --- */}
+      <section className="py-8 bg-slate-50 border-y border-slate-100 overflow-hidden relative">
+          <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-6">
+              Engineered for compliance with global standards
+          </p>
+          <div className="relative flex overflow-x-hidden">
+             <div className="animate-scroll whitespace-nowrap flex gap-12 px-8 items-center">
+                  {/* First Set */}
+                  {standards.map((std, i) => (
+                      <StandardItem key={`s1-${i}`} s={std} />
+                  ))}
+                   {/* Second Set for Loop */}
+                   {standards.map((std, i) => (
+                      <StandardItem key={`s2-${i}`} s={std} />
+                  ))}
+             </div>
+             {/* Fade Gradients */}
+             <div className="absolute top-0 left-0 w-24 h-full bg-gradient-to-r from-slate-50 to-transparent z-10 pointer-events-none"></div>
+             <div className="absolute top-0 right-0 w-24 h-full bg-gradient-to-l from-slate-50 to-transparent z-10 pointer-events-none"></div>
+          </div>
+      </section>
+
       {/* --- Section 2: Concrete Examples (Transformation) --- */}
-      <section className="py-24 bg-slate-50 border-y border-slate-200">
+      <section className="py-24 bg-white border-b border-slate-200">
           <div className="max-w-7xl mx-auto px-6">
               <div className="text-center mb-16">
                   <h2 className="text-3xl font-bold text-slate-900 mb-4">See The Transformation</h2>
