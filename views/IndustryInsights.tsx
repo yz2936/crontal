@@ -23,42 +23,18 @@ type TimeRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y';
 
 // Initial Mock Data (Fallback / Placeholder)
 const INITIAL_MARKET_DATA: Record<string, MarketDataPoint> = {
-    'NICKEL': {
-        name: 'Nickel (LME)',
-        symbol: 'Ni',
-        unit: 'USD/T',
-        price: 0,
-        basePrice: 0,
-        trend: 'flat',
-        history: [] 
-    },
-    'MOLY': {
-        name: 'Molybdenum',
-        symbol: 'Mo',
-        unit: 'USD/lb',
-        price: 0,
-        basePrice: 0,
-        trend: 'flat',
-        history: []
-    },
-    'STEEL': {
-        name: 'HRC Steel (US)',
-        symbol: 'Fe',
-        unit: 'USD/ST',
-        price: 0,
-        basePrice: 0,
-        trend: 'flat',
-        history: []
-    },
-    'OIL': {
-        name: 'Brent Crude',
-        symbol: 'Oil',
-        unit: 'USD/bbl',
-        price: 0,
-        basePrice: 0,
-        trend: 'flat',
-        history: []
-    }
+    // Stainless Inputs
+    'NICKEL': { name: 'Nickel (LME)', symbol: 'Ni', unit: 'USD/T', price: 0, basePrice: 0, trend: 'flat', history: [] },
+    'MOLY': { name: 'Molybdenum', symbol: 'Mo', unit: 'USD/lb', price: 0, basePrice: 0, trend: 'flat', history: [] },
+    'CHROME': { name: 'Ferrochrome', symbol: 'Cr', unit: 'USD/lb', price: 0, basePrice: 0, trend: 'flat', history: [] },
+    'STEEL': { name: 'HRC Steel (US)', symbol: 'Fe', unit: 'USD/ST', price: 0, basePrice: 0, trend: 'flat', history: [] },
+    'OIL': { name: 'Brent Crude', symbol: 'Oil', unit: 'USD/bbl', price: 0, basePrice: 0, trend: 'flat', history: [] },
+    // LME Base Metals
+    'COPPER': { name: 'Copper (LME)', symbol: 'Cu', unit: 'USD/T', price: 0, basePrice: 0, trend: 'flat', history: [] },
+    'ALUMINUM': { name: 'Aluminum (LME)', symbol: 'Al', unit: 'USD/T', price: 0, basePrice: 0, trend: 'flat', history: [] },
+    'ZINC': { name: 'Zinc (LME)', symbol: 'Zn', unit: 'USD/T', price: 0, basePrice: 0, trend: 'flat', history: [] },
+    'LEAD': { name: 'Lead (LME)', symbol: 'Pb', unit: 'USD/T', price: 0, basePrice: 0, trend: 'flat', history: [] },
+    'TIN': { name: 'Tin (LME)', symbol: 'Sn', unit: 'USD/T', price: 0, basePrice: 0, trend: 'flat', history: [] },
 };
 
 type GradeOption = '304' | '304L' | '316' | '316L' | '321' | '2205' | '2507' | '904L' | 'Alloy 20';
@@ -72,6 +48,8 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
     const [lastUpdated, setLastUpdated] = useState<string>('Connecting...');
     const [firstLoadComplete, setFirstLoadComplete] = useState(false);
     const [isChartUpdating, setIsChartUpdating] = useState(false);
+    const [chartCategory, setChartCategory] = useState<'Stainless' | 'LME'>('Stainless');
+    const [isFallbackMode, setIsFallbackMode] = useState(false);
     
     // --- CHART INTERACTION STATE ---
     const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -82,6 +60,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
     const [simulationMode, setSimulationMode] = useState(false);
     const [simulatedNiChange, setSimulatedNiChange] = useState(0); // Percentage
     const [simulatedMoChange, setSimulatedMoChange] = useState(0); // Percentage
+    const [simulatedCrChange, setSimulatedCrChange] = useState(0); // Percentage
 
     // --- FEED STATE ---
     const [query, setQuery] = useState('');
@@ -120,63 +99,103 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
     };
 
     // --- FETCH REAL MARKET DATA ON MOUNT AND INTERVAL ---
+    // Ref to hold the current range so the fetch interval callback can access it without re-triggering the effect
+    const activeRangeRef = useRef(activeRange);
     useEffect(() => {
-        const fetchRealPrices = async () => {
-            // Only show chart loading state if it's the first load or an explicit range change
-            // Background interval updates should be silent
-            if (!firstLoadComplete) {
-                setIsChartUpdating(true);
-            }
+        activeRangeRef.current = activeRange;
+    }, [activeRange]);
 
-            try {
-                const data = await getLatestMarketData();
-                if (data) {
-                    setMarketData(prev => {
-                        const update = (key: string, realPrice: number) => {
-                            const existing = prev[key];
-                            
-                            // Always regenerate history to match the new real price and current range
-                            const newHistory = generateHistoryData(realPrice, activeRange);
+    const fetchRealPrices = async () => {
+        if (!firstLoadComplete) setIsChartUpdating(true);
 
-                            const startPrice = newHistory[0];
-                            let trend: 'up' | 'down' | 'flat' = 'flat';
-                            if (realPrice > startPrice) trend = 'up';
-                            else if (realPrice < startPrice) trend = 'down';
+        try {
+            const data = await getLatestMarketData();
+            if (data) {
+                // Check if we are in fallback mode
+                setIsFallbackMode(!!data.isFallback);
 
-                            return {
-                                ...existing,
-                                price: realPrice,
-                                basePrice: realPrice, 
-                                trend: trend,
-                                history: newHistory
-                            };
-                        };
+                setMarketData(prev => {
+                    const update = (key: string, realPrice: number) => {
+                        const existing = prev[key];
+                        // Use the ref to get the current range for history generation
+                        const newHistory = generateHistoryData(realPrice, activeRangeRef.current);
+
+                        const startPrice = newHistory[0];
+                        let trend: 'up' | 'down' | 'flat' = 'flat';
+                        if (realPrice > startPrice) trend = 'up';
+                        else if (realPrice < startPrice) trend = 'down';
 
                         return {
-                            'NICKEL': update('NICKEL', data.nickel),
-                            'MOLY': update('MOLY', data.moly),
-                            'STEEL': update('STEEL', data.steel),
-                            'OIL': update('OIL', data.oil)
+                            ...existing,
+                            price: realPrice,
+                            basePrice: realPrice, 
+                            trend: trend,
+                            history: newHistory
                         };
-                    });
-                    setLastUpdated(new Date().toLocaleTimeString());
-                    setFirstLoadComplete(true);
-                    setIsFetchingPrices(false);
-                }
-            } catch (e) {
-                console.error("Failed to update market data", e);
-                setIsFetchingPrices(false); 
-            } finally {
-                setIsChartUpdating(false);
+                    };
+
+                    return {
+                        'NICKEL': update('NICKEL', data.nickel),
+                        'MOLY': update('MOLY', data.moly),
+                        'CHROME': update('CHROME', data.chrome),
+                        'STEEL': update('STEEL', data.steel),
+                        'OIL': update('OIL', data.oil),
+                        'COPPER': update('COPPER', data.copper),
+                        'ALUMINUM': update('ALUMINUM', data.aluminum),
+                        'ZINC': update('ZINC', data.zinc),
+                        'LEAD': update('LEAD', data.lead),
+                        'TIN': update('TIN', data.tin)
+                    };
+                });
+                setLastUpdated(new Date().toLocaleTimeString());
+                setFirstLoadComplete(true);
             }
-        };
+        } catch (e) {
+            console.error("Failed to update market data", e);
+        } finally {
+            setIsFetchingPrices(false);
+            setIsChartUpdating(false);
+        }
+    };
 
-        // When activeRange changes, we trigger a fetch to regenerate history
+    // 1. Effect for Initial Load + Interval Fetching (Decoupled from Range)
+    useEffect(() => {
         fetchRealPrices();
-
-        const interval = setInterval(fetchRealPrices, 60000); // 1 min update
+        const interval = setInterval(fetchRealPrices, 300000); // 5 min update (Avoid 429 Errors)
         return () => clearInterval(interval);
-    }, [activeRange]); 
+    }, []); 
+
+    // 2. Effect for Range Change (Local Update Only)
+    // When range changes, we regenerate history from the EXISTING prices in state, no API call.
+    useEffect(() => {
+        if (!firstLoadComplete) return;
+        
+        setIsChartUpdating(true);
+        // Simulate a brief calculation delay for UX
+        const timer = setTimeout(() => {
+            setMarketData(prev => {
+                const newData = { ...prev };
+                Object.keys(newData).forEach(key => {
+                    const item = newData[key];
+                    // Regenerate history based on the new range using the stored price
+                    const newHistory = generateHistoryData(item.price, activeRange);
+                    const startPrice = newHistory[0];
+                    let trend: 'up' | 'down' | 'flat' = 'flat';
+                    if (item.price > startPrice) trend = 'up';
+                    else if (item.price < startPrice) trend = 'down';
+
+                    newData[key] = {
+                        ...item,
+                        history: newHistory,
+                        trend: trend
+                    };
+                });
+                return newData;
+            });
+            setIsChartUpdating(false);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [activeRange]);
 
     // --- AI FETCHING LOGIC ---
     const categories = [
@@ -231,59 +250,80 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
     const getSurchargeData = () => {
         const currentPriceNi = marketData['NICKEL'].price || 16000; 
         const currentPriceMo = marketData['MOLY'].price || 40;
+        const currentPriceCr = marketData['CHROME'].price || 1.5;
+        const currentPriceCu = marketData['COPPER'].price || 9000;
+        const currentPriceSteel = marketData['STEEL'].price || 800; // USD/ST
 
-        const niPrice = currentPriceNi * (1 + (simulationMode ? simulatedNiChange / 100 : 0));
-        const moPriceLb = currentPriceMo * (1 + (simulationMode ? simulatedMoChange / 100 : 0));
-        const moPriceT = moPriceLb * 2204.62;
+        // Normalize prices to USD/Ton for calculation consistency
+        // Nickel: Already USD/T
+        // Copper: Already USD/T
+        // Moly: USD/lb -> USD/T (approx * 2204.62)
+        // Chrome: USD/lb -> USD/T (approx * 2204.62)
+        // Steel (HRC): USD/ST -> USD/T (Short Ton = 2000lb, Metric Ton = 2204lb) -> Price * 1.102
 
-        let niContent = 0;
-        let moContent = 0;
-        let baseCost = 800; 
+        const normNi = currentPriceNi;
+        const normMo = currentPriceMo * 2204.62;
+        const normCr = currentPriceCr * 2204.62;
+        const normCu = currentPriceCu;
+        const normSteel = currentPriceSteel * 1.1023; // Convert Short Ton to Metric Ton
+
+        // Apply Simulation Factors
+        const finalNi = normNi * (1 + (simulationMode ? simulatedNiChange / 100 : 0));
+        const finalMo = normMo * (1 + (simulationMode ? simulatedMoChange / 100 : 0));
+        const finalCr = normCr * (1 + (simulationMode ? simulatedCrChange / 100 : 0));
+        const finalCu = normCu; // No simulation for Cu yet
+        const finalSteel = normSteel; // No simulation for Steel yet
+
+        let niPct = 0;
+        let moPct = 0;
+        let crPct = 0;
+        let cuPct = 0;
+        let fePct = 0;
+        let fabBase = 600; // Manufacturing Base Cost adder
 
         switch (selectedGrade) {
             case '304':
             case '304L':
-                niContent = 0.08;
-                moContent = 0;
+                niPct = 0.08; crPct = 0.18; fePct = 0.74;
                 break;
             case '316':
             case '316L':
-                niContent = 0.10;
-                moContent = 0.02;
-                baseCost = 850;
+                niPct = 0.10; crPct = 0.16; moPct = 0.02; fePct = 0.72;
+                fabBase = 700;
                 break;
             case '321':
-                niContent = 0.09;
-                moContent = 0;
-                baseCost = 900;
+                niPct = 0.09; crPct = 0.18; fePct = 0.73;
+                fabBase = 750;
                 break;
             case '2205': // Duplex
-                niContent = 0.055;
-                moContent = 0.03;
-                baseCost = 1200;
+                niPct = 0.055; crPct = 0.22; moPct = 0.03; fePct = 0.695;
+                fabBase = 1100;
                 break;
             case '2507': // Super Duplex
-                niContent = 0.07;
-                moContent = 0.04;
-                baseCost = 1400;
+                niPct = 0.07; crPct = 0.25; moPct = 0.04; fePct = 0.64;
+                fabBase = 1300;
                 break;
             case '904L': // High Alloy
-                niContent = 0.25;
-                moContent = 0.045;
-                baseCost = 1500;
+                niPct = 0.25; crPct = 0.20; moPct = 0.045; cuPct = 0.015; fePct = 0.49;
+                fabBase = 1500;
                 break;
             case 'Alloy 20':
-                niContent = 0.33;
-                moContent = 0.025;
-                baseCost = 1600;
+                niPct = 0.35; crPct = 0.20; moPct = 0.025; cuPct = 0.035; fePct = 0.39;
+                fabBase = 1600;
                 break;
         }
 
-        const niCost = niPrice * niContent;
-        const moCost = moPriceT * moContent;
-        const total = baseCost + niCost + moCost;
+        const costNi = finalNi * niPct;
+        const costMo = finalMo * moPct;
+        const costCr = finalCr * crPct;
+        const costCu = finalCu * cuPct;
+        const costFe = finalSteel * fePct;
 
-        return { niCost, moCost, baseCost, total };
+        const total = fabBase + costNi + costMo + costCr + costCu + costFe;
+
+        return { 
+            costNi, costMo, costCr, costCu, costFe, fabBase, total 
+        };
     };
 
     const surcharge = getSurchargeData();
@@ -336,6 +376,13 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
     const activePoint = getCoordinates(activeIndex);
     const activeValue = data[activeIndex];
 
+    // --- RENDER HELPERS ---
+    const chartTabs = chartCategory === 'Stainless' 
+        ? ['NICKEL', 'MOLY', 'CHROME', 'STEEL', 'OIL'] 
+        : ['COPPER', 'ALUMINUM', 'ZINC', 'LEAD', 'TIN'];
+
+    const lmeIndices = ['COPPER', 'ALUMINUM', 'ZINC', 'LEAD', 'TIN'];
+
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
             <MarketingNavbar onStart={onBack} onNavigate={onNavigate} />
@@ -347,16 +394,42 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                     {/* Header & Tabs */}
                     <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                         <div>
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-blue-400 text-[10px] font-bold uppercase tracking-wider mb-2">
-                                <span className={`w-2 h-2 rounded-full ${!firstLoadComplete ? 'bg-amber-400 animate-pulse' : 'bg-green-500'}`}></span>
-                                {!firstLoadComplete ? 'Initializing Stream...' : 'Market Data Active'}
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider mb-2 ${
+                                !firstLoadComplete ? 'bg-slate-800 border-slate-700 text-blue-400' :
+                                isFallbackMode ? 'bg-amber-900/30 border-amber-800 text-amber-400' : 
+                                'bg-green-900/30 border-green-800 text-green-400'
+                            }`}>
+                                <span className={`w-2 h-2 rounded-full ${!firstLoadComplete ? 'bg-blue-400 animate-pulse' : isFallbackMode ? 'bg-amber-500' : 'bg-green-500'}`}></span>
+                                {!firstLoadComplete ? 'Initializing Stream...' : isFallbackMode ? 'Cached Data (Quota Limit)' : 'Live Market Connection'}
                             </div>
-                            <h1 className="text-3xl font-bold tracking-tight">Raw Material Markets</h1>
+                            <h1 className="text-3xl font-bold tracking-tight">Commodity Markets</h1>
                         </div>
                         <div className="flex flex-col items-end gap-2">
-                            <div className="text-[10px] text-slate-500 uppercase tracking-wide">Last Updated: {lastUpdated}</div>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500 uppercase tracking-wide">
+                                <span>Last Updated: {lastUpdated}</span>
+                                <button onClick={() => fetchRealPrices()} className="text-brandOrange hover:text-white" title="Refresh Now">
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                </button>
+                            </div>
+                            
+                            {/* Category Switcher */}
+                            <div className="flex gap-2 mb-2">
+                                <button 
+                                    onClick={() => { setChartCategory('Stainless'); setActiveCommodity('NICKEL'); }}
+                                    className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${chartCategory === 'Stainless' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                >
+                                    Stainless Inputs
+                                </button>
+                                <button 
+                                    onClick={() => { setChartCategory('LME'); setActiveCommodity('COPPER'); }}
+                                    className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${chartCategory === 'LME' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                >
+                                    LME Base Metals
+                                </button>
+                            </div>
+
                             <div className="flex gap-2 bg-slate-800 p-1 rounded-xl">
-                                {Object.keys(marketData).map((key) => (
+                                {chartTabs.map((key) => (
                                     <button
                                         key={key}
                                         onClick={() => setActiveCommodity(key)}
@@ -391,7 +464,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                                 key={range}
                                                 onClick={() => {
                                                     setActiveRange(range);
-                                                    setIsChartUpdating(true); // Trigger loading state for feedback
+                                                    // Note: We do NOT trigger fetchRealPrices() here anymore to save API calls
                                                 }}
                                                 className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${activeRange === range ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                                             >
@@ -478,7 +551,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                             <div className="bg-slate-900/95 border border-slate-700 px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 animate-in zoom-in-95 duration-200">
                                                 <span className="w-5 h-5 border-2 border-brandOrange/30 border-t-brandOrange rounded-full animate-spin"></span>
                                                 <span className="text-xs font-bold text-white tracking-wide uppercase">
-                                                    {firstLoadComplete ? 'Updating Data...' : 'Verifying Live Data...'}
+                                                    {firstLoadComplete ? 'Updating Chart View...' : 'Verifying Live Data...'}
                                                 </span>
                                             </div>
                                         </div>
@@ -486,7 +559,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                 </div>
                             </div>
 
-                            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+                            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
                             
                             <div className="absolute bottom-6 right-6 z-20 pointer-events-none">
                                 <div 
@@ -552,14 +625,20 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                     
                                     {/* Cost Drivers Visualization */}
                                     <div className="flex h-2 rounded-full overflow-hidden bg-slate-800 w-full mb-2">
-                                        <div style={{ width: `${(surcharge.baseCost / surcharge.total) * 100}%` }} className="bg-slate-600" title="Base Mfg"></div>
-                                        <div style={{ width: `${(surcharge.niCost / surcharge.total) * 100}%` }} className="bg-blue-500" title="Nickel Surcharge"></div>
-                                        {surcharge.moCost > 0 && <div style={{ width: `${(surcharge.moCost / surcharge.total) * 100}%` }} className="bg-purple-500" title="Moly Surcharge"></div>}
+                                        <div style={{ width: `${(surcharge.fabBase / surcharge.total) * 100}%` }} className="bg-slate-600" title="Fab Base"></div>
+                                        <div style={{ width: `${(surcharge.costFe / surcharge.total) * 100}%` }} className="bg-slate-500" title="Steel Base"></div>
+                                        <div style={{ width: `${(surcharge.costCr / surcharge.total) * 100}%` }} className="bg-green-500" title="Chrome"></div>
+                                        <div style={{ width: `${(surcharge.costNi / surcharge.total) * 100}%` }} className="bg-blue-500" title="Nickel"></div>
+                                        {surcharge.costMo > 0 && <div style={{ width: `${(surcharge.costMo / surcharge.total) * 100}%` }} className="bg-purple-500" title="Moly"></div>}
+                                        {surcharge.costCu > 0 && <div style={{ width: `${(surcharge.costCu / surcharge.total) * 100}%` }} className="bg-orange-500" title="Copper"></div>}
                                     </div>
-                                    <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-600"></span>Base</span>
-                                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>Ni: ${surcharge.niCost.toFixed(0)}</span>
-                                        {surcharge.moCost > 0 && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>Mo: ${surcharge.moCost.toFixed(0)}</span>}
+                                    <div className="flex flex-wrap gap-2 text-[10px] text-slate-400 font-mono">
+                                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-600"></span>Fab</span>
+                                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>Fe</span>
+                                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>Cr</span>
+                                        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>Ni</span>
+                                        {surcharge.costMo > 0 && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>Mo</span>}
+                                        {surcharge.costCu > 0 && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Cu</span>}
                                     </div>
                                 </div>
 
@@ -575,10 +654,11 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                     </button>
 
                                     {simulationMode && (
-                                        <div className="space-y-4 animate-in slide-in-from-top-2">
+                                        <div className="space-y-3 animate-in slide-in-from-top-2">
+                                            {/* Nickel Slider */}
                                             <div>
                                                 <div className="flex justify-between text-xs mb-1">
-                                                    <span className="text-blue-400">Nickel Price Change</span>
+                                                    <span className="text-blue-400">Nickel Price</span>
                                                     <span className="text-white font-mono">{simulatedNiChange > 0 ? '+' : ''}{simulatedNiChange}%</span>
                                                 </div>
                                                 <input 
@@ -588,10 +668,26 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                                     className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                                                 />
                                             </div>
-                                            {(selectedGrade.includes('316') || selectedGrade === '2205' || selectedGrade === '2507' || selectedGrade === '904L') && (
+
+                                            {/* Chrome Slider */}
+                                            <div>
+                                                <div className="flex justify-between text-xs mb-1">
+                                                    <span className="text-green-400">Chrome Price</span>
+                                                    <span className="text-white font-mono">{simulatedCrChange > 0 ? '+' : ''}{simulatedCrChange}%</span>
+                                                </div>
+                                                <input 
+                                                    type="range" min="-50" max="50" step="5"
+                                                    value={simulatedCrChange}
+                                                    onChange={(e) => setSimulatedCrChange(Number(e.target.value))}
+                                                    className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                                                />
+                                            </div>
+
+                                            {/* Moly Slider (Conditional) */}
+                                            {(surcharge.costMo > 0) && (
                                                 <div>
                                                     <div className="flex justify-between text-xs mb-1">
-                                                        <span className="text-purple-400">Moly Price Change</span>
+                                                        <span className="text-purple-400">Moly Price</span>
                                                         <span className="text-white font-mono">{simulatedMoChange > 0 ? '+' : ''}{simulatedMoChange}%</span>
                                                     </div>
                                                     <input 
@@ -602,8 +698,9 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                                     />
                                                 </div>
                                             )}
+                                            
                                             <div className="text-[10px] text-slate-500 italic text-center mt-2">
-                                                *Estimates only. Base fabrication costs assumed constant.
+                                                *Interactive impact on final goods price
                                             </div>
                                         </div>
                                     )}
@@ -613,14 +710,35 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                         </div>
 
                     </div>
+                </div>
+            </div>
 
-                    {/* Ticker Below */}
-                    <div className="mt-6 flex gap-8 overflow-hidden whitespace-nowrap text-xs text-slate-500 font-mono">
-                         {['LME Copper: $8,500 (+1.2%)', 'LME Aluminum: $2,200 (-0.4%)', 'Baltic Dry Index: 1,500 (+2.1%)', 'EUR/USD: 1.08 (-0.1%)', 'Nat Gas: $2.80 (+4.0%)'].map((tick, i) => (
-                             <span key={i} className="inline-block opacity-70">{tick}</span>
-                         ))}
+            {/* --- NEW SECTION: GLOBAL INDICES (LME SNAPSHOT) --- */}
+            <div className="bg-slate-900 border-t border-slate-800 py-6">
+                <div className="max-w-7xl mx-auto px-6">
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Global Metal Indices (LME)</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        {lmeIndices.map(key => {
+                            const data = marketData[key];
+                            const trendColor = data.trend === 'up' ? 'text-green-400' : data.trend === 'down' ? 'text-red-400' : 'text-slate-400';
+                            return (
+                                <button 
+                                    key={key}
+                                    onClick={() => { setChartCategory('LME'); setActiveCommodity(key); window.scrollTo({top: 0, behavior: 'smooth'}); }}
+                                    className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-xl p-4 transition-all text-left"
+                                >
+                                    <div className="text-xs text-slate-400 font-bold mb-1">{data.name.split(' (')[0]}</div>
+                                    <div className="text-lg font-mono font-bold text-white mb-1">
+                                        {!firstLoadComplete ? '----' : data.price.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                    </div>
+                                    <div className={`text-[10px] font-bold ${trendColor}`}>
+                                        {data.trend === 'up' ? '▲' : data.trend === 'down' ? '▼' : '—'} 
+                                        {data.history.length > 0 ? Math.abs((data.price - data.history[0]) / data.history[0] * 100).toFixed(1) : '0.0'}%
+                                    </div>
+                                </button>
+                            );
+                        })}
                     </div>
-
                 </div>
             </div>
 

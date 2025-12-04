@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Rfq, LineItem, FileAttachment, Language } from "../types";
 
@@ -35,9 +36,16 @@ export interface TrendingTopic {
 export interface MarketDataResponse {
     nickel: number;
     moly: number;
+    chrome: number; // Added Ferrochrome
     steel: number;
     oil: number;
+    copper: number;
+    aluminum: number;
+    zinc: number;
+    lead: number;
+    tin: number;
     last_updated: string;
+    isFallback?: boolean; // New flag to indicate quota limits
 }
 
 const getLanguageName = (lang: Language): string => {
@@ -526,11 +534,19 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
         You are a financial data assistant. 
         TASK: Search for the LATEST available market prices for the following commodities using Google Search Grounding.
         
-        REQUIRED DATA:
+        REQUIRED DATA (Stainless Inputs):
         1. LME Nickel (Cash or 3-month) in USD per Ton.
         2. Molybdenum Oxide in USD per Pound (lb).
-        3. US HRC Steel in USD per Short Ton (ST).
-        4. Brent Crude Oil in USD per Barrel.
+        3. Ferrochrome (High Carbon) in USD per Pound (lb).
+        4. US HRC Steel in USD per Short Ton (ST).
+        5. Brent Crude Oil in USD per Barrel.
+
+        REQUIRED DATA (LME Base Metals):
+        6. LME Copper in USD per Ton.
+        7. LME Aluminum in USD per Ton.
+        8. LME Zinc in USD per Ton.
+        9. LME Lead in USD per Ton.
+        10. LME Tin in USD per Ton.
 
         OUTPUT FORMAT:
         Return ONLY a raw JSON object. Do NOT include markdown formatting, code blocks, or conversational text. 
@@ -540,8 +556,14 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
         {
           "nickel": number,
           "moly": number,
+          "chrome": number,
           "steel": number,
           "oil": number,
+          "copper": number,
+          "aluminum": number,
+          "zinc": number,
+          "lead": number,
+          "tin": number,
           "last_updated": "YYYY-MM-DD"
         }
         
@@ -551,7 +573,7 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
     try {
         const response = await ai.models.generateContent({
             model: MODEL_FAST,
-            contents: "Get latest prices for: LME Nickel USD/Ton, Molybdenum USD/lb, US HRC Steel USD/ST, Brent Crude USD/bbl",
+            contents: "Get latest prices for: LME Nickel USD/Ton, Molybdenum USD/lb, Ferrochrome USD/lb, US HRC Steel USD/ST, Brent Crude USD/bbl, LME Copper, LME Aluminum, LME Zinc, LME Lead, LME Tin",
             config: {
                 systemInstruction,
                 tools: [{googleSearch: {}}]
@@ -560,10 +582,18 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
         });
 
         const clean = cleanJson(response.text || "{}");
-        return JSON.parse(clean);
+        const data = JSON.parse(clean);
+        data.isFallback = false;
+        return data;
     } catch (e) {
         console.error("Market Data Fetch Error", e);
-        return null;
+        // Fallback data if rate limited or failed
+        return {
+            nickel: 16200, moly: 42, chrome: 1.45, steel: 820, oil: 78,
+            copper: 8900, aluminum: 2200, zinc: 2400, lead: 2100, tin: 26000,
+            last_updated: new Date().toISOString(),
+            isFallback: true
+        };
     }
 };
 
