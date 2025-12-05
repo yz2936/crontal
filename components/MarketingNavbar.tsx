@@ -1,14 +1,16 @@
 
-
 import React, { useState } from 'react';
+import { Language } from '../types';
 
 interface MarketingNavbarProps {
   onStart: () => void;
   onNavigate: (page: string) => void;
   darkMode?: boolean;
+  lang?: Language;
+  setLang?: (lang: Language) => void;
 }
 
-export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({ onStart, onNavigate, darkMode = false }) => {
+export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({ onStart, onNavigate, darkMode = false, lang = 'en', setLang }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const textClass = darkMode ? 'text-white hover:text-blue-400' : 'text-slate-500 hover:text-brandOrange';
@@ -21,7 +23,6 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({ onStart, onNav
     { label: 'Blog', action: () => onNavigate('BLOG') },
     { label: 'Insights', action: () => onNavigate('INSIGHTS') },
     { label: 'Suppliers', action: () => onNavigate('SUPPLIER_LANDING') },
-    { label: 'Tech', action: () => onNavigate('TECH') },
     { label: 'ROI Calc', action: () => onNavigate('ROI') },
   ];
 
@@ -44,7 +45,7 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({ onStart, onNav
           </div>
 
           {/* Desktop Nav */}
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden md:flex items-center gap-6">
             {navItems.map((item) => (
               <button
                 key={item.label}
@@ -54,7 +55,23 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({ onStart, onNav
                 {item.label}
               </button>
             ))}
-            <div className="h-4 w-px bg-slate-200/50 mx-2"></div>
+            
+            {/* Language Selector */}
+            {setLang && (
+                <div className="flex items-center bg-slate-100/10 rounded-lg p-1 border border-slate-200/20">
+                    <select 
+                        value={lang}
+                        onChange={(e) => setLang(e.target.value as Language)}
+                        className={`bg-transparent text-[10px] font-bold uppercase outline-none cursor-pointer ${darkMode ? 'text-white' : 'text-slate-600'}`}
+                    >
+                        <option value="en" className="text-slate-900">EN</option>
+                        <option value="es" className="text-slate-900">ES</option>
+                        <option value="zh" className="text-slate-900">ZH</option>
+                    </select>
+                </div>
+            )}
+
+            <div className="h-4 w-px bg-slate-200/50 mx-1"></div>
              <button onClick={onStart} className={`text-xs font-bold uppercase tracking-widest transition-colors ${textClass}`}>Login</button>
             <button
               onClick={onStart}

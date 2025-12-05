@@ -2,55 +2,59 @@
 import React from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
+import { Language } from '../types';
+import { t } from '../utils/i18n';
 
 interface SupplierLandingPageProps {
   onBack: () => void;
   onStartDemo: () => void;
   onNavigate: (page: string) => void;
+  lang: Language;
+  setLang: (lang: Language) => void;
 }
 
-export default function SupplierLandingPage({ onBack, onStartDemo, onNavigate }: SupplierLandingPageProps) {
+export default function SupplierLandingPage({ onBack, onStartDemo, onNavigate, lang, setLang }: SupplierLandingPageProps) {
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans flex flex-col">
-      <MarketingNavbar onStart={onStartDemo} onNavigate={onNavigate} />
+      <MarketingNavbar onStart={onStartDemo} onNavigate={onNavigate} lang={lang} setLang={setLang} />
 
       {/* Hero */}
       <div className="flex-1 max-w-7xl mx-auto px-6 py-20 lg:py-28">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
               <div>
                   <div className="inline-block px-3 py-1 rounded-full bg-green-50 text-green-600 text-xs font-bold uppercase tracking-wider mb-6">
-                      Zero Friction
+                      {t(lang, 'sl_tag')}
                   </div>
                   <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight text-slate-900">
-                      Stop Struggling With <br/>
-                      <span className="text-brandOrange">Clunky Portals.</span>
+                      {t(lang, 'sl_title')} <br/>
+                      <span className="text-brandOrange">{t(lang, 'sl_title_accent')}</span>
                   </h1>
                   <p className="text-xl text-slate-500 mb-10 leading-relaxed">
-                      Crontal is the first procurement platform suppliers actually love. No logins to remember. No passwords to reset. Just a secure link and a clean interface.
+                      {t(lang, 'sl_intro')}
                   </p>
                   
                   <div className="flex flex-col gap-4">
                       <div className="flex items-start gap-4">
                           <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0">1</div>
                           <div>
-                              <h3 className="font-bold text-lg">Receive Link</h3>
-                              <p className="text-slate-500 text-sm">Get A Secure RFQ Link Via Email Or WhatsApp.</p>
+                              <h3 className="font-bold text-lg">{t(lang, 'sl_step1_title')}</h3>
+                              <p className="text-slate-500 text-sm">{t(lang, 'sl_step1_desc')}</p>
                           </div>
                       </div>
                       <div className="h-8 border-l-2 border-slate-100 ml-4"></div>
                       <div className="flex items-start gap-4">
                           <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0">2</div>
                           <div>
-                              <h3 className="font-bold text-lg">Input Pricing</h3>
-                              <p className="text-slate-500 text-sm">Fill In Unit Prices Directly In Your Browser. Mobile Friendly.</p>
+                              <h3 className="font-bold text-lg">{t(lang, 'sl_step2_title')}</h3>
+                              <p className="text-slate-500 text-sm">{t(lang, 'sl_step2_desc')}</p>
                           </div>
                       </div>
                       <div className="h-8 border-l-2 border-slate-100 ml-4"></div>
                       <div className="flex items-start gap-4">
                           <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold shrink-0">3</div>
                           <div>
-                              <h3 className="font-bold text-lg">Instant Submit</h3>
-                              <p className="text-slate-500 text-sm">Click Submit. The Buyer Gets Your Quote Instantly. Done.</p>
+                              <h3 className="font-bold text-lg">{t(lang, 'sl_step3_title')}</h3>
+                              <p className="text-slate-500 text-sm">{t(lang, 'sl_step3_desc')}</p>
                           </div>
                       </div>
                   </div>
@@ -66,17 +70,17 @@ export default function SupplierLandingPage({ onBack, onStartDemo, onNavigate }:
                                 <div className="w-3 h-3 bg-red-400 rounded-full"></div>
                                 <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
                             </div>
-                            <div className="text-[10px] font-bold text-slate-400">SUPPLIER VIEW</div>
+                            <div className="text-[10px] font-bold text-slate-400">{t(lang, 'sl_mock_header')}</div>
                         </div>
                         {/* Mock Content */}
                         <div className="p-6">
                              <div className="flex justify-between items-start mb-6">
                                  <div>
-                                     <div className="text-xs text-slate-400 font-bold uppercase">Project</div>
+                                     <div className="text-xs text-slate-400 font-bold uppercase">{t(lang, 'sl_mock_project')}</div>
                                      <div className="text-lg font-bold text-slate-900">Texas LNG Expansion</div>
                                  </div>
                                  <div className="text-right">
-                                     <div className="text-xs text-slate-400 font-bold uppercase">Status</div>
+                                     <div className="text-xs text-slate-400 font-bold uppercase">{t(lang, 'sl_mock_status')}</div>
                                      <div className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold">Open</div>
                                  </div>
                              </div>
@@ -108,14 +112,14 @@ export default function SupplierLandingPage({ onBack, onStartDemo, onNavigate }:
                              </table>
                              
                              <div className="bg-accent text-white text-center py-3 rounded-xl font-bold shadow-lg hover:bg-slate-800 cursor-pointer">
-                                 Submit Quote
+                                 {t(lang, 'submit_quote')}
                              </div>
                         </div>
                   </div>
                   
                   {/* Floating Badges */}
                   <div className="absolute -bottom-6 -right-6 bg-white p-4 rounded-xl shadow-xl border border-slate-100 animate-bounce">
-                      <div className="text-xs font-bold text-slate-400 uppercase mb-1">Total Quote</div>
+                      <div className="text-xs font-bold text-slate-400 uppercase mb-1">{t(lang, 'sl_mock_total')}</div>
                       <div className="text-2xl font-bold text-green-600">$21,650.00</div>
                   </div>
               </div>

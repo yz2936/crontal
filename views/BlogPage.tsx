@@ -2,10 +2,14 @@
 import React, { useState } from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
+import { Language } from '../types';
+import { t } from '../utils/i18n';
 
 interface BlogPageProps {
   onBack: () => void;
   onNavigate: (page: string) => void;
+  lang: Language;
+  setLang: (lang: Language) => void;
 }
 
 interface BlogPost {
@@ -20,7 +24,7 @@ interface BlogPost {
   tags: string[];
 }
 
-export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
+export default function BlogPage({ onBack, onNavigate, lang, setLang }: BlogPageProps) {
   const [activePost, setActivePost] = useState<BlogPost | null>(null);
 
   const posts: BlogPost[] = [
@@ -277,13 +281,13 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
   if (activePost) {
     return (
       <div className="min-h-screen bg-white text-slate-900 font-sans flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <MarketingNavbar onStart={onBack} onNavigate={onNavigate} />
+        <MarketingNavbar onStart={onBack} onNavigate={onNavigate} lang={lang} setLang={setLang} />
         
         <div className="flex-1 max-w-3xl mx-auto px-6 py-16 lg:py-24">
            {/* Navigation */}
            <button onClick={handleBackToBlog} className="flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-brandOrange transition mb-12">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-              Back to Articles
+              {t(lang, 'blog_back')}
            </button>
 
            {/* Article Header */}
@@ -333,7 +337,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
                <h3 className="text-2xl font-bold text-white mb-4 relative z-10">Ready to automate your RFQs?</h3>
                <p className="text-slate-400 mb-8 max-w-md mx-auto relative z-10">Join the engineering teams saving 40 hours per month with Crontal.</p>
                <button onClick={onBack} className="bg-brandOrange text-white px-8 py-3 rounded-xl font-bold hover:bg-orange-600 transition shadow-lg relative z-10">
-                   Start Free Draft
+                   {t(lang, 'cta_start')}
                </button>
            </div>
         </div>
@@ -345,15 +349,14 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
-      <MarketingNavbar onStart={onBack} onNavigate={onNavigate} />
+      <MarketingNavbar onStart={onBack} onNavigate={onNavigate} lang={lang} setLang={setLang} />
 
       <div className="flex-1 max-w-7xl mx-auto px-6 py-16">
         <div className="text-center mb-16 max-w-2xl mx-auto">
-          <div className="inline-block px-3 py-1 rounded-full bg-white border border-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-4">Engineering Blog</div>
-          <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-6 tracking-tight">The Future Of Industrial Procurement</h1>
+          <div className="inline-block px-3 py-1 rounded-full bg-white border border-slate-200 text-slate-600 text-[10px] font-bold uppercase tracking-widest mb-4">{t(lang, 'blog_tag')}</div>
+          <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-6 tracking-tight">{t(lang, 'blog_title')}</h1>
           <p className="text-lg text-slate-500 leading-relaxed">
-            Deep dives into AI, procurement automation, and the future of the industrial supply chain.
-            Straight from the engineers building the next generation of tools.
+            {t(lang, 'blog_subtitle')}
           </p>
         </div>
 
@@ -361,7 +364,7 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
         <div className="mb-16 cursor-pointer group" onClick={() => handlePostClick(posts[0])}>
             <div className="bg-slate-900 rounded-3xl overflow-hidden shadow-2xl grid md:grid-cols-2 transition-transform duration-300 hover:scale-[1.01]">
                 <div className="p-8 md:p-12 flex flex-col justify-center">
-                    <div className="text-brandOrange font-bold text-xs uppercase tracking-widest mb-4">Featured Article</div>
+                    <div className="text-brandOrange font-bold text-xs uppercase tracking-widest mb-4">{t(lang, 'blog_featured')}</div>
                     <h2 className="text-3xl font-bold text-white mb-6 group-hover:text-brandOrange transition-colors">{posts[0].title}</h2>
                     <p className="text-slate-400 mb-8 leading-relaxed">
                         {posts[0].excerpt}
@@ -434,16 +437,16 @@ export default function BlogPage({ onBack, onNavigate }: BlogPageProps) {
              <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/20 rounded-full blur-[80px] translate-y-1/2 -translate-x-1/2"></div>
              
              <div className="relative z-10">
-                <h2 className="text-3xl font-bold text-white mb-4">Subscribe To Engineering Intelligence</h2>
-                <p className="text-slate-400 mb-8 max-w-lg mx-auto">Get the latest whitepapers and case studies delivered to your inbox. No spam, just specs.</p>
+                <h2 className="text-3xl font-bold text-white mb-4">{t(lang, 'blog_subscribe_title')}</h2>
+                <p className="text-slate-400 mb-8 max-w-lg mx-auto">{t(lang, 'blog_subscribe_desc')}</p>
                 <div className="flex flex-col sm:flex-row justify-center gap-4 max-w-md mx-auto">
                     <input 
                         type="email" 
-                        placeholder="Enter your work email" 
+                        placeholder={t(lang, 'blog_email_placeholder')}
                         className="px-6 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brandOrange w-full"
                     />
                     <button className="px-6 py-3 rounded-xl bg-brandOrange text-white font-bold hover:bg-orange-600 transition whitespace-nowrap">
-                        Subscribe
+                        {t(lang, 'blog_subscribe_btn')}
                     </button>
                 </div>
              </div>

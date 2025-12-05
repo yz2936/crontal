@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useEffect } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, ViewMode, Language, User } from './types';
@@ -143,7 +141,9 @@ export default function App() {
       onBack: () => handleNavigate('HOME'),
       onNavigate: handleNavigate,
       onStart: () => handleNavigate('BUYER'),
-      onStartDemo: () => handleNavigate('BUYER')
+      onStartDemo: () => handleNavigate('BUYER'),
+      lang,
+      setLang
   };
 
   // Routing Logic
@@ -174,7 +174,8 @@ export default function App() {
             onPrivacy={() => handleNavigate('PRIVACY')}
             onTerms={() => handleNavigate('TERMS')}
             onBlog={() => handleNavigate('BLOG')}
-            lang={lang} 
+            lang={lang}
+            setLang={setLang}
         />
       );
   }

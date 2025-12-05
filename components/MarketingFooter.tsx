@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface MarketingFooterProps {
@@ -33,7 +34,6 @@ export const MarketingFooter: React.FC<MarketingFooterProps> = ({ onNavigate, da
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest text-white mb-6">Platform</h4>
             <ul className="space-y-4 text-sm">
-              <li><button onClick={() => onNavigate('TECH')} className={textClass}>Physics Engine</button></li>
               <li><button onClick={() => onNavigate('QUALITY')} className={textClass}>Compliance Audit</button></li>
               <li><button onClick={() => onNavigate('ROI')} className={textClass}>ROI Calculator</button></li>
               <li><button onClick={() => onNavigate('SUPPLIER_LANDING')} className={textClass}>Supplier Portal</button></li>

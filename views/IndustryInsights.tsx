@@ -1,12 +1,16 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
 import { generateIndustryInsights, getTrendingTopics, getLatestMarketData, InsightResponse, TrendingTopic } from '../services/geminiService';
+import { Language } from '../types';
+import { t } from '../utils/i18n';
 
 interface IndustryInsightsProps {
     onBack: () => void;
     onNavigate: (page: string) => void;
+    lang: Language;
+    setLang: (lang: Language) => void;
 }
 
 interface MarketDataPoint {
@@ -39,13 +43,13 @@ const INITIAL_MARKET_DATA: Record<string, MarketDataPoint> = {
 
 type GradeOption = '304' | '304L' | '316' | '316L' | '321' | '2205' | '2507' | '904L' | 'Alloy 20';
 
-export default function IndustryInsights({ onBack, onNavigate }: IndustryInsightsProps) {
+export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: IndustryInsightsProps) {
     // --- MARKET DATA STATE ---
     const [marketData, setMarketData] = useState<Record<string, MarketDataPoint>>(INITIAL_MARKET_DATA);
     const [activeCommodity, setActiveCommodity] = useState<string>('NICKEL');
     const [activeRange, setActiveRange] = useState<TimeRange>('1D');
     const [isFetchingPrices, setIsFetchingPrices] = useState(true);
-    const [lastUpdated, setLastUpdated] = useState<string>('Connecting...');
+    const [lastUpdated, setLastUpdated] = useState<string>(t(lang, 'initializing'));
     const [firstLoadComplete, setFirstLoadComplete] = useState(false);
     const [isChartUpdating, setIsChartUpdating] = useState(false);
     const [chartCategory, setChartCategory] = useState<'Stainless' | 'LME'>('Stainless');
@@ -99,7 +103,6 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
     };
 
     // --- FETCH REAL MARKET DATA ON MOUNT AND INTERVAL ---
-    // Ref to hold the current range so the fetch interval callback can access it without re-triggering the effect
     const activeRangeRef = useRef(activeRange);
     useEffect(() => {
         activeRangeRef.current = activeRange;
@@ -158,26 +161,23 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
         }
     };
 
-    // 1. Effect for Initial Load + Interval Fetching (Decoupled from Range)
+    // 1. Effect for Initial Load + Interval Fetching
     useEffect(() => {
         fetchRealPrices();
-        const interval = setInterval(fetchRealPrices, 300000); // 5 min update (Avoid 429 Errors)
+        const interval = setInterval(fetchRealPrices, 300000); 
         return () => clearInterval(interval);
     }, []); 
 
-    // 2. Effect for Range Change (Local Update Only)
-    // When range changes, we regenerate history from the EXISTING prices in state, no API call.
+    // 2. Effect for Range Change
     useEffect(() => {
         if (!firstLoadComplete) return;
         
         setIsChartUpdating(true);
-        // Simulate a brief calculation delay for UX
         const timer = setTimeout(() => {
             setMarketData(prev => {
                 const newData = { ...prev };
                 Object.keys(newData).forEach(key => {
                     const item = newData[key];
-                    // Regenerate history based on the new range using the stored price
                     const newHistory = generateHistoryData(item.price, activeRange);
                     const startPrice = newHistory[0];
                     let trend: 'up' | 'down' | 'flat' = 'flat';
@@ -199,9 +199,9 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
 
     // --- AI FETCHING LOGIC ---
     const categories = [
-        { id: 'Regulatory', icon: '⚖️', title: "Regulatory" },
-        { id: 'SupplyChain', icon: '🚢', title: "Supply Chain" },
-        { id: 'Innovation', icon: '🧪', title: "Innovation" }
+        { id: 'Regulatory', icon: '⚖️', title: t(lang, 'channel_reg') },
+        { id: 'SupplyChain', icon: '🚢', title: t(lang, 'channel_supply') },
+        { id: 'Innovation', icon: '🧪', title: t(lang, 'channel_inno') }
     ];
 
     const fetchHeadlines = async (catId: string) => {
@@ -252,34 +252,27 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
         const currentPriceMo = marketData['MOLY'].price || 40;
         const currentPriceCr = marketData['CHROME'].price || 1.5;
         const currentPriceCu = marketData['COPPER'].price || 9000;
-        const currentPriceSteel = marketData['STEEL'].price || 800; // USD/ST
-
-        // Normalize prices to USD/Ton for calculation consistency
-        // Nickel: Already USD/T
-        // Copper: Already USD/T
-        // Moly: USD/lb -> USD/T (approx * 2204.62)
-        // Chrome: USD/lb -> USD/T (approx * 2204.62)
-        // Steel (HRC): USD/ST -> USD/T (Short Ton = 2000lb, Metric Ton = 2204lb) -> Price * 1.102
+        const currentPriceSteel = marketData['STEEL'].price || 800; 
 
         const normNi = currentPriceNi;
         const normMo = currentPriceMo * 2204.62;
         const normCr = currentPriceCr * 2204.62;
         const normCu = currentPriceCu;
-        const normSteel = currentPriceSteel * 1.1023; // Convert Short Ton to Metric Ton
+        const normSteel = currentPriceSteel * 1.1023; 
 
         // Apply Simulation Factors
         const finalNi = normNi * (1 + (simulationMode ? simulatedNiChange / 100 : 0));
         const finalMo = normMo * (1 + (simulationMode ? simulatedMoChange / 100 : 0));
         const finalCr = normCr * (1 + (simulationMode ? simulatedCrChange / 100 : 0));
-        const finalCu = normCu; // No simulation for Cu yet
-        const finalSteel = normSteel; // No simulation for Steel yet
+        const finalCu = normCu;
+        const finalSteel = normSteel;
 
         let niPct = 0;
         let moPct = 0;
         let crPct = 0;
         let cuPct = 0;
         let fePct = 0;
-        let fabBase = 600; // Manufacturing Base Cost adder
+        let fabBase = 600;
 
         switch (selectedGrade) {
             case '304':
@@ -352,7 +345,6 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
         return `${x},${y}`;
     }).join(' ');
 
-    // Area Path
     const areaPath = `${points} L${width - padding},${height} L${padding},${height} Z`;
 
     const handleMouseMove = (e: React.MouseEvent) => {
@@ -360,7 +352,6 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
         const rect = chartRef.current.getBoundingClientRect();
         const x = e.clientX - rect.left;
         
-        // Map X to Index
         const relativeX = Math.max(0, Math.min(width, (x / rect.width) * width));
         const rawIndex = ((relativeX - padding) / (width - 2 * padding)) * (data.length - 1);
         const index = Math.round(Math.max(0, Math.min(data.length - 1, rawIndex)));
@@ -385,7 +376,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
-            <MarketingNavbar onStart={onBack} onNavigate={onNavigate} />
+            <MarketingNavbar onStart={onBack} onNavigate={onNavigate} lang={lang} setLang={setLang} />
 
             {/* --- TOP SECTION: MARKET WATCH DASHBOARD --- */}
             <div className="bg-slate-900 text-white pb-12 pt-8">
@@ -400,13 +391,13 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                 'bg-green-900/30 border-green-800 text-green-400'
                             }`}>
                                 <span className={`w-2 h-2 rounded-full ${!firstLoadComplete ? 'bg-blue-400 animate-pulse' : isFallbackMode ? 'bg-amber-500' : 'bg-green-500'}`}></span>
-                                {!firstLoadComplete ? 'Initializing Stream...' : isFallbackMode ? 'Cached Data (Quota Limit)' : 'Live Market Connection'}
+                                {!firstLoadComplete ? t(lang, 'initializing') : isFallbackMode ? t(lang, 'cached_data') : t(lang, 'live_connection')}
                             </div>
-                            <h1 className="text-3xl font-bold tracking-tight">Commodity Markets</h1>
+                            <h1 className="text-3xl font-bold tracking-tight">{t(lang, 'insights_title')}</h1>
                         </div>
                         <div className="flex flex-col items-end gap-2">
                             <div className="flex items-center gap-2 text-[10px] text-slate-500 uppercase tracking-wide">
-                                <span>Last Updated: {lastUpdated}</span>
+                                <span>{t(lang, 'last_updated')}: {lastUpdated}</span>
                                 <button onClick={() => fetchRealPrices()} className="text-brandOrange hover:text-white" title="Refresh Now">
                                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                                 </button>
@@ -418,13 +409,13 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                     onClick={() => { setChartCategory('Stainless'); setActiveCommodity('NICKEL'); }}
                                     className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${chartCategory === 'Stainless' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
                                 >
-                                    Stainless Inputs
+                                    {t(lang, 'stainless_inputs')}
                                 </button>
                                 <button 
                                     onClick={() => { setChartCategory('LME'); setActiveCommodity('COPPER'); }}
                                     className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${chartCategory === 'LME' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
                                 >
-                                    LME Base Metals
+                                    {t(lang, 'lme_metals')}
                                 </button>
                             </div>
 
@@ -478,7 +469,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                             {marketData[activeCommodity].trend === 'up' ? '▲' : marketData[activeCommodity].trend === 'down' ? '▼' : '—'}
                                             {marketData[activeCommodity].history.length > 0 ? Math.abs((marketData[activeCommodity].price - marketData[activeCommodity].history[0]) / marketData[activeCommodity].history[0] * 100).toFixed(2) : '0.00'}%
                                         </div>
-                                        <div className="text-xs text-slate-500 uppercase tracking-wide">Period Change</div>
+                                        <div className="text-xs text-slate-500 uppercase tracking-wide">{t(lang, 'period_change')}</div>
                                     </div>
                                 </div>
                             </div>
@@ -536,7 +527,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                             }}
                                         >
                                             <div className="text-xs text-slate-400 font-bold mb-0.5">
-                                                {hoverIndex !== null ? `Data Point ${activeIndex + 1}` : 'Current Price'}
+                                                {hoverIndex !== null ? `Data Point ${activeIndex + 1}` : t(lang, 'current_price')}
                                             </div>
                                             <div className="text-sm font-bold text-white font-mono">
                                                 {activeValue?.toLocaleString(undefined, {minimumFractionDigits: 2})} {comm.unit}
@@ -551,7 +542,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                             <div className="bg-slate-900/95 border border-slate-700 px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 animate-in zoom-in-95 duration-200">
                                                 <span className="w-5 h-5 border-2 border-brandOrange/30 border-t-brandOrange rounded-full animate-spin"></span>
                                                 <span className="text-xs font-bold text-white tracking-wide uppercase">
-                                                    {firstLoadComplete ? 'Updating Chart View...' : 'Verifying Live Data...'}
+                                                    {firstLoadComplete ? t(lang, 'updating_chart') : t(lang, 'verifying_data')}
                                                 </span>
                                             </div>
                                         </div>
@@ -567,7 +558,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                     onClick={handleAnalyzeTrend}
                                 >
                                     <svg className="w-4 h-4 text-brandOrange" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                                    Explain This Trend with AI
+                                    {t(lang, 'explain_trend')}
                                 </div>
                             </div>
                         </div>
@@ -582,12 +573,12 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                     <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-white">
                                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
                                     </div>
-                                    <h3 className="font-bold text-white text-sm uppercase tracking-wide">Surcharge Estimator</h3>
+                                    <h3 className="font-bold text-white text-sm uppercase tracking-wide">{t(lang, 'surcharge_estimator')}</h3>
                                 </div>
 
                                 {/* Grade Selector */}
                                 <div className="mb-6">
-                                    <label className="text-xs text-slate-400 font-bold uppercase mb-2 block">Select Product Grade</label>
+                                    <label className="text-xs text-slate-400 font-bold uppercase mb-2 block">{t(lang, 'select_grade')}</label>
                                     <div className="relative">
                                         <select 
                                             value={selectedGrade}
@@ -618,7 +609,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
 
                                 {/* Dynamic Price Display */}
                                 <div className={`bg-slate-900 rounded-xl p-4 border border-slate-800 mb-6 transition-all duration-500 ${!firstLoadComplete ? 'opacity-50 blur-sm' : 'opacity-100 blur-0'}`}>
-                                    <div className="text-xs text-slate-500 mb-1">Est. Finished Goods Price</div>
+                                    <div className="text-xs text-slate-500 mb-1">{t(lang, 'est_price')}</div>
                                     <div className="text-3xl font-mono font-bold text-white mb-2">
                                         ${surcharge.total.toLocaleString(undefined, {maximumFractionDigits: 0})} <span className="text-sm text-slate-500 font-sans">/ Ton</span>
                                     </div>
@@ -649,7 +640,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                         disabled={!firstLoadComplete}
                                         className="flex items-center justify-between w-full text-xs font-bold text-slate-400 hover:text-white mb-4 disabled:opacity-50"
                                     >
-                                        <span>Scenario Simulator</span>
+                                        <span>{t(lang, 'scenario_sim')}</span>
                                         <span className={`px-2 py-0.5 rounded text-[10px] ${simulationMode ? 'bg-green-500/20 text-green-400' : 'bg-slate-700'}`}>{simulationMode ? 'ON' : 'OFF'}</span>
                                     </button>
 
@@ -658,7 +649,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                             {/* Nickel Slider */}
                                             <div>
                                                 <div className="flex justify-between text-xs mb-1">
-                                                    <span className="text-blue-400">Nickel Price</span>
+                                                    <span className="text-blue-400">{t(lang, 'ni_price')}</span>
                                                     <span className="text-white font-mono">{simulatedNiChange > 0 ? '+' : ''}{simulatedNiChange}%</span>
                                                 </div>
                                                 <input 
@@ -672,7 +663,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                             {/* Chrome Slider */}
                                             <div>
                                                 <div className="flex justify-between text-xs mb-1">
-                                                    <span className="text-green-400">Chrome Price</span>
+                                                    <span className="text-green-400">{t(lang, 'cr_price')}</span>
                                                     <span className="text-white font-mono">{simulatedCrChange > 0 ? '+' : ''}{simulatedCrChange}%</span>
                                                 </div>
                                                 <input 
@@ -687,7 +678,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                             {(surcharge.costMo > 0) && (
                                                 <div>
                                                     <div className="flex justify-between text-xs mb-1">
-                                                        <span className="text-purple-400">Moly Price</span>
+                                                        <span className="text-purple-400">{t(lang, 'mo_price')}</span>
                                                         <span className="text-white font-mono">{simulatedMoChange > 0 ? '+' : ''}{simulatedMoChange}%</span>
                                                     </div>
                                                     <input 
@@ -700,7 +691,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                             )}
                                             
                                             <div className="text-[10px] text-slate-500 italic text-center mt-2">
-                                                *Interactive impact on final goods price
+                                                {t(lang, 'interactive_impact')}
                                             </div>
                                         </div>
                                     )}
@@ -716,7 +707,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
             {/* --- NEW SECTION: GLOBAL INDICES (LME SNAPSHOT) --- */}
             <div className="bg-slate-900 border-t border-slate-800 py-6">
                 <div className="max-w-7xl mx-auto px-6">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Global Metal Indices (LME)</h3>
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">{t(lang, 'lme_metals')}</h3>
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                         {lmeIndices.map(key => {
                             const data = marketData[key];
@@ -747,8 +738,8 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                 
                 <div className="flex justify-between items-center mb-8">
                     <div>
-                        <h2 className="text-2xl font-bold text-slate-900">Intelligence Channels</h2>
-                        <p className="text-sm text-slate-500">Curated AI insights grounded in real-time search data.</p>
+                        <h2 className="text-2xl font-bold text-slate-900">{t(lang, 'intel_channels')}</h2>
+                        <p className="text-sm text-slate-500">{t(lang, 'intel_desc')}</p>
                     </div>
                     {/* Search Bar */}
                     <div className="relative w-full max-w-xs hidden md:block">
@@ -757,7 +748,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleGenerateReport(query)}
-                            placeholder="Custom topic..." 
+                            placeholder={t(lang, 'custom_topic')} 
                             className="w-full pl-3 pr-10 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:border-brandOrange outline-none"
                         />
                          <button 
@@ -842,9 +833,9 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                 {/* Header */}
                                 <div className="h-14 border-b border-slate-100 bg-slate-50 flex items-center px-6 justify-between shrink-0">
                                     <button onClick={() => setViewMode('feed')} className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition">
-                                         ← Back to Feed
+                                         ← {t(lang, 'back_to_feed')}
                                     </button>
-                                    <div className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-mono">GENERATED BY GEMINI</div>
+                                    <div className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded font-mono">{t(lang, 'generated_by')}</div>
                                 </div>
     
                                 {/* Content */}
@@ -852,7 +843,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                     {isGeneratingReport ? (
                                         <div className="flex flex-col items-center justify-center h-full space-y-4">
                                             <div className="w-12 h-12 border-4 border-brandOrange/30 border-t-brandOrange rounded-full animate-spin"></div>
-                                            <p className="text-sm font-bold text-slate-500 animate-pulse">Analyzing Market Data...</p>
+                                            <p className="text-sm font-bold text-slate-500 animate-pulse">{t(lang, 'analyzing_market')}</p>
                                         </div>
                                     ) : (
                                         <div className="prose prose-slate max-w-none prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-600 prose-li:text-slate-600">
@@ -873,7 +864,7 @@ export default function IndustryInsights({ onBack, onNavigate }: IndustryInsight
                                 {/* Footer Sources */}
                                 {insightData?.sources && insightData.sources.length > 0 && !isGeneratingReport && (
                                     <div className="bg-slate-50 border-t border-slate-200 p-6">
-                                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Sources</h4>
+                                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{t(lang, 'sources')}</h4>
                                         <div className="flex flex-wrap gap-2">
                                             {insightData.sources.map((source, idx) => (
                                                 <a key={idx} href={source.uri} target="_blank" rel="noreferrer" className="bg-white border border-slate-200 rounded px-2 py-1 text-[10px] text-slate-600 hover:text-brandOrange hover:border-brandOrange transition truncate max-w-[200px]">

@@ -2,14 +2,18 @@
 import React, { useState } from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
+import { Language } from '../types';
+import { t } from '../utils/i18n';
 
 interface RoiPageProps {
     onBack: () => void;
     onStart: () => void;
     onNavigate: (page: string) => void;
+    lang: Language;
+    setLang: (lang: Language) => void;
 }
 
-export default function RoiPage({ onBack, onStart, onNavigate }: RoiPageProps) {
+export default function RoiPage({ onBack, onStart, onNavigate, lang, setLang }: RoiPageProps) {
     const [rfqVolume, setRfqVolume] = useState(20);
     const [timePerRfq, setTimePerRfq] = useState(4); // hours
     const [hourlyRate, setHourlyRate] = useState(65); // USD
@@ -23,23 +27,23 @@ export default function RoiPage({ onBack, onStart, onNavigate }: RoiPageProps) {
 
     return (
         <div className="min-h-screen bg-white text-slate-900 font-sans flex flex-col">
-            <MarketingNavbar onStart={onStart} onNavigate={onNavigate} />
+            <MarketingNavbar onStart={onStart} onNavigate={onNavigate} lang={lang} setLang={setLang} />
 
             <div className="flex-1 max-w-5xl mx-auto px-6 py-16">
                 <div className="text-center mb-16">
-                    <h1 className="text-4xl font-bold mb-4 text-slate-900">Calculate Your Engineering Time Savings</h1>
-                    <p className="text-slate-500 text-lg">See Exactly How Much Manual Data Entry Is Costing Your Procurement Team.</p>
+                    <h1 className="text-4xl font-bold mb-4 text-slate-900">{t(lang, 'roi_title')}</h1>
+                    <p className="text-slate-500 text-lg">{t(lang, 'roi_subtitle')}</p>
                 </div>
 
                 <div className="grid lg:grid-cols-2 gap-12 items-start">
                     
                     {/* Inputs */}
                     <div className="bg-slate-50 p-8 rounded-2xl border border-slate-200">
-                        <h3 className="font-bold text-slate-900 mb-6">Your Inputs</h3>
+                        <h3 className="font-bold text-slate-900 mb-6">{t(lang, 'roi_inputs_title')}</h3>
                         
                         <div className="space-y-6">
                             <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-2">RFQs Processed per Month</label>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">{t(lang, 'roi_vol_label')}</label>
                                 <input 
                                     type="range" 
                                     min="1" max="100" 
@@ -51,8 +55,8 @@ export default function RoiPage({ onBack, onStart, onNavigate }: RoiPageProps) {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-2">Avg. Hours Spent per RFQ (Manual)</label>
-                                <div className="text-xs text-slate-400 mb-2">Reading specs, typing into Excel, fixing errors.</div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">{t(lang, 'roi_time_label')}</label>
+                                <div className="text-xs text-slate-400 mb-2">{t(lang, 'roi_time_desc')}</div>
                                 <input 
                                     type="number" 
                                     value={timePerRfq}
@@ -62,7 +66,7 @@ export default function RoiPage({ onBack, onStart, onNavigate }: RoiPageProps) {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-2">Avg. Engineer Hourly Rate ($)</label>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">{t(lang, 'roi_rate_label')}</label>
                                 <input 
                                     type="number" 
                                     value={hourlyRate}
@@ -78,30 +82,30 @@ export default function RoiPage({ onBack, onStart, onNavigate }: RoiPageProps) {
                         <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-xl relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-64 h-64 bg-brandOrange/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
                             
-                            <h3 className="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Estimated Monthly Savings</h3>
+                            <h3 className="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">{t(lang, 'roi_est_savings')}</h3>
                             <div className="text-5xl font-bold text-white mb-1">
                                 ${savings.toLocaleString(undefined, {maximumFractionDigits: 0})}
                             </div>
                             <div className="text-emerald-400 font-medium text-sm">
-                                + {hoursSaved.toLocaleString()} Engineering Hours Saved
+                                + {hoursSaved.toLocaleString()} {t(lang, 'roi_hours_saved')}
                             </div>
 
                             <div className="mt-8 pt-8 border-t border-slate-700 grid grid-cols-2 gap-8">
                                 <div>
-                                    <div className="text-slate-400 text-xs mb-1">Manual Process</div>
+                                    <div className="text-slate-400 text-xs mb-1">{t(lang, 'roi_manual_process')}</div>
                                     <div className="text-xl font-bold text-red-400">${manualCost.toLocaleString()}</div>
                                 </div>
                                 <div>
-                                    <div className="text-slate-400 text-xs mb-1">With Crontal</div>
+                                    <div className="text-slate-400 text-xs mb-1">{t(lang, 'roi_with_crontal')}</div>
                                     <div className="text-xl font-bold text-brandOrange">${crontalCost.toLocaleString()}</div>
                                 </div>
                             </div>
                         </div>
 
                         <div className="p-6 bg-white border border-slate-100 rounded-xl shadow-sm">
-                            <h4 className="font-bold text-slate-900 mb-4">The "Hidden" Cost of Errors</h4>
+                            <h4 className="font-bold text-slate-900 mb-4">{t(lang, 'roi_hidden_cost_title')}</h4>
                             <p className="text-sm text-slate-600 leading-relaxed">
-                                This calculator only measures time. It doesn't include the cost of <strong>incorrect material grades</strong>, <strong>missed delivery dates</strong>, or <strong>manufacturing rework</strong> caused by manual data entry errors.
+                                {t(lang, 'roi_hidden_cost_desc')}
                             </p>
                         </div>
                     </div>

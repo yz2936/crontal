@@ -2,14 +2,18 @@
 import React from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
+import { Language } from '../types';
+import { t } from '../utils/i18n';
 
 interface QualityStandardsProps {
   onBack: () => void;
   onStartDemo: () => void;
   onNavigate: (page: string) => void;
+  lang: Language;
+  setLang: (lang: Language) => void;
 }
 
-export default function QualityStandards({ onBack, onStartDemo, onNavigate }: QualityStandardsProps) {
+export default function QualityStandards({ onBack, onStartDemo, onNavigate, lang, setLang }: QualityStandardsProps) {
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans overflow-hidden relative flex flex-col">
       
@@ -18,18 +22,18 @@ export default function QualityStandards({ onBack, onStartDemo, onNavigate }: Qu
       <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
       <div className="absolute bottom-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"></div>
 
-      <MarketingNavbar onStart={onStartDemo} onNavigate={onNavigate} darkMode={true} />
+      <MarketingNavbar onStart={onStartDemo} onNavigate={onNavigate} darkMode={true} lang={lang} setLang={setLang} />
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-16 flex-1">
         
         {/* Header */}
         <div className="text-center mb-16 max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-5xl font-bold mb-6">
-                Beyond Keywords: <br/>
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Deep Compliance Verification.</span>
+                {t(lang, 'quality_title')} <br/>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">{t(lang, 'quality_title_accent')}</span>
             </h1>
             <p className="text-slate-400 text-lg leading-relaxed">
-                Most parsers see "ASTM A106". Crontal validates the <strong>Chemical Composition</strong> against the standard, checks the <strong>Heat Number</strong> traceability, and flags <strong>NACE MR0175</strong> deviations instantly.
+                {t(lang, 'quality_intro')}
             </p>
         </div>
 
@@ -42,7 +46,7 @@ export default function QualityStandards({ onBack, onStartDemo, onNavigate }: Qu
                 <div className="relative bg-white rounded-xl overflow-hidden h-[500px] border border-slate-700">
                     {/* Simulated Document Header */}
                     <div className="bg-slate-100 p-4 border-b border-slate-300 flex justify-between items-center">
-                        <div className="font-serif font-bold text-slate-900 text-lg">MILL TEST CERTIFICATE</div>
+                        <div className="font-serif font-bold text-slate-900 text-lg">{t(lang, 'quality_cert_title')}</div>
                         <div className="font-mono text-xs text-slate-500">EN 10204 3.1</div>
                     </div>
                     {/* Simulated Document Body (Blurry Text look) */}
@@ -67,7 +71,7 @@ export default function QualityStandards({ onBack, onStartDemo, onNavigate }: Qu
                         </div>
 
                         <div className="font-mono text-[10px] text-slate-600 pt-4">
-                            <p className="font-bold">MECHANICAL PROPERTIES</p>
+                            <p className="font-bold">{t(lang, 'quality_mech_props')}</p>
                             <div className="flex gap-8 mt-1">
                                 <div>Yield: <span className="bg-blue-200/50 font-bold">42,500 PSI</span></div>
                                 <div>Tensile: 65,000 PSI</div>
@@ -105,8 +109,8 @@ export default function QualityStandards({ onBack, onStartDemo, onNavigate }: Qu
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         </div>
                         <div>
-                            <h3 className="font-bold text-white">Chemical Validation</h3>
-                            <p className="text-xs text-slate-400">Carbon Equivalent (CE) Calculation</p>
+                            <h3 className="font-bold text-white">{t(lang, 'quality_chem_val')}</h3>
+                            <p className="text-xs text-slate-400">{t(lang, 'quality_chem_desc')}</p>
                         </div>
                     </div>
                     <div className="flex gap-4 text-sm font-mono">
@@ -128,8 +132,8 @@ export default function QualityStandards({ onBack, onStartDemo, onNavigate }: Qu
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
                         </div>
                         <div>
-                            <h3 className="font-bold text-white">Origin Tracing</h3>
-                            <p className="text-xs text-slate-400">AVL Cross-Reference</p>
+                            <h3 className="font-bold text-white">{t(lang, 'quality_origin')}</h3>
+                            <p className="text-xs text-slate-400">{t(lang, 'quality_origin_desc')}</p>
                         </div>
                     </div>
                      <div className="bg-slate-900 p-3 rounded border border-slate-700 flex justify-between items-center">
@@ -145,8 +149,8 @@ export default function QualityStandards({ onBack, onStartDemo, onNavigate }: Qu
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                         </div>
                         <div>
-                            <h3 className="font-bold text-white">Full Traceability Chain</h3>
-                            <p className="text-xs text-slate-400">Linking Heat No. to Invoice</p>
+                            <h3 className="font-bold text-white">{t(lang, 'quality_trace')}</h3>
+                            <p className="text-xs text-slate-400">{t(lang, 'quality_trace_desc')}</p>
                         </div>
                     </div>
                     <div className="text-xs font-mono text-slate-500">
@@ -159,7 +163,7 @@ export default function QualityStandards({ onBack, onStartDemo, onNavigate }: Qu
 
         {/* Standards Ticker Section */}
         <div className="mt-24 border-t border-slate-800 pt-16 text-center">
-            <h2 className="text-2xl font-bold mb-8">Supported Compliance Frameworks</h2>
+            <h2 className="text-2xl font-bold mb-8">{t(lang, 'quality_frameworks')}</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                  {['ASTM / ASME', 'API (5L, 6D, 6A)', 'NACE MR0175 / 0103', 'EN 10204 (3.1/3.2)'].map((std, i) => (
                      <div key={i} className="p-4 rounded-xl border border-slate-800 bg-slate-800/30 hover:bg-slate-800 hover:border-blue-500/30 transition duration-300 cursor-default">

@@ -2,20 +2,24 @@
 import React from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
+import { Language } from '../types';
+import { t } from '../utils/i18n';
 
 interface PrivacyPolicyProps {
     onBack: () => void;
     onNavigate: (page: string) => void;
+    lang: Language;
+    setLang: (lang: Language) => void;
 }
 
-export default function PrivacyPolicy({ onBack, onNavigate }: PrivacyPolicyProps) {
+export default function PrivacyPolicy({ onBack, onNavigate, lang, setLang }: PrivacyPolicyProps) {
     return (
         <div className="min-h-screen bg-white text-slate-900 font-sans flex flex-col">
-             <MarketingNavbar onStart={onBack} onNavigate={onNavigate} />
+             <MarketingNavbar onStart={onBack} onNavigate={onNavigate} lang={lang} setLang={setLang} />
 
             <div className="flex-1 max-w-3xl mx-auto px-6 py-16">
-                <h1 className="text-4xl font-bold mb-4">Privacy Policy</h1>
-                <p className="text-slate-500 mb-8">Last Updated: October 24, 2023</p>
+                <h1 className="text-4xl font-bold mb-4">{t(lang, 'privacy_title')}</h1>
+                <p className="text-slate-500 mb-8">{t(lang, 'privacy_update')}</p>
 
                 <div className="prose prose-slate max-w-none">
                     <h3>1. Introduction</h3>
