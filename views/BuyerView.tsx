@@ -620,18 +620,12 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const riskColorClass = riskScore >= 80 ? 'bg-green-100 text-green-700' : riskScore >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700';
 
     return (
-        <div className="flex flex-col h-[calc(100vh-100px)] gap-0 overflow-hidden relative">
+        // Mobile-first container: Flex column on mobile, Flex row on desktop
+        <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-100px)] gap-0 overflow-visible lg:overflow-hidden relative">
             
             {/* TOP BAR: STEPS & NAVIGATION */}
-            <div className="flex items-center justify-between px-2 pb-4 shrink-0">
+            <div className="flex items-center justify-between px-2 pb-4 shrink-0 lg:absolute lg:top-0 lg:left-0 lg:w-full lg:z-10 lg:bg-slate-50 lg:hidden">
                 <div className="flex items-center gap-4">
-                    <button 
-                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                        className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition"
-                        title={isSidebarOpen ? t(lang, 'hide_sidebar') : t(lang, 'show_sidebar')}
-                    >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-                    </button>
                     {/* Flow Steps */}
                     <div className="flex items-center gap-2">
                         {/* Step 1 */}
@@ -666,19 +660,13 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                         </button>
                     </div>
                 </div>
-                
-                {/* Save/Share Actions */}
-                {rfq && (
-                    <div className="flex gap-2">
-                        <button onClick={handleSaveRfq} className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 transition shadow-sm">{t(lang, 'save_draft')}</button>
-                        <button onClick={handleShare} className="px-3 py-1.5 bg-slate-600 text-white rounded-lg text-xs font-bold hover:bg-slate-700 transition shadow-sm">{t(lang, 'share_link')}</button>
-                    </div>
-                )}
             </div>
 
-            <div className="flex flex-1 overflow-hidden gap-6">
+            {/* MAIN CONTENT WRAPPER */}
+            <div className="flex flex-col lg:flex-row flex-1 lg:overflow-hidden gap-6 w-full">
+                
                 {/* COLUMN 1: SIDEBAR (COLLAPSIBLE) */}
-                <div className={`transition-all duration-300 ease-in-out flex flex-col gap-4 ${isSidebarOpen ? 'w-full md:w-64 opacity-100' : 'w-0 opacity-0 overflow-hidden ml-[-1rem]'}`}>
+                <div className={`transition-all duration-300 ease-in-out flex flex-col gap-4 ${isSidebarOpen ? 'w-full lg:w-64 opacity-100 h-auto lg:h-full' : 'w-0 h-0 lg:h-full opacity-0 overflow-hidden lg:ml-[-1rem] hidden lg:flex'}`}>
                     <button 
                         onClick={handleNewRfp}
                         className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition flex items-center justify-center gap-2 shadow-sm shrink-0"
@@ -687,7 +675,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                         {t(lang, 'nav_new_project')}
                     </button>
 
-                    <div className="bg-white rounded-xl border border-slate-200 flex-1 flex flex-col shadow-sm overflow-hidden">
+                    <div className="bg-white rounded-xl border border-slate-200 flex-1 flex flex-col shadow-sm overflow-hidden min-h-[200px] lg:min-h-0">
                         <div className="flex border-b border-slate-100">
                             <button onClick={() => setActiveTab('active')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition ${activeTab === 'active' ? 'bg-white text-slate-900 border-b-2 border-slate-900' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>{t(lang, 'nav_active')}</button>
                             <button onClick={() => setActiveTab('archived')} className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition ${activeTab === 'archived' ? 'bg-white text-slate-900 border-b-2 border-slate-900' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>{t(lang, 'nav_archived')}</button>
@@ -716,8 +704,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                     </div>
                 </div>
 
-                {/* COLUMN 2: DRAFTING ASSISTANT (Always Visible) */}
-                <div className="flex-1 flex flex-col min-w-[300px] max-w-[400px] gap-4">
+                {/* COLUMN 2: DRAFTING ASSISTANT (Mobile: Stacked, Desktop: Side Column) */}
+                <div className="flex-none lg:flex-1 flex flex-col w-full lg:w-[350px] lg:min-w-[300px] lg:max-w-[400px] gap-4 h-[500px] lg:h-auto">
                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
                         <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
                             <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold">1</span>
@@ -760,7 +748,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 </div>
 
                 {/* COLUMN 3: CONTENT SWITCHER (Dashboard/Table/Comparison) */}
-                <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+                <div className="flex-1 flex flex-col gap-4 overflow-visible lg:overflow-hidden min-h-[500px]">
                     
                     {!rfq ? (
                         // EMPTY DASHBOARD
@@ -810,7 +798,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                         </div>
                     ) : (
                         // CONTENT SWITCH
-                        <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden animate-in fade-in relative">
+                        <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden animate-in fade-in relative min-h-[500px]">
                             
                             {/* --- QUOTE DETAILS MODAL (OVERLAY) --- */}
                             {viewQuoteDetails && (
@@ -852,33 +840,35 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                             </div>
                                         </div>
 
-                                        <table className="w-full text-xs text-left border-collapse mb-6">
-                                            <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
-                                                <tr>
-                                                    <th className="px-4 py-2 w-12">Line</th>
-                                                    <th className="px-4 py-2">RFQ Description</th>
-                                                    <th className="px-4 py-2">Supplier Remarks / Alternates</th>
-                                                    <th className="px-4 py-2 text-right">Qty</th>
-                                                    <th className="px-4 py-2 text-right">Unit Price</th>
-                                                    <th className="px-4 py-2 text-right">Total</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {rfq.line_items.map(item => {
-                                                    const qItem = viewQuoteDetails.items.find(i => i.line === item.line);
-                                                    return (
-                                                        <tr key={item.item_id}>
-                                                            <td className="px-4 py-2 text-slate-400">{item.line}</td>
-                                                            <td className="px-4 py-2 font-medium">{item.description}</td>
-                                                            <td className="px-4 py-2 text-blue-600 italic">{qItem?.alternates || "-"}</td>
-                                                            <td className="px-4 py-2 text-right">{item.quantity} {item.uom}</td>
-                                                            <td className="px-4 py-2 text-right">{viewQuoteDetails.currency} {qItem?.unitPrice?.toFixed(2)}</td>
-                                                            <td className="px-4 py-2 text-right font-bold">{viewQuoteDetails.currency} {(qItem?.lineTotal || 0).toFixed(2)}</td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-xs text-left border-collapse mb-6 min-w-[600px]">
+                                                <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
+                                                    <tr>
+                                                        <th className="px-4 py-2 w-12">Line</th>
+                                                        <th className="px-4 py-2">RFQ Description</th>
+                                                        <th className="px-4 py-2">Supplier Remarks / Alternates</th>
+                                                        <th className="px-4 py-2 text-right">Qty</th>
+                                                        <th className="px-4 py-2 text-right">Unit Price</th>
+                                                        <th className="px-4 py-2 text-right">Total</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {rfq.line_items.map(item => {
+                                                        const qItem = viewQuoteDetails.items.find(i => i.line === item.line);
+                                                        return (
+                                                            <tr key={item.item_id}>
+                                                                <td className="px-4 py-2 text-slate-400">{item.line}</td>
+                                                                <td className="px-4 py-2 font-medium">{item.description}</td>
+                                                                <td className="px-4 py-2 text-blue-600 italic">{qItem?.alternates || "-"}</td>
+                                                                <td className="px-4 py-2 text-right">{item.quantity} {item.uom}</td>
+                                                                <td className="px-4 py-2 text-right">{viewQuoteDetails.currency} {qItem?.unitPrice?.toFixed(2)}</td>
+                                                                <td className="px-4 py-2 text-right font-bold">{viewQuoteDetails.currency} {(qItem?.lineTotal || 0).toFixed(2)}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
 
                                         {viewQuoteDetails.attachments && viewQuoteDetails.attachments.length > 0 && (
                                             <div className="mt-4 border-t border-slate-200 pt-4">
@@ -916,66 +906,68 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                         </div>
                                     ) : (
                                         <div className="flex-1 overflow-auto bg-white p-6">
-                                            <table className="w-full text-left text-sm border-collapse rounded-lg overflow-hidden">
-                                                <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold">
-                                                    <tr>
-                                                        <th className="px-6 py-4 border-b border-slate-200">Supplier</th>
-                                                        <th className="px-6 py-4 border-b border-slate-200">Total Price</th>
-                                                        <th className="px-6 py-4 border-b border-slate-200">Lead Time</th>
-                                                        <th className="px-6 py-4 border-b border-slate-200">Compliance Check</th>
-                                                        <th className="px-6 py-4 border-b border-slate-200 text-right">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100">
-                                                    {quotes.map((quote) => {
-                                                        const isBestPrice = quote.total === Math.min(...quotes.map(q => q.total));
-                                                        const isFastest = parseInt(quote.leadTime) === Math.min(...quotes.map(q => parseInt(q.leadTime) || 999));
-                                                        // Simulate compliance logic: If MTRs required, check if attachments exist
-                                                        const complianceStatus = rfq.commercial.req_mtr ? (quote.attachments && quote.attachments.length > 0 ? "Pass" : "Pending Docs") : "N/A";
-                                                        const complianceColor = complianceStatus === "Pass" ? "bg-green-100 text-green-700" : complianceStatus === "Pending Docs" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500";
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left text-sm border-collapse rounded-lg overflow-hidden min-w-[700px]">
+                                                    <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold">
+                                                        <tr>
+                                                            <th className="px-6 py-4 border-b border-slate-200">Supplier</th>
+                                                            <th className="px-6 py-4 border-b border-slate-200">Total Price</th>
+                                                            <th className="px-6 py-4 border-b border-slate-200">Lead Time</th>
+                                                            <th className="px-6 py-4 border-b border-slate-200">Compliance Check</th>
+                                                            <th className="px-6 py-4 border-b border-slate-200 text-right">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {quotes.map((quote) => {
+                                                            const isBestPrice = quote.total === Math.min(...quotes.map(q => q.total));
+                                                            const isFastest = parseInt(quote.leadTime) === Math.min(...quotes.map(q => parseInt(q.leadTime) || 999));
+                                                            // Simulate compliance logic: If MTRs required, check if attachments exist
+                                                            const complianceStatus = rfq.commercial.req_mtr ? (quote.attachments && quote.attachments.length > 0 ? "Pass" : "Pending Docs") : "N/A";
+                                                            const complianceColor = complianceStatus === "Pass" ? "bg-green-100 text-green-700" : complianceStatus === "Pending Docs" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500";
 
-                                                        return (
-                                                            <tr key={quote.id} className="hover:bg-slate-50 transition group">
-                                                                <td className="px-6 py-4">
-                                                                    <div className="font-bold text-slate-900">{quote.supplierName}</div>
-                                                                    <div className="text-xs text-slate-400">{new Date(quote.timestamp).toLocaleDateString()}</div>
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    <div className="font-bold text-slate-900 flex items-center gap-2">
-                                                                        {quote.currency} {quote.total.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                                                                        {isBestPrice && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold uppercase">Best</span>}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    <div className="flex items-center gap-2">
-                                                                        {quote.leadTime} Days
-                                                                        {isFastest && !isBestPrice && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold uppercase">Fastest</span>}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${complianceColor}`}>
-                                                                        {complianceStatus}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="px-6 py-4 text-right flex justify-end gap-3">
-                                                                    <button 
-                                                                        onClick={() => setViewQuoteDetails(quote)}
-                                                                        className="text-slate-500 hover:text-slate-800 text-xs font-bold px-3 py-1.5 rounded hover:bg-slate-200 transition"
-                                                                    >
-                                                                        View Details
-                                                                    </button>
-                                                                    <button 
-                                                                        onClick={() => handleGenerateAwardPO(quote)}
-                                                                        className="bg-slate-900 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-slate-700 transition shadow-sm"
-                                                                    >
-                                                                        Award
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
+                                                            return (
+                                                                <tr key={quote.id} className="hover:bg-slate-50 transition group">
+                                                                    <td className="px-6 py-4">
+                                                                        <div className="font-bold text-slate-900">{quote.supplierName}</div>
+                                                                        <div className="text-xs text-slate-400">{new Date(quote.timestamp).toLocaleDateString()}</div>
+                                                                    </td>
+                                                                    <td className="px-6 py-4">
+                                                                        <div className="font-bold text-slate-900 flex items-center gap-2">
+                                                                            {quote.currency} {quote.total.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                                                            {isBestPrice && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold uppercase">Best</span>}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-6 py-4">
+                                                                        <div className="flex items-center gap-2">
+                                                                            {quote.leadTime} Days
+                                                                            {isFastest && !isBestPrice && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold uppercase">Fastest</span>}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-6 py-4">
+                                                                        <span className={`px-2 py-1 rounded text-xs font-bold ${complianceColor}`}>
+                                                                            {complianceStatus}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-6 py-4 text-right flex justify-end gap-3">
+                                                                        <button 
+                                                                            onClick={() => setViewQuoteDetails(quote)}
+                                                                            className="text-slate-500 hover:text-slate-800 text-xs font-bold px-3 py-1.5 rounded hover:bg-slate-200 transition"
+                                                                        >
+                                                                            View Details
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => handleGenerateAwardPO(quote)}
+                                                                            className="bg-slate-900 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-slate-700 transition shadow-sm"
+                                                                        >
+                                                                            Award
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -983,21 +975,21 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                 // --- REVIEW TABLE (STEP 1 & 2) ---
                                 <div className="flex flex-col h-full relative">
                                     <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex flex-col gap-3">
-                                        <div className="flex justify-between items-center">
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold">2</span>
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'live_preview')}</span>
+                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                                            <div className="flex items-center gap-2 w-full md:w-auto">
+                                                <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold shrink-0">2</span>
+                                                <div className="flex items-center gap-3 w-full">
+                                                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wide whitespace-nowrap">{t(lang, 'live_preview')}</span>
                                                     <div className="h-4 w-px bg-slate-300"></div>
                                                     <input 
                                                         value={rfq.project_name || ''}
                                                         onChange={(e) => setRfq({ ...rfq, project_name: e.target.value })}
-                                                        className="font-bold text-sm text-slate-800 bg-transparent border-none p-0 focus:ring-0 placeholder-slate-300 w-48 focus:border-b focus:border-accent"
+                                                        className="font-bold text-sm text-slate-800 bg-transparent border-none p-0 focus:ring-0 placeholder-slate-300 w-full md:w-48 focus:border-b focus:border-accent"
                                                         placeholder="Untitled RFP"
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="flex gap-2">
+                                            <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
                                                 {/* NEW: RISK ANALYSIS BUTTON WITH SCORE */}
                                                 <div className="flex items-center gap-2">
                                                     {rfq?.risks && rfq.risks.length > 0 && (
@@ -1009,7 +1001,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                     <button 
                                                         onClick={handleRiskAnalysis}
                                                         disabled={isRiskAnalyzing}
-                                                        className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition shadow-sm flex items-center gap-2 ${isRiskAnalyzing ? 'bg-indigo-50 border-indigo-100 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300'}`}
+                                                        className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition shadow-sm flex items-center gap-2 whitespace-nowrap ${isRiskAnalyzing ? 'bg-indigo-50 border-indigo-100 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300'}`}
                                                     >
                                                         {isRiskAnalyzing ? (
                                                             <>
@@ -1027,11 +1019,11 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
                                                 <button 
                                                     onClick={() => setIsHeaderInfoOpen(!isHeaderInfoOpen)}
-                                                    className={`text-xs px-3 py-1.5 rounded-lg border transition ${isHeaderInfoOpen ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                                                    className={`text-xs px-3 py-1.5 rounded-lg border transition whitespace-nowrap ${isHeaderInfoOpen ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
                                                 >
                                                     {isHeaderInfoOpen ? t(lang, 'hide_details') : t(lang, 'rfp_details')}
                                                 </button>
-                                                <button onClick={handleAddItem} className="text-xs bg-brandOrange text-white font-bold px-4 py-1.5 rounded-lg hover:bg-orange-600 transition shadow-sm flex items-center gap-1">
+                                                <button onClick={handleAddItem} className="text-xs bg-brandOrange text-white font-bold px-4 py-1.5 rounded-lg hover:bg-orange-600 transition shadow-sm flex items-center gap-1 whitespace-nowrap">
                                                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                                                     {t(lang, 'add_line_item')}
                                                 </button>
@@ -1044,7 +1036,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                         {/* EXPANDABLE RFP DETAILS PANEL */}
                                         {isHeaderInfoOpen && (
                                             <div id="commercial-section" className="bg-white border border-slate-200 rounded-lg p-4 animate-in slide-in-from-top-2 text-xs shadow-sm">
-                                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                                     <div>
                                                         <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'project_description')}</label>
                                                         <textarea 
@@ -1074,7 +1066,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="flex gap-4 border-t border-slate-100 pt-3">
+                                                <div className="flex flex-wrap gap-4 border-t border-slate-100 pt-3">
                                                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={rfq.commercial.req_mtr} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_mtr: e.target.checked } })} className="rounded text-accent focus:ring-accent" /><span className="text-slate-600">{t(lang, 'req_mtr')}</span></label>
                                                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={rfq.commercial.req_avl} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_avl: e.target.checked } })} className="rounded text-accent focus:ring-accent" /><span className="text-slate-600">{t(lang, 'req_avl')}</span></label>
                                                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={rfq.commercial.req_tpi} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_tpi: e.target.checked } })} className="rounded text-accent focus:ring-accent" /><span className="text-slate-600">{t(lang, 'req_tpi')}</span></label>
@@ -1085,46 +1077,48 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
                                     {/* TABLE */}
                                     <div className="flex-1 overflow-auto">
-                                        <table className="w-full text-xs text-left border-collapse table-fixed">
-                                            <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 sticky top-0 z-20 shadow-sm">
-                                                <tr>
-                                                    {tableConfig.filter(c => c.visible).map((col) => (
-                                                        <th key={col.id} className={`px-2 py-3 border-b border-slate-200 bg-slate-50 border-r border-slate-200 text-center ${getWidthClass(col.width)}`}>{col.label}</th>
-                                                    ))}
-                                                    <th className="px-2 py-3 text-center w-12 bg-white border-b border-slate-200 sticky right-0 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] border-l border-slate-200 z-30"><span className="sr-only">Actions</span></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-200 bg-white">
-                                                {rfq.line_items.map((item, index) => (
-                                                    <tr key={item.item_id} className="hover:bg-blue-50/10 transition-colors group">
-                                                        {tableConfig.filter(c => c.visible).map(col => {
-                                                            const cellClass = "px-2 py-2 border-r border-slate-200 align-middle";
-                                                            const inputClass = "w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 placeholder-slate-300 focus:bg-white focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all";
-                                                            const inputId = col.id === 'description' ? `cell-description-${index}` : `cell-${col.id}-${index}`;
-
-                                                            if (col.id === 'line') return <td key={col.id} className={`${cellClass} text-center bg-slate-50/50 text-slate-400 font-mono w-24`}>{item.line}</td>;
-                                                            if (col.id === 'shape') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={`cell-shape-${index}`} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.product_type || ''} onChange={(e) => handleUpdateLineItem(index, 'product_type', e.target.value)} className={inputClass} placeholder="-" /></td>;
-                                                            if (col.id === 'description') return <td key={col.id} className={`${cellClass} w-64`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.description} onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)} className={`${inputClass} font-medium`} /></td>;
-                                                            if (col.id === 'grade') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.material_grade || ''} onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)} className={inputClass} /></td>;
-                                                            if (col.id === 'tolerance') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.tolerance || ''} onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)} placeholder="-" className={`${inputClass} text-center`} /></td>;
-                                                            if (col.id === 'tests') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.test_reqs?.join(', ') || ''} onChange={(e) => handleUpdateLineItem(index, 'test_reqs', e.target.value.split(',').map(s => s.trim()))} placeholder="-" className={inputClass} /></td>;
-                                                            if (col.id === 'od') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.outer_diameter.value || ''} onChange={(e) => handleUpdateDimension(index, 'outer_diameter', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.outer_diameter.unit}</span></div></td>;
-                                                            if (col.id === 'wt') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.wall_thickness.value || ''} onChange={(e) => handleUpdateDimension(index, 'wall_thickness', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.wall_thickness.unit}</span></div></td>;
-                                                            if (col.id === 'length') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.length.value || ''} onChange={(e) => handleUpdateDimension(index, 'length', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.length.unit}</span></div></td>;
-                                                            if (col.id === 'qty') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.quantity || 0} onChange={(e) => handleUpdateLineItem(index, 'quantity', Number(e.target.value))} className={`${inputClass} text-right font-bold text-slate-800`} /></td>;
-                                                            if (col.id === 'uom') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.uom || ''} onChange={(e) => handleUpdateLineItem(index, 'uom', e.target.value)} className={`${inputClass} text-center text-slate-500`} /></td>;
-                                                            if (col.isCustom) return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.custom_fields?.[col.id] || ''} onChange={(e) => handleUpdateCustomField(index, col.id, e.target.value)} className={inputClass} placeholder="-" /></td>;
-                                                            return null;
-                                                        })}
-                                                        <td className="px-2 py-2 text-center w-12 sticky right-0 bg-white group-hover:bg-slate-50 transition-colors shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] align-middle z-10 border-l border-slate-200">
-                                                            <button onClick={() => handleDeleteItem(index)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-all" title={t(lang, 'delete_item')}>
-                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                                            </button>
-                                                        </td>
+                                        <div className="overflow-x-auto min-h-[300px]">
+                                            <table className="w-full text-xs text-left border-collapse table-fixed min-w-[1000px]">
+                                                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 sticky top-0 z-20 shadow-sm">
+                                                    <tr>
+                                                        {tableConfig.filter(c => c.visible).map((col) => (
+                                                            <th key={col.id} className={`px-2 py-3 border-b border-slate-200 bg-slate-50 border-r border-slate-200 text-center ${getWidthClass(col.width)}`}>{col.label}</th>
+                                                        ))}
+                                                        <th className="px-2 py-3 text-center w-12 bg-white border-b border-slate-200 sticky right-0 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] border-l border-slate-200 z-30"><span className="sr-only">Actions</span></th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-200 bg-white">
+                                                    {rfq.line_items.map((item, index) => (
+                                                        <tr key={item.item_id} className="hover:bg-blue-50/10 transition-colors group">
+                                                            {tableConfig.filter(c => c.visible).map(col => {
+                                                                const cellClass = "px-2 py-2 border-r border-slate-200 align-middle";
+                                                                const inputClass = "w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 placeholder-slate-300 focus:bg-white focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all";
+                                                                const inputId = col.id === 'description' ? `cell-description-${index}` : `cell-${col.id}-${index}`;
+
+                                                                if (col.id === 'line') return <td key={col.id} className={`${cellClass} text-center bg-slate-50/50 text-slate-400 font-mono w-24`}>{item.line}</td>;
+                                                                if (col.id === 'shape') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={`cell-shape-${index}`} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.product_type || ''} onChange={(e) => handleUpdateLineItem(index, 'product_type', e.target.value)} className={inputClass} placeholder="-" /></td>;
+                                                                if (col.id === 'description') return <td key={col.id} className={`${cellClass} w-64`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.description} onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)} className={`${inputClass} font-medium`} /></td>;
+                                                                if (col.id === 'grade') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.material_grade || ''} onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)} className={inputClass} /></td>;
+                                                                if (col.id === 'tolerance') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.tolerance || ''} onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)} placeholder="-" className={`${inputClass} text-center`} /></td>;
+                                                                if (col.id === 'tests') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.test_reqs?.join(', ') || ''} onChange={(e) => handleUpdateLineItem(index, 'test_reqs', e.target.value.split(',').map(s => s.trim()))} placeholder="-" className={inputClass} /></td>;
+                                                                if (col.id === 'od') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.outer_diameter.value || ''} onChange={(e) => handleUpdateDimension(index, 'outer_diameter', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.outer_diameter.unit}</span></div></td>;
+                                                                if (col.id === 'wt') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.wall_thickness.value || ''} onChange={(e) => handleUpdateDimension(index, 'wall_thickness', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.wall_thickness.unit}</span></div></td>;
+                                                                if (col.id === 'length') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.length.value || ''} onChange={(e) => handleUpdateDimension(index, 'length', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.length.unit}</span></div></td>;
+                                                                if (col.id === 'qty') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.quantity || 0} onChange={(e) => handleUpdateLineItem(index, 'quantity', Number(e.target.value))} className={`${inputClass} text-right font-bold text-slate-800`} /></td>;
+                                                                if (col.id === 'uom') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.uom || ''} onChange={(e) => handleUpdateLineItem(index, 'uom', e.target.value)} className={`${inputClass} text-center text-slate-500`} /></td>;
+                                                                if (col.isCustom) return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.custom_fields?.[col.id] || ''} onChange={(e) => handleUpdateCustomField(index, col.id, e.target.value)} className={inputClass} placeholder="-" /></td>;
+                                                                return null;
+                                                            })}
+                                                            <td className="px-2 py-2 text-center w-12 sticky right-0 bg-white group-hover:bg-slate-50 transition-colors shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] align-middle z-10 border-l border-slate-200">
+                                                                <button onClick={() => handleDeleteItem(index)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-all" title={t(lang, 'delete_item')}>
+                                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
 
                                     {/* RISK REPORT MODAL */}
