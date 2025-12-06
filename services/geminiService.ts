@@ -1,665 +1,594 @@
+// services/geminiService.ts
+// NOTE: this file is now DeepSeek-based. We keep the filename so the rest of your app doesn't break.
 
-import { GoogleGenAI, Type } from "@google/genai";
 import { Rfq, LineItem, FileAttachment, Language } from "../types";
 
-// Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+/**
+ * DeepSeek Chat API config
+ * Docs: https://api-docs.deepseek.com
+ */
+const DEEPSEEK_API_KEY =
+  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_DEEPSEEK_API_KEY) ||
+  (typeof process !== "undefined" && (process as any).env?.DEEPSEEK_API_KEY) ||
+  "";
 
-const MODEL_FAST = "gemini-2.5-flash";
-const MODEL_IMAGE = "gemini-2.5-flash-image";
+const DEEPSEEK_MODEL =
+  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_DEEPSEEK_MODEL) ||
+  "deepseek-chat";
 
-// Export the Risk Interface here so it can be used in views
+const DEEPSEEK_BASE_URL =
+  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_DEEPSEEK_BASE_URL) ||
+  "https://api.deepseek.com";
+
+/* ---------------- Types you already export ---------------- */
+
 export interface RiskAnalysisItem {
-    category: 'Technical' | 'Commercial' | 'Strategic';
-    risk: string;
-    recommendation: string;
-    impact_level: 'High' | 'Medium' | 'Low';
+  category: "Technical" | "Commercial" | "Strategic";
+  risk: string;
+  recommendation: string;
+  impact_level: "High" | "Medium" | "Low";
 }
 
 export interface InsightSource {
-    title: string;
-    uri: string;
+  title: string;
+  uri: string;
 }
 
 export interface InsightResponse {
-    content: string;
-    sources: InsightSource[];
+  content: string;
+  sources: InsightSource[];
 }
 
 export interface TrendingTopic {
-    title: string;
-    subtitle: string;
-    tag: string;
-    impact: 'High' | 'Medium' | 'Low';
+  title: string;
+  subtitle: string;
+  tag: string;
+  impact: "High" | "Medium" | "Low";
 }
 
 export interface MarketDataResponse {
-    nickel: number;
-    moly: number;
-    chrome: number; // Added Ferrochrome
-    steel: number;
-    oil: number;
-    copper: number;
-    aluminum: number;
-    zinc: number;
-    lead: number;
-    tin: number;
-    last_updated: string;
-    isFallback?: boolean; // New flag to indicate quota limits
+  nickel: number;
+  moly: number;
+  chrome: number;
+  steel: number;
+  oil: number;
+  copper: number;
+  aluminum: number;
+  zinc: number;
+  lead: number;
+  tin: number;
+  last_updated: string;
+  isFallback?: boolean;
 }
 
+/* ---------------- Small helpers ---------------- */
+
 const getLanguageName = (lang: Language): string => {
-    switch (lang) {
-        case 'zh': return "Simplified Chinese (简体中文)";
-        case 'es': return "Spanish (Español)";
-        default: return "English";
-    }
+  switch (lang) {
+    case "zh":
+      return "Simplified Chinese (简体中文)";
+    case "es":
+      return "Spanish (Español)";
+    default:
+      return "English";
+  }
 };
 
-// Helper to robustly extract JSON from potentially conversational text
+// Extract JSON from a possibly chatty response
 const cleanJson = (text: string): string => {
-    if (!text) return "";
-    
-    // 1. Try to find markdown code block
-    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (codeBlockMatch) {
-        text = codeBlockMatch[1];
-    }
+  if (!text) return "";
 
-    // 2. Find start of JSON (Object or Array)
-    const firstBrace = text.indexOf('{');
-    const firstBracket = text.indexOf('[');
-    
-    let start = -1;
-    // Check which comes first
-    if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
-        start = firstBracket;
-    } else if (firstBrace !== -1) {
-        start = firstBrace;
-    }
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (codeBlockMatch) {
+    text = codeBlockMatch[1];
+  }
 
-    if (start === -1) return text.trim();
+  const firstBrace = text.indexOf("{");
+  const firstBracket = text.indexOf("[");
+  let start = -1;
 
-    // 3. Find end of JSON
-    let end = -1;
-    // If it started with [, look for ]. If it started with {, look for }.
-    if (text[start] === '[') {
-        end = text.lastIndexOf(']');
-    } else {
-        end = text.lastIndexOf('}');
-    }
+  if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+    start = firstBracket;
+  } else if (firstBrace !== -1) {
+    start = firstBrace;
+  }
 
-    if (end !== -1 && end >= start) {
-        return text.substring(start, end + 1);
-    }
+  if (start === -1) return text.trim();
 
-    return text.trim();
+  let end = -1;
+  if (text[start] === "[") {
+    end = text.lastIndexOf("]");
+  } else {
+    end = text.lastIndexOf("}");
+  }
+
+  if (end !== -1 && end >= start) {
+    return text.substring(start, end + 1);
+  }
+
+  return text.trim();
 };
 
-// Simple regex fallback for shape if AI misses it
+// Very rough shape inference
 const inferShape = (desc: string): string => {
-    if (!desc) return "";
-    const d = desc.toLowerCase();
-    if (d.includes("pipe") || d.includes("tube")) return "Pipe";
-    if (d.includes("flange") || d.includes("wn") || d.includes("blind") || d.includes("slip-on")) return "Flange";
-    if (d.includes("elbow") || d.includes("tee") || d.includes("reducer") || d.includes("cap")) return "Fitting";
-    if (d.includes("valve") || d.includes("ball") || d.includes("gate") || d.includes("check")) return "Valve";
-    if (d.includes("gasket")) return "Gasket";
-    if (d.includes("bolt") || d.includes("stud")) return "Bolt";
-    if (d.includes("plate") || d.includes("sheet")) return "Plate";
-    return "Other";
+  if (!desc) return "";
+  const d = desc.toLowerCase();
+  if (d.includes("pipe") || d.includes("tube")) return "Pipe";
+  if (d.includes("flange") || d.includes("wn") || d.includes("blind") || d.includes("slip-on"))
+    return "Flange";
+  if (d.includes("elbow") || d.includes("tee") || d.includes("reducer") || d.includes("cap"))
+    return "Fitting";
+  if (d.includes("valve") || d.includes("ball") || d.includes("gate") || d.includes("check"))
+    return "Valve";
+  if (d.includes("gasket")) return "Gasket";
+  if (d.includes("bolt") || d.includes("stud")) return "Bolt";
+  if (d.includes("plate") || d.includes("sheet")) return "Plate";
+  return "Other";
 };
+
+/* ---------------- Core DeepSeek call helper ---------------- */
+
+interface DeepSeekChatOptions {
+  system: string;
+  user: string;
+  responseFormat?: "json_object" | "text";
+}
+
+const callDeepSeek = async ({ system, user, responseFormat = "text" }: DeepSeekChatOptions) => {
+  if (!DEEPSEEK_API_KEY) {
+    throw new Error("Missing DeepSeek API key. Set VITE_DEEPSEEK_API_KEY or DEEPSEEK_API_KEY");
+  }
+
+  const body: any = {
+    model: DEEPSEEK_MODEL,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    stream: false,
+  };
+
+  if (responseFormat === "json_object") {
+    // OpenAI-compatible JSON mode
+    body.response_format = { type: "json_object" };
+  }
+
+  const res = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`DeepSeek error ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  const message = data?.choices?.[0]?.message?.content ?? "";
+  return typeof message === "string" ? message : JSON.stringify(message);
+};
+
+/* ---------------- parseRequest (main RFQ parser) ---------------- */
 
 export const parseRequest = async (
-  text: string, 
-  projectName: string | null, 
-  files?: FileAttachment[], 
-  lang: Language = 'en', 
+  text: string,
+  projectName: string | null,
+  files?: FileAttachment[],
+  lang: Language = "en",
   currentLineItems: LineItem[] = []
-): Promise<{ rfqUpdates: Partial<Rfq>, responseText: string }> => {
-  
+): Promise<{ rfqUpdates: Partial<Rfq>; responseText: string }> => {
   const isEditMode = currentLineItems.length > 0;
   const targetLang = getLanguageName(lang);
 
   const systemInstruction = `
-    You are Crontal's expert procurement AI. Your role is to interact naturally with the buyer AND extract/modify structured RFQ data.
+You are Crontal's expert procurement AI. Your role is to interact naturally with the buyer AND extract/modify structured RFQ data.
 
-    MODE: ${isEditMode ? "EDITING EXISTING LIST" : "CREATING NEW LIST"}
-    TARGET LANGUAGE FOR TEXT FIELDS & RESPONSE: ${targetLang}
+MODE: ${isEditMode ? "EDITING EXISTING LIST" : "CREATING NEW LIST"}
+TARGET LANGUAGE FOR TEXT FIELDS & RESPONSE: ${targetLang}
 
-    YOUR TASKS:
-    1. **CONVERSATIONAL RESPONSE (Priority)**:
-       - Generate a natural, helpful response in "conversational_response" field.
-       - Acknowledge the user's input directly (e.g., "I've added the 3 flanges you requested.").
-       - If the user asks a question, answer it.
-       - If specific details are missing (e.g., material grade), politely ask for them in the response.
-       - Keep it professional but conversational.
+You MUST output a single valid JSON object matching this TypeScript-like schema, no extra keys, no explanations:
 
-    2. **DATA EXTRACTION / EDITING**:
-       - Analyze text and files.
-       ${isEditMode 
-        ? `- LOGIC: You are provided a [CURRENT LINE ITEMS] list.
-             * "Add...": APPEND new items.
-             * "Change line X...": MODIFY item with "line": X.
-             * "Delete line X": REMOVE item with "line": X.
-             * "Set name...": Update project_name.
-           - RETURN THE FULL, MERGED LIST in the "line_items" array. Do not return partial updates. Preserve IDs.` 
-        : `- LOGIC: Extract all line items from scratch.`}
-    
-    3. **ENGINEERING INTELLIGENCE**:
-       - **Dimensions**: Split into OD, WT, Length. Normalize units.
-       - **Product Type**: Detect Pipe, Flange, Valve, etc.
-       - **Specs**: Extract Grade, Tolerance, Tests (HIC, SSC, MTR).
-    
-    4. **COMMERCIAL TERMS**:
-       - Extract Destination, Incoterm, Payment Terms if mentioned.
+{
+  "conversational_response": string,
+  "project_name": string | null,
+  "commercial": {
+    "destination": string | null,
+    "incoterm": string | null,
+    "payment_terms": string | null,
+    "other_requirements": string | null
+  },
+  "line_items": Array<{
+    "item_id": string | null,
+    "description": string,
+    "product_type": string | null,
+    "material_grade": string | null,
+    "tolerance": string | null,
+    "test_reqs": string[] | null,
+    "size": {
+      "od_val": number | null,
+      "od_unit": string | null,
+      "wt_val": number | null,
+      "wt_unit": string | null,
+      "len_val": number | null,
+      "len_unit": string | null
+    },
+    "quantity": number | null,
+    "uom": string | null
+  }>
+}
 
-    OUTPUT FORMAT:
-    - Return ONLY valid JSON matching the schema.
-  `;
+RULES:
+- "conversational_response" must be in ${targetLang}.
+- If you are editing an existing list, always return the FULL updated list of line_items (adds/changes/deletes applied), not just deltas.
+- If information is missing, leave fields null but ask the user for the missing data in "conversational_response".
+`;
+
+  // NOTE: DeepSeek's public chat API is text-first. We're ignoring binary file contents here.
+  // If you depend on heavy PDF/image parsing, this really belongs in a backend with a multimodal model.
+  let promptText = `USER REQUEST:\n"""${text}"""\n\nRFP Name Context: ${
+    projectName || "N/A"
+  }\n`;
+
+  if (isEditMode) {
+    const cleanList = currentLineItems.map((item) => ({
+      line: item.line,
+      item_id: item.item_id,
+      description: item.description,
+      qty: item.quantity,
+      grade: item.material_grade,
+    }));
+    promptText += `\n[CURRENT LINE ITEMS DATA]:\n${JSON.stringify(cleanList, null, 2)}\n`;
+  }
+
+  if (files && files.length > 0) {
+    promptText += `\nNOTE: The user also uploaded ${files.length} attachment(s) with technical details. 
+You do NOT see the raw file content here, but assume they are standard RFQ/supporting documents (spec sheets, MTOs, etc.). 
+Infer what you can from the text; if something is only in the files, explicitly ask the user to paste that section.\n`;
+  }
 
   try {
-    const parts: any[] = [];
-    
-    let promptText = `USER REQUEST:\n"""${text}"""\n\nRFP Name Context: ${projectName || "N/A"}\n`;
-    
-    if (isEditMode) {
-        // Send a simplified version of current items to save tokens, but keep IDs
-        const cleanList = currentLineItems.map(item => ({
-            line: item.line,
-            item_id: item.item_id,
-            description: item.description,
-            qty: item.quantity,
-            grade: item.material_grade
-        }));
-        promptText += `\n\n[CURRENT LINE ITEMS DATA]:\n${JSON.stringify(cleanList)}\n`;
-    }
-
-    parts.push({ text: promptText });
-
-    if (files && files.length > 0) {
-        files.forEach(file => {
-            parts.push({
-                inlineData: {
-                    mimeType: file.mimeType,
-                    data: file.data
-                }
-            });
-        });
-    }
-
-    const response = await ai.models.generateContent({
-      model: MODEL_FAST,
-      contents: { parts },
-      config: {
-        systemInstruction: systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            conversational_response: { type: Type.STRING, description: "Natural language response to the user." },
-            project_name: { type: Type.STRING, nullable: true },
-            commercial: {
-                type: Type.OBJECT,
-                properties: {
-                    destination: { type: Type.STRING, nullable: true },
-                    incoterm: { type: Type.STRING, nullable: true },
-                    payment_terms: { type: Type.STRING, nullable: true },
-                    other_requirements: { type: Type.STRING, nullable: true }
-                }
-            },
-            line_items: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  item_id: { type: Type.STRING, nullable: true },
-                  description: { type: Type.STRING },
-                  product_type: { type: Type.STRING, nullable: true },
-                  material_grade: { type: Type.STRING, nullable: true },
-                  tolerance: { type: Type.STRING, nullable: true },
-                  test_reqs: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
-                  size: {
-                    type: Type.OBJECT,
-                    properties: {
-                      od_val: { type: Type.NUMBER, nullable: true },
-                      od_unit: { type: Type.STRING, nullable: true },
-                      wt_val: { type: Type.NUMBER, nullable: true },
-                      wt_unit: { type: Type.STRING, nullable: true },
-                      len_val: { type: Type.NUMBER, nullable: true },
-                      len_unit: { type: Type.STRING, nullable: true }
-                    }
-                  },
-                  quantity: { type: Type.NUMBER, nullable: true },
-                  uom: { type: Type.STRING, nullable: true }
-                }
-              }
-            }
-          }
-        }
-      }
+    const raw = await callDeepSeek({
+      system: systemInstruction,
+      user: promptText,
+      responseFormat: "json_object",
     });
 
-    const cleanText = cleanJson(response.text || "{}");
-    let parsedData;
+    const cleanText = cleanJson(raw || "{}");
+    let parsedData: any;
     try {
-        parsedData = JSON.parse(cleanText);
+      parsedData = JSON.parse(cleanText);
     } catch (parseError) {
-        console.error("JSON Parse Error:", parseError, cleanText);
-        throw new Error("Failed to parse AI response");
+      console.error("JSON Parse Error:", parseError, cleanText);
+      throw new Error("Failed to parse AI response");
     }
-    
+
     const items: LineItem[] = (parsedData.line_items || []).map((li: any, idx: number) => {
-        const id = li.item_id || `L${Date.now()}-${idx}`;
-        
-        return {
-            item_id: id,
-            line: idx + 1,
-            raw_description: li.description || "",
-            description: li.description || "",
-            product_category: null,
-            product_type: li.product_type || inferShape(li.description),
-            material_grade: li.material_grade,
-            standard_or_spec: null,
-            tolerance: li.tolerance,
-            test_reqs: li.test_reqs || [],
-            size: {
-                outer_diameter: { value: li.size?.od_val, unit: li.size?.od_unit },
-                wall_thickness: { value: li.size?.wt_val, unit: li.size?.wt_unit },
-                length: { value: li.size?.len_val, unit: li.size?.len_unit }
-            },
-            quantity: li.quantity,
-            uom: li.uom,
-            delivery_location: null,
-            required_delivery_date: null,
-            incoterm: null,
-            payment_terms: null,
-            other_requirements: []
-        };
+      const id = li.item_id || `L${Date.now()}-${idx}`;
+      return {
+        item_id: id,
+        line: idx + 1,
+        raw_description: li.description || "",
+        description: li.description || "",
+        product_category: null,
+        product_type: li.product_type || inferShape(li.description),
+        material_grade: li.material_grade,
+        standard_or_spec: null,
+        tolerance: li.tolerance,
+        test_reqs: li.test_reqs || [],
+        size: {
+          outer_diameter: { value: li.size?.od_val, unit: li.size?.od_unit },
+          wall_thickness: { value: li.size?.wt_val, unit: li.size?.wt_unit },
+          length: { value: li.size?.len_val, unit: li.size?.len_unit },
+        },
+        quantity: li.quantity,
+        uom: li.uom,
+        delivery_location: null,
+        required_delivery_date: null,
+        incoterm: null,
+        payment_terms: null,
+        other_requirements: [],
+      };
     });
 
     return {
-        rfqUpdates: {
-            project_name: parsedData.project_name,
-            commercial: {
-                destination: parsedData.commercial?.destination || "",
-                incoterm: parsedData.commercial?.incoterm || "",
-                paymentTerm: parsedData.commercial?.payment_terms || "",
-                otherRequirements: parsedData.commercial?.other_requirements || "",
-                req_mtr: false,
-                req_avl: false,
-                req_tpi: false,
-                warranty_months: 12
-            },
-            line_items: items
+      rfqUpdates: {
+        project_name: parsedData.project_name,
+        commercial: {
+          destination: parsedData.commercial?.destination || "",
+          incoterm: parsedData.commercial?.incoterm || "",
+          paymentTerm: parsedData.commercial?.payment_terms || "",
+          otherRequirements: parsedData.commercial?.other_requirements || "",
+          req_mtr: false,
+          req_avl: false,
+          req_tpi: false,
+          warranty_months: 12,
         },
-        responseText: parsedData.conversational_response || (lang === 'zh' ? "已处理您的请求。" : "Request processed.")
+        line_items: items,
+      },
+      responseText:
+        parsedData.conversational_response ||
+        (lang === "zh" ? "已处理您的请求。" : "Request processed."),
     };
-
   } catch (error) {
-    console.error("Gemini Parse Error:", error);
-    return { rfqUpdates: { line_items: [] }, responseText: "I encountered an error processing that request." }; 
+    console.error("DeepSeek Parse Error:", error);
+    return {
+      rfqUpdates: { line_items: [] },
+      responseText:
+        lang === "zh"
+          ? "处理您的请求时出现错误，请稍后重试。"
+          : "I encountered an error processing that request.",
+    };
   }
 };
 
-export const analyzeRfqRisks = async (rfq: Rfq, lang: Language = 'en'): Promise<RiskAnalysisItem[]> => {
-    const targetLang = getLanguageName(lang);
-    const systemInstruction = `
-      You are a Senior Procurement Risk Officer. Your job is to audit this RFQ before it is sent to suppliers.
-      Identify WEAKNESSES that could lead to ambiguity, wrong quotes, manufacturing errors, or commercial disputes.
-      
-      ANALYZE:
-      1. **Technical**: Missing grades, undefined specs (e.g. "Carbon Steel" without Grade), missing dimensions, missing NACE/HIC requirements for O&G. 
-         - **IMPORTANT**: If a specific item is missing data, reference it clearly as "Line X" (e.g., "Line 3 is missing Schedule").
-      2. **Commercial**: Missing Incoterms, vague payment terms, missing warranty.
-      3. **Strategic**: Single sourcing risks, unfeasible delivery times, incomplete project description.
-      
-      OUTPUT:
-      Return a structured JSON list of specific recommendations.
-      Language: ${targetLang}
-    `;
+/* ---------------- Other functions, now via DeepSeek ---------------- */
 
-    // Construct a concise context payload
-    const rfqContext = {
-        project: rfq.project_name,
-        description: rfq.project_description,
-        commercial: rfq.commercial,
-        // Send a summary of items to save tokens, highlighting potential missing data points
-        items: rfq.line_items.map(i => ({
-            line: i.line,
-            desc: i.description,
-            grade: i.material_grade || "MISSING",
-            qty: i.quantity,
-            type: i.product_type
-        }))
-    };
-
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_FAST,
-            contents: JSON.stringify(rfqContext),
-            config: {
-                systemInstruction,
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            category: { type: Type.STRING, enum: ['Technical', 'Commercial', 'Strategic'] },
-                            risk: { type: Type.STRING },
-                            recommendation: { type: Type.STRING },
-                            impact_level: { type: Type.STRING, enum: ['High', 'Medium', 'Low'] }
-                        }
-                    }
-                }
-            }
-        });
-
-        const clean = cleanJson(response.text || "[]");
-        const parsed: RiskAnalysisItem[] = JSON.parse(clean);
-        return parsed;
-    } catch (e) {
-        console.error("Risk Analysis Error", e);
-        // Return a fallback error as a risk item if AI fails
-        return [{
-            category: "Technical",
-            risk: "AI Analysis Failed",
-            recommendation: "Please review specs manually. The AI service encountered an error.",
-            impact_level: "Low"
-        }];
-    }
-};
-
-export const clarifyRequest = async (rfq: Rfq, userMessage: string, lang: Language = 'en'): Promise<string> => {
-    // Legacy function, might not be needed if parseRequest handles conversation
-    const targetLang = getLanguageName(lang);
-    const systemInstruction = `
-    You are Crontal's RFQ assistant.
-    Goal: Confirm the user's action and summarize the current state.
-    CRITICAL: Output MUST be in ${targetLang}.
-    `;
-
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_FAST,
-            contents: `User said: "${userMessage}". RFQ now has ${rfq.line_items.length} items.`,
-            config: { systemInstruction }
-        });
-        return cleanJson(response.text || "");
-    } catch (e) {
-        return lang === 'zh' ? "表格已更新。" : "Table updated.";
-    }
-}
-
-export const generateRfqSummary = async (rfq: Rfq, lang: Language = 'en'): Promise<string> => {
+export const analyzeRfqRisks = async (rfq: Rfq, lang: Language = "en"): Promise<RiskAnalysisItem[]> => {
   const targetLang = getLanguageName(lang);
   const systemInstruction = `
-    Role: Procurement Manager.
-    Task: Write an Executive Summary for Suppliers.
-    Language: ${targetLang}.
-    Length: <80 words.
-    Focus: Project scale, key materials, urgency.
-  `;
+You are a Senior Procurement Risk Officer. Audit this RFQ for weaknesses that could cause ambiguity, wrong quotes, manufacturing errors, or commercial disputes.
+
+Return ONLY a JSON array of objects:
+[{ "category": "Technical" | "Commercial" | "Strategic", "risk": string, "recommendation": string, "impact_level": "High" | "Medium" | "Low" }]
+
+Language of "risk" and "recommendation": ${targetLang}.
+`;
+
+  const rfqContext = {
+    project: rfq.project_name,
+    description: rfq.project_description,
+    commercial: rfq.commercial,
+    items: rfq.line_items.map((i) => ({
+      line: i.line,
+      desc: i.description,
+      grade: i.material_grade || "MISSING",
+      qty: i.quantity,
+      type: i.product_type,
+    })),
+  };
 
   try {
-    const response = await ai.models.generateContent({
-      model: MODEL_FAST,
-      contents: `RFP Name: ${rfq.project_name}. Items: ${rfq.line_items.length}. Descs: ${rfq.line_items.slice(0,5).map(i=>i.description).join('; ')}`,
-      config: { systemInstruction }
+    const raw = await callDeepSeek({
+      system: systemInstruction,
+      user: JSON.stringify(rfqContext),
+      responseFormat: "json_object",
     });
-    return cleanJson(response.text || "");
+
+    const clean = cleanJson(raw || "[]");
+    const parsed: RiskAnalysisItem[] = JSON.parse(clean);
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
+    console.error("Risk Analysis Error", e);
+    return [
+      {
+        category: "Technical",
+        risk: "AI Analysis Failed",
+        recommendation: "Please review specs manually. The AI service encountered an error.",
+        impact_level: "Low",
+      },
+    ];
+  }
+};
+
+export const clarifyRequest = async (
+  rfq: Rfq,
+  userMessage: string,
+  lang: Language = "en"
+): Promise<string> => {
+  const targetLang = getLanguageName(lang);
+  const systemInstruction = `
+You are Crontal's RFQ assistant.
+Goal: Confirm the user's action and summarize the current RFQ state in ${targetLang}.
+Keep it under 60 words.
+`;
+
+  try {
+    const raw = await callDeepSeek({
+      system: systemInstruction,
+      user: `User said: "${userMessage}". RFQ now has ${rfq.line_items.length} items.`,
+      responseFormat: "text",
+    });
+    return raw.trim();
+  } catch {
+    return lang === "zh" ? "表格已更新。" : "Table updated.";
+  }
+};
+
+export const generateRfqSummary = async (rfq: Rfq, lang: Language = "en"): Promise<string> => {
+  const targetLang = getLanguageName(lang);
+  const systemInstruction = `
+Role: Procurement Manager.
+Task: Write an Executive Summary for Suppliers.
+Language: ${targetLang}.
+Length: <80 words.
+Focus: Project scale, key materials, urgency.
+`;
+
+  try {
+    const user = `RFP Name: ${rfq.project_name}. Items: ${
+      rfq.line_items.length
+    }. Descs: ${rfq.line_items.slice(0, 5).map((i) => i.description).join("; ")}`;
+    const raw = await callDeepSeek({ system: systemInstruction, user, responseFormat: "text" });
+    return raw.trim();
+  } catch {
     return "";
   }
 };
 
-export const auditRfqSpecs = async (rfq: Rfq, lang: Language = 'en'): Promise<string[]> => {
-    const targetLang = getLanguageName(lang);
-    const systemInstruction = `
-      Role: EPC QA Engineer.
-      Task: Audit RFQ for missing specs.
-      Output: JSON Array of warning strings in ${targetLang}.
-      
-      Checks:
-      - Pipes: Missing Schedule/WT?
-      - Flanges: Missing Class (#150)?
-      - Materials: Missing Grade?
-      - Valves: Missing Trim?
-    `;
-  
-    try {
-      const response = await ai.models.generateContent({
-        model: MODEL_FAST,
-        contents: JSON.stringify(rfq.line_items),
-        config: { 
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } }
-        }
-      });
-      const clean = cleanJson(response.text || "[]");
-      const parsed = JSON.parse(clean);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      return [];
-    }
+export const auditRfqSpecs = async (rfq: Rfq, lang: Language = "en"): Promise<string[]> => {
+  const targetLang = getLanguageName(lang);
+  const systemInstruction = `
+Role: EPC QA Engineer.
+Task: Audit RFQ for missing specs.
+Output: JSON Array of warning strings in ${targetLang}.
+
+Checks:
+- Pipes: Missing Schedule/WT?
+- Flanges: Missing Class (#150)?
+- Materials: Missing Grade?
+- Valves: Missing Trim?
+`;
+
+  try {
+    const raw = await callDeepSeek({
+      system: systemInstruction,
+      user: JSON.stringify(rfq.line_items),
+      responseFormat: "json_object",
+    });
+    const clean = cleanJson(raw || "[]");
+    const parsed = JSON.parse(clean);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 };
 
-export const editImage = async (base64Image: string, mimeType: string, prompt: string): Promise<string | null> => {
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_IMAGE,
-            contents: {
-                parts: [
-                    {
-                        inlineData: {
-                            data: base64Image,
-                            mimeType: mimeType,
-                        },
-                    },
-                    {
-                        text: prompt,
-                    },
-                ],
-            },
-        });
-        
-        // Find image part
-        const candidate = response.candidates?.[0];
-        if (candidate?.content?.parts) {
-            for (const part of candidate.content.parts) {
-                if (part.inlineData && part.inlineData.data) {
-                    return `data:image/png;base64,${part.inlineData.data}`;
-                }
-            }
-        }
-        return null;
-    } catch (e) {
-        console.error("Image Edit Error", e);
-        throw e;
-    }
+/**
+ * Image editing: DeepSeek's main chat API doesn't give you Gemini-style image editing.
+ * This is now a NO-OP placeholder. If you truly need this, you should integrate DeepSeek Image
+ * (separate product) or another image model on the backend.
+ */
+export const editImage = async (
+  _base64Image: string,
+  _mimeType: string,
+  _prompt: string
+): Promise<string | null> => {
+  console.warn("editImage is not implemented for DeepSeek in this frontend-only setup.");
+  return null;
 };
 
 export const getTrendingTopics = async (category: string): Promise<TrendingTopic[]> => {
-    const systemInstruction = `
-        You are an industrial news curator for the Stainless Steel, Piping, and EPC sectors.
-        
-        TASK:
-        Generate 4 relevant, hypothetical (but realistic based on current market trends) news headlines/topics for the category: "${category}".
-        These should look like actionable intelligence items for a procurement manager.
+  const systemInstruction = `
+You are an industrial news curator for the Stainless Steel, Piping, and EPC sectors.
 
-        Focus areas:
-        - "Regulatory": Carbon tax, CBAM, tariffs, ASTM updates.
-        - "Supply Chain": Nickel prices, freight rates, port congestion, mill lead times.
-        - "Innovation": Green steel, hydrogen piping, new alloys.
+TASK:
+Generate 4 realistic, up-to-date sounding topics for category "${category}".
+They should look like actionable intelligence items for a procurement manager.
 
-        OUTPUT: JSON Array of 4 items.
-    `;
+Return ONLY a JSON array:
+[
+  { "title": string, "subtitle": string, "tag": string, "impact": "High" | "Medium" | "Low" },
+  ...
+]
+`;
 
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_FAST,
-            contents: `Give me 4 trending topics for ${category}`,
-            config: {
-                systemInstruction,
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            title: { type: Type.STRING, description: "Short punchy headline" },
-                            subtitle: { type: Type.STRING, description: "One sentence context" },
-                            tag: { type: Type.STRING, description: "e.g. Price Alert, Regulation, Tech" },
-                            impact: { type: Type.STRING, enum: ['High', 'Medium', 'Low'] }
-                        }
-                    }
-                }
-            }
-        });
-        
-        const clean = cleanJson(response.text || "[]");
-        return JSON.parse(clean);
-    } catch(e) {
-        console.error("News Fetch Error", e);
-        return [
-            { title: "Market Volatility Alert", subtitle: "Unable to fetch specific news. General caution advised.", tag: "System", impact: "Low" }
-        ];
-    }
+  try {
+    const raw = await callDeepSeek({
+      system: systemInstruction,
+      user: `Generate 4 trending topics for "${category}".`,
+      responseFormat: "json_object",
+    });
+    const clean = cleanJson(raw || "[]");
+    const parsed = JSON.parse(clean);
+    if (!Array.isArray(parsed)) throw new Error("Not array");
+    return parsed;
+  } catch (e) {
+    console.error("News Fetch Error", e);
+    return [
+      {
+        title: "Market Volatility Alert",
+        subtitle: "Unable to fetch specific news. General caution advised.",
+        tag: "System",
+        impact: "Low",
+      },
+    ];
+  }
 };
 
 export const getLatestMarketData = async (): Promise<MarketDataResponse | null> => {
-    const systemInstruction = `
-        You are a financial data assistant. 
-        TASK: Search for the LATEST available market prices for the following commodities using Google Search Grounding.
-        
-        REQUIRED DATA (Stainless Inputs):
-        1. LME Nickel (Cash or 3-month) in USD per Ton.
-        2. Molybdenum Oxide in USD per Pound (lb).
-        3. Ferrochrome (High Carbon) in USD per Pound (lb).
-        4. US HRC Steel in USD per Short Ton (ST).
-        5. Brent Crude Oil in USD per Barrel.
+  const systemInstruction = `
+You are a financial data assistant.
+Return APPROXIMATE current market prices for the following commodities.
+If you don't know the exact latest prices, give reasonable recent estimates and say so in "last_updated".
 
-        REQUIRED DATA (LME Base Metals):
-        6. LME Copper in USD per Ton.
-        7. LME Aluminum in USD per Ton.
-        8. LME Zinc in USD per Ton.
-        9. LME Lead in USD per Ton.
-        10. LME Tin in USD per Ton.
+Output a single JSON object with this exact structure:
+{
+  "nickel": number,
+  "moly": number,
+  "chrome": number,
+  "steel": number,
+  "oil": number,
+  "copper": number,
+  "aluminum": number,
+  "zinc": number,
+  "lead": number,
+  "tin": number,
+  "last_updated": "YYYY-MM-DD"
+}
+`;
 
-        OUTPUT FORMAT:
-        Return ONLY a raw JSON object. Do NOT include markdown formatting, code blocks, or conversational text. 
-        Just the JSON.
-
-        Structure:
-        {
-          "nickel": number,
-          "moly": number,
-          "chrome": number,
-          "steel": number,
-          "oil": number,
-          "copper": number,
-          "aluminum": number,
-          "zinc": number,
-          "lead": number,
-          "tin": number,
-          "last_updated": "YYYY-MM-DD"
-        }
-        
-        Use approximate recent values if live data is strictly gated, but prioritize Grounding search results.
-    `;
-
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_FAST,
-            contents: "Get latest prices for: LME Nickel USD/Ton, Molybdenum USD/lb, Ferrochrome USD/lb, US HRC Steel USD/ST, Brent Crude USD/bbl, LME Copper, LME Aluminum, LME Zinc, LME Lead, LME Tin",
-            config: {
-                systemInstruction,
-                tools: [{googleSearch: {}}]
-                // Note: responseMimeType and responseSchema are NOT supported when using tools.
-            }
-        });
-
-        const clean = cleanJson(response.text || "{}");
-        const data = JSON.parse(clean);
-        data.isFallback = false;
-        return data;
-    } catch (e) {
-        console.error("Market Data Fetch Error", e);
-        // Fallback data if rate limited or failed
-        return {
-            nickel: 16200, moly: 42, chrome: 1.45, steel: 820, oil: 78,
-            copper: 8900, aluminum: 2200, zinc: 2400, lead: 2100, tin: 26000,
-            last_updated: new Date().toISOString(),
-            isFallback: true
-        };
-    }
+  try {
+    const raw = await callDeepSeek({
+      system: systemInstruction,
+      user:
+        "Get approximate recent prices for: LME Nickel USD/Ton, Molybdenum USD/lb, Ferrochrome USD/lb, US HRC Steel USD/ST, Brent Crude USD/bbl, LME Copper, LME Aluminum, LME Zinc, LME Lead, LME Tin.",
+      responseFormat: "json_object",
+    });
+    const clean = cleanJson(raw || "{}");
+    const data = JSON.parse(clean);
+    data.isFallback = false;
+    return data;
+  } catch (e) {
+    console.error("Market Data Fetch Error", e);
+    return {
+      nickel: 16200,
+      moly: 42,
+      chrome: 1.45,
+      steel: 820,
+      oil: 78,
+      copper: 8900,
+      aluminum: 2200,
+      zinc: 2400,
+      lead: 2100,
+      tin: 26000,
+      last_updated: new Date().toISOString().slice(0, 10),
+      isFallback: true,
+    };
+  }
 };
 
-export const generateIndustryInsights = async (category: string, query: string): Promise<InsightResponse> => {
-    const systemInstruction = `
-        You are a Senior Industrial Analyst specializing in the stainless steel, heavy piping, and EPC (Engineering, Procurement, Construction) sectors.
-        
-        YOUR TASK:
-        Provide a concise, data-driven executive summary on the following topic:
-        Category: ${category}
-        Specific Focus: ${query || "General Market Overview"}
+export const generateIndustryInsights = async (
+  category: string,
+  query: string
+): Promise<InsightResponse> => {
+  const systemInstruction = `
+You are a Senior Industrial Analyst for stainless steel, heavy piping, and EPC.
 
-        CONTEXTUAL FOCUS:
-        - Industries: Stainless Steel, Carbon Steel, Oil & Gas Piping, Industrial Manufacturing.
-        - Regions: Global market with focus on major hubs (EU, US, Asia).
-        - Regulatory Standards: ASTM, ASME, EN, ISO.
-        - USE THE SEARCH TOOLS to find the most recent pricing, news, and regulations.
+OUTPUT FORMAT (Markdown string, NOT JSON):
+## 1. Executive Summary
+...
 
-        OUTPUT STRUCTURE (Markdown):
-        ## 1. Executive Summary
-        [2-3 sentences summarizing the situation]
+## 2. Key Developments
+- ...
+- ...
 
-        ## 2. Key Developments
-        - [Point 1: Recent price moves, supply shocks, or new regulations like CBAM/Section 232]
-        - [Point 2: Technology shifts or major project announcements]
+## 3. Market Impact
+- **Pricing:** ...
+- **Lead Times:** ...
 
-        ## 3. Market Impact
-        - **Pricing:** [Rising/Falling/Stable]
-        - **Lead Times:** [Increasing/Decreasing]
-        
-        ## 4. Strategic Advice for Procurement Managers
-        [Actionable bullet points on when to buy, stock up, or diversify suppliers]
+## 4. Strategic Advice for Procurement Managers
+- ...
+`;
 
-        TONE:
-        Professional, objective, forward-looking. Avoid generic fluff.
-    `;
+  try {
+    const raw = await callDeepSeek({
+      system: systemInstruction,
+      user: `Generate insights for category "${category}" with specific focus "${query || "General Market Overview"}".`,
+      responseFormat: "text",
+    });
 
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: `Generate insights for: ${query} in category: ${category}`,
-            config: { 
-                systemInstruction,
-                tools: [{googleSearch: {}}]
-            }
-        });
-
-        const text = response.text || "Unable to generate insights at this time.";
-        
-        // Extract Grounding Sources
-        const sources: InsightSource[] = [];
-        const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-        
-        chunks.forEach((chunk: any) => {
-            if (chunk.web?.uri && chunk.web?.title) {
-                sources.push({
-                    title: chunk.web.title,
-                    uri: chunk.web.uri
-                });
-            }
-        });
-
-        return { content: text, sources };
-
-    } catch (e) {
-        console.error("Industry Insights Error", e);
-        return { content: "Service unavailable. Please try again later.", sources: [] };
-    }
+    // We no longer have grounded web sources like Gemini+GoogleSearch.
+    // For now, just return empty sources and the narrative.
+    return {
+      content: raw || "Unable to generate insights at this time.",
+      sources: [],
+    };
+  } catch (e) {
+    console.error("Industry Insights Error", e);
+    return { content: "Service unavailable. Please try again later.", sources: [] };
+  }
 };
