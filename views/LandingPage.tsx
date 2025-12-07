@@ -47,7 +47,7 @@ const standards = [
     { name: "NACE", desc: "Corrosion", iconPath: "M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" },
     { name: "DIN", desc: "Deutsches", iconPath: "M3 3h18v18H3V3zm2 2v14h14V5H5z" },
     { name: "ANSI", desc: "National", iconPath: "M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" },
-    { name: "IEEE", desc: "Electrical", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59 8 8-8 8 3.59 8 8-3.59 8-8 8zm-4-8h8" },
+    { name: "IEEE", desc: "Electrical", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-4-8h8" },
     { name: "AWS", desc: "Welding", iconPath: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
     { name: "JIS", desc: "Japanese", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" },
     { name: "BSI", desc: "British", iconPath: "M12 2l-5.5 9h11L12 2zm0 3.8L14.2 9H9.8L12 5.8zM5 20l5.5-9h-11L5 20z" },
@@ -81,36 +81,36 @@ export default function LandingPage(props: LandingPageProps) {
       <MarketingNavbar onStart={props.onStart} onNavigate={props.onNavigate} lang={props.lang} setLang={props.setLang} />
 
       {/* --- Section 1: Hero --- */}
-      <section className="relative pt-12 lg:pt-16 pb-12 lg:pb-20 px-4 lg:px-6 max-w-7xl mx-auto overflow-hidden">
+      <section className="relative pt-16 pb-20 px-6 max-w-7xl mx-auto overflow-hidden">
          {/* Background Elements */}
         <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-gradient-to-bl from-brandOrange/10 to-transparent rounded-full blur-[100px] -z-10 translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
 
-        <div className="text-center max-w-4xl mx-auto mb-10 lg:mb-16 animate-in fade-in slide-in-from-bottom-8 duration-700">
-             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-600 mb-6 lg:mb-8 tracking-wide">
+        <div className="text-center max-w-4xl mx-auto mb-16 animate-in fade-in slide-in-from-bottom-8 duration-700">
+             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-600 mb-8 tracking-wide">
                 <span className="w-1.5 h-1.5 rounded-full bg-brandOrange animate-pulse"></span>
                 {t(lang, 'marketing_tagline')}
             </div>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold text-slate-900 mb-6 lg:mb-8 leading-[1.1] tracking-tight">
+            <h1 className="text-5xl lg:text-7xl font-bold text-slate-900 mb-8 leading-[1.1] tracking-tight">
                 {t(lang, 'hero_title')} <br/>
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-brandOrange to-orange-600">{t(lang, 'hero_title_accent')}</span>
             </h1>
             
-            <p className="text-lg lg:text-xl text-slate-500 mb-8 lg:mb-10 leading-relaxed max-w-2xl mx-auto px-4">
+            <p className="text-xl text-slate-500 mb-10 leading-relaxed max-w-2xl mx-auto">
                 {t(lang, 'hero_desc')}
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
                 <ShimmerButton 
                     onClick={props.onStart}
-                    className="px-8 py-4 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition shadow-2xl shadow-slate-900/20 uppercase tracking-wide flex items-center justify-center gap-2 w-full sm:w-auto"
+                    className="px-8 py-4 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition shadow-2xl shadow-slate-900/20 uppercase tracking-wide flex items-center justify-center gap-2"
                 >
                     {t(lang, 'cta_start')}
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
                 </ShimmerButton>
                 <button 
                     onClick={props.onRoi}
-                    className="px-8 py-4 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:border-brandOrange hover:text-brandOrange transition uppercase tracking-wide bg-white w-full sm:w-auto"
+                    className="px-8 py-4 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:border-brandOrange hover:text-brandOrange transition uppercase tracking-wide bg-white"
                 >
                     {t(lang, 'cta_roi')}
                 </button>
@@ -118,14 +118,14 @@ export default function LandingPage(props: LandingPageProps) {
         </div>
 
         {/* Hero Visual - Auto Demo */}
-        <div className="animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200 mb-12 px-2 sm:px-0">
+        <div className="animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200 mb-12">
             <AutoDemo />
         </div>
       </section>
 
       {/* --- Standards Ticker --- */}
       <section className="py-8 bg-slate-50 border-y border-slate-100 overflow-hidden relative">
-          <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-6 px-4">
+          <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-6">
               {t(lang, 'standards_title')}
           </p>
           <div className="relative flex overflow-x-hidden">
@@ -140,31 +140,31 @@ export default function LandingPage(props: LandingPageProps) {
                   ))}
              </div>
              {/* Fade Gradients */}
-             <div className="absolute top-0 left-0 w-8 md:w-24 h-full bg-gradient-to-r from-slate-50 to-transparent z-10 pointer-events-none"></div>
-             <div className="absolute top-0 right-0 w-8 md:w-24 h-full bg-gradient-to-l from-slate-50 to-transparent z-10 pointer-events-none"></div>
+             <div className="absolute top-0 left-0 w-24 h-full bg-gradient-to-r from-slate-50 to-transparent z-10 pointer-events-none"></div>
+             <div className="absolute top-0 right-0 w-24 h-full bg-gradient-to-l from-slate-50 to-transparent z-10 pointer-events-none"></div>
           </div>
       </section>
 
       {/* --- Section 2: Concrete Examples (Transformation) --- */}
-      <section className="py-16 lg:py-24 bg-white border-b border-slate-200">
-          <div className="max-w-7xl mx-auto px-4 lg:px-6">
-              <div className="text-center mb-12 lg:mb-16">
+      <section className="py-24 bg-white border-b border-slate-200">
+          <div className="max-w-7xl mx-auto px-6">
+              <div className="text-center mb-16">
                   <h2 className="text-3xl font-bold text-slate-900 mb-4">{t(lang, 'transformation_title')}</h2>
                   <p className="text-slate-500 max-w-2xl mx-auto">
                       {t(lang, 'transformation_desc')}
                   </p>
               </div>
 
-              <div className="flex justify-center gap-4 mb-8 lg:mb-12">
+              <div className="flex justify-center gap-4 mb-12">
                   <button 
                       onClick={() => setActiveExample('email')}
-                      className={`px-4 lg:px-6 py-2 rounded-full text-xs lg:text-sm font-bold transition ${activeExample === 'email' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+                      className={`px-6 py-2 rounded-full text-sm font-bold transition ${activeExample === 'email' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
                   >
                       Example 1: Messy Email
                   </button>
                   <button 
                       onClick={() => setActiveExample('drawing')}
-                      className={`px-4 lg:px-6 py-2 rounded-full text-xs lg:text-sm font-bold transition ${activeExample === 'drawing' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+                      className={`px-6 py-2 rounded-full text-sm font-bold transition ${activeExample === 'drawing' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
                   >
                       Example 2: Drawing Spec
                   </button>
@@ -172,12 +172,12 @@ export default function LandingPage(props: LandingPageProps) {
 
               <div className="grid lg:grid-cols-2 gap-8 items-stretch">
                   {/* INPUT */}
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 lg:p-8 relative overflow-hidden group">
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 relative overflow-hidden group">
                       <div className="absolute top-4 left-4 bg-red-100 text-red-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide">
                           Input: {activeExample === 'email' ? 'Natural Language' : 'PDF Extraction'}
                       </div>
                       
-                      <div className="mt-8 font-mono text-xs lg:text-sm text-slate-600 bg-slate-50 p-4 lg:p-6 rounded-xl border border-dashed border-slate-300 min-h-[300px] flex flex-col justify-center">
+                      <div className="mt-8 font-mono text-sm text-slate-600 bg-slate-50 p-6 rounded-xl border border-dashed border-slate-300 min-h-[300px] flex flex-col justify-center">
                           {activeExample === 'email' ? (
                               <>
                                   <p>"Hi team, RFQ for the Texas Expansion. Terms: DAP Houston, Net 30.</p>
@@ -210,21 +210,21 @@ export default function LandingPage(props: LandingPageProps) {
                   </div>
 
                   {/* OUTPUT (CRONTAL) */}
-                  <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl p-4 lg:p-8 relative overflow-hidden">
+                  <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl p-8 relative overflow-hidden">
                       <div className="absolute top-0 right-0 w-64 h-64 bg-brandOrange/10 rounded-full blur-[80px]"></div>
                       <div className="absolute top-4 left-4 bg-green-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide z-10">
                           Output: Crontal Structured Data
                       </div>
 
                       <div className="mt-12 relative z-10 overflow-x-auto">
-                          <table className="w-full text-left text-[10px] text-slate-300 min-w-[400px]">
+                          <table className="w-full text-left text-[10px] text-slate-300">
                               <thead>
                                   <tr className="border-b border-slate-700 text-slate-500 uppercase tracking-wider">
                                       <th className="pb-3 pr-4">Line</th>
                                       <th className="pb-3 pr-4">Description</th>
                                       <th className="pb-3 pr-4">Material</th>
-                                      <th className="pb-3 pr-4 hidden sm:table-cell">Size</th>
-                                      <th className="pb-3 pr-4 hidden md:table-cell">Tech Specs</th>
+                                      <th className="pb-3 pr-4">Size / Schedule</th>
+                                      <th className="pb-3 pr-4">Tech Specs</th>
                                       <th className="pb-3 text-right">Qty</th>
                                   </tr>
                               </thead>
@@ -235,24 +235,24 @@ export default function LandingPage(props: LandingPageProps) {
                                               <td className="py-3 font-mono text-slate-500">001</td>
                                               <td className="py-3"><span className="text-white font-bold">Seamless Pipe</span></td>
                                               <td className="py-3 text-blue-400">ASTM A106 Gr.B</td>
-                                              <td className="py-3 font-mono hidden sm:table-cell">6" Sch40</td>
-                                              <td className="py-3 text-slate-400 italic hidden md:table-cell">NACE MR0175, Smls</td>
+                                              <td className="py-3 font-mono">6" Sch40</td>
+                                              <td className="py-3 text-slate-400 italic">NACE MR0175, Smls</td>
                                               <td className="py-3 text-right text-white font-bold">500 m</td>
                                           </tr>
                                           <tr>
                                               <td className="py-3 font-mono text-slate-500">002</td>
                                               <td className="py-3"><span className="text-white font-bold">Weld Neck Flange</span></td>
                                               <td className="py-3 text-blue-400">ASTM A105N</td>
-                                              <td className="py-3 font-mono hidden sm:table-cell">6" Class 150</td>
-                                              <td className="py-3 text-slate-400 italic hidden md:table-cell">ASME B16.5, RF</td>
+                                              <td className="py-3 font-mono">6" Class 150</td>
+                                              <td className="py-3 text-slate-400 italic">ASME B16.5, RF</td>
                                               <td className="py-3 text-right text-white font-bold">20 pcs</td>
                                           </tr>
                                            <tr>
                                               <td className="py-3 font-mono text-slate-500">003</td>
                                               <td className="py-3"><span className="text-white font-bold">Stud Bolts</span></td>
                                               <td className="py-3 text-blue-400">A193 B7 / A194 2H</td>
-                                              <td className="py-3 font-mono hidden sm:table-cell">3/4" x 90mm</td>
-                                              <td className="py-3 text-slate-400 italic hidden md:table-cell">Hot Dip Galv.</td>
+                                              <td className="py-3 font-mono">3/4" x 90mm</td>
+                                              <td className="py-3 text-slate-400 italic">Hot Dip Galv.</td>
                                               <td className="py-3 text-right text-white font-bold">160 sets</td>
                                           </tr>
                                       </>
@@ -262,16 +262,16 @@ export default function LandingPage(props: LandingPageProps) {
                                               <td className="py-3 font-mono text-slate-500">001</td>
                                               <td className="py-3"><span className="text-white font-bold">Seamless Pipe</span></td>
                                               <td className="py-3 text-blue-400">ASTM A106 Gr.B</td>
-                                              <td className="py-3 font-mono hidden sm:table-cell">6" Sch80</td>
-                                              <td className="py-3 text-slate-400 italic hidden md:table-cell">Hydro 3000 PSI</td>
+                                              <td className="py-3 font-mono">6" Sch80 (10.97mm)</td>
+                                              <td className="py-3 text-slate-400 italic">Hydro 3000 PSI</td>
                                               <td className="py-3 text-right text-white font-bold">12 m</td>
                                           </tr>
                                            <tr>
                                               <td className="py-3 font-mono text-slate-500">002</td>
                                               <td className="py-3"><span className="text-white font-bold">Gate Valve</span></td>
                                               <td className="py-3 text-blue-400">ASTM A216 WCB</td>
-                                              <td className="py-3 font-mono hidden sm:table-cell">6" Class 300</td>
-                                              <td className="py-3 text-slate-400 italic hidden md:table-cell">API 600, Trim 8</td>
+                                              <td className="py-3 font-mono">6" Class 300</td>
+                                              <td className="py-3 text-slate-400 italic">API 600, Trim 8</td>
                                               <td className="py-3 text-right text-white font-bold">2 pcs</td>
                                           </tr>
                                       </>
@@ -297,15 +297,15 @@ export default function LandingPage(props: LandingPageProps) {
                                   EN 10204 3.1
                               </div>
                           </div>
-                          <div className="hidden sm:block">
+                          <div>
                               <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Inspection</div>
                               <div className="text-xs font-bold text-white">TPI Level 2</div>
                           </div>
-                           <div className="hidden sm:block">
+                           <div>
                               <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Vendor List</div>
                               <div className="text-xs font-bold text-amber-400">Restricted (AVL)</div>
                           </div>
-                          <div className="hidden sm:block">
+                          <div>
                               <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Warranty</div>
                               <div className="text-xs font-bold text-white">18 Months</div>
                           </div>
@@ -316,10 +316,10 @@ export default function LandingPage(props: LandingPageProps) {
       </section>
 
       {/* --- Section 3: Value Proposition (Why?) --- */}
-      <section className="py-16 lg:py-24 bg-white">
+      <section className="py-24 bg-white">
           <div className="max-w-7xl mx-auto px-6">
-              <div className="text-center mb-16 lg:mb-20">
-                  <h2 className="text-3xl lg:text-4xl font-bold text-slate-900 mb-6">{t(lang, 'val_prop_title')}</h2>
+              <div className="text-center mb-20">
+                  <h2 className="text-4xl font-bold text-slate-900 mb-6">{t(lang, 'val_prop_title')}</h2>
                   <p className="text-lg text-slate-500 max-w-2xl mx-auto">
                       We replaced the manual "Copy-Paste" workflow with an intelligent engine.
                   </p>
@@ -363,12 +363,12 @@ export default function LandingPage(props: LandingPageProps) {
       </section>
 
       {/* --- Section 5: CTA --- */}
-      <section className="py-24 lg:py-32 bg-slate-900 relative overflow-hidden">
+      <section className="py-32 bg-slate-900 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-brandOrange/10 rounded-full blur-[100px] pointer-events-none"></div>
           <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[100px] pointer-events-none"></div>
           
           <div className="max-w-3xl mx-auto px-6 text-center relative z-10">
-              <h2 className="text-3xl lg:text-5xl font-bold text-white mb-8 tracking-tight">{t(lang, 'cta_bottom_title')}</h2>
+              <h2 className="text-4xl lg:text-5xl font-bold text-white mb-8 tracking-tight">{t(lang, 'cta_bottom_title')}</h2>
               <div className="text-slate-400 text-lg mb-12 font-light max-w-xl mx-auto">
                   <p>{t(lang, 'cta_bottom_desc')}</p>
               </div>
@@ -376,7 +376,7 @@ export default function LandingPage(props: LandingPageProps) {
               <div className="flex flex-col sm:flex-row justify-center gap-6">
                   <ShimmerButton 
                       onClick={props.onStart}
-                      className="px-10 py-4 bg-brandOrange text-white rounded-xl text-sm font-bold uppercase tracking-wide hover:bg-orange-500 transition shadow-[0_0_30px_rgba(249,115,22,0.4)] w-full sm:w-auto"
+                      className="px-10 py-4 bg-brandOrange text-white rounded-xl text-sm font-bold uppercase tracking-wide hover:bg-orange-500 transition shadow-[0_0_30px_rgba(249,115,22,0.4)]"
                   >
                       {t(lang, 'cta_start')}
                   </ShimmerButton>

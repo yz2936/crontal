@@ -383,7 +383,7 @@ export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: 
                 <div className="max-w-7xl mx-auto px-6">
                     
                     {/* Header & Tabs */}
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
+                    <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                         <div>
                             <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider mb-2 ${
                                 !firstLoadComplete ? 'bg-slate-800 border-slate-700 text-blue-400' :
@@ -395,7 +395,7 @@ export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: 
                             </div>
                             <h1 className="text-3xl font-bold tracking-tight">{t(lang, 'insights_title')}</h1>
                         </div>
-                        <div className="flex flex-col items-start md:items-end gap-2 w-full md:w-auto">
+                        <div className="flex flex-col items-end gap-2">
                             <div className="flex items-center gap-2 text-[10px] text-slate-500 uppercase tracking-wide">
                                 <span>{t(lang, 'last_updated')}: {lastUpdated}</span>
                                 <button onClick={() => fetchRealPrices()} className="text-brandOrange hover:text-white" title="Refresh Now">
@@ -404,27 +404,27 @@ export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: 
                             </div>
                             
                             {/* Category Switcher */}
-                            <div className="flex gap-2 mb-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+                            <div className="flex gap-2 mb-2">
                                 <button 
                                     onClick={() => { setChartCategory('Stainless'); setActiveCommodity('NICKEL'); }}
-                                    className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors whitespace-nowrap ${chartCategory === 'Stainless' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                    className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${chartCategory === 'Stainless' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
                                 >
                                     {t(lang, 'stainless_inputs')}
                                 </button>
                                 <button 
                                     onClick={() => { setChartCategory('LME'); setActiveCommodity('COPPER'); }}
-                                    className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors whitespace-nowrap ${chartCategory === 'LME' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                    className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded transition-colors ${chartCategory === 'LME' ? 'text-white' : 'text-slate-500 hover:text-slate-300'}`}
                                 >
                                     {t(lang, 'lme_metals')}
                                 </button>
                             </div>
 
-                            <div className="flex gap-2 bg-slate-800 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
+                            <div className="flex gap-2 bg-slate-800 p-1 rounded-xl">
                                 {chartTabs.map((key) => (
                                     <button
                                         key={key}
                                         onClick={() => setActiveCommodity(key)}
-                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeCommodity === key ? 'bg-brandOrange text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeCommodity === key ? 'bg-brandOrange text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                                     >
                                         {marketData[key].symbol}
                                     </button>
@@ -437,19 +437,19 @@ export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: 
                         
                         {/* CHART CARD (2/3 Width) */}
                         <div className="lg:col-span-2 bg-slate-800/50 rounded-2xl border border-slate-700 p-6 md:p-8 relative overflow-hidden shadow-2xl flex flex-col">
-                            <div className="relative z-10 flex flex-col md:flex-row justify-between items-start mb-6 gap-4">
+                            <div className="relative z-10 flex justify-between items-start mb-6">
                                 <div>
                                     <h2 className="text-2xl font-bold text-white mb-1">{marketData[activeCommodity].name}</h2>
                                     <div className="flex items-baseline gap-3">
-                                        <span className={`text-4xl md:text-5xl font-mono font-bold tracking-tighter text-white transition-opacity duration-500 ${!firstLoadComplete ? 'opacity-50' : 'opacity-100'}`}>
+                                        <span className={`text-5xl font-mono font-bold tracking-tighter text-white transition-opacity duration-500 ${!firstLoadComplete ? 'opacity-50' : 'opacity-100'}`}>
                                             {!firstLoadComplete ? "----.--" : marketData[activeCommodity].price.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                         <span className="text-slate-400 text-lg">{marketData[activeCommodity].unit}</span>
                                     </div>
                                 </div>
-                                <div className="flex flex-col items-start md:items-end gap-4 w-full md:w-auto">
+                                <div className="flex flex-col items-end gap-4">
                                      {/* Time Range Selector */}
-                                    <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700 w-full md:w-auto justify-between md:justify-start overflow-x-auto">
+                                    <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-700">
                                         {(['1D', '5D', '1M', '6M', 'YTD', '1Y'] as TimeRange[]).map(range => (
                                             <button
                                                 key={range}
@@ -457,7 +457,7 @@ export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: 
                                                     setActiveRange(range);
                                                     // Note: We do NOT trigger fetchRealPrices() here anymore to save API calls
                                                 }}
-                                                className={`px-3 py-1 rounded text-[10px] font-bold transition-all min-w-[30px] ${activeRange === range ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                                                className={`px-3 py-1 rounded text-[10px] font-bold transition-all ${activeRange === range ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                                             >
                                                 {range}
                                             </button>
@@ -465,7 +465,7 @@ export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: 
                                     </div>
 
                                     <div className={`text-right ${!firstLoadComplete ? 'opacity-0' : 'opacity-100'} transition-opacity duration-500 ${marketData[activeCommodity].trend === 'up' ? 'text-green-400' : marketData[activeCommodity].trend === 'down' ? 'text-red-400' : 'text-slate-400'}`}>
-                                        <div className="text-lg font-bold flex items-center gap-1 justify-start md:justify-end">
+                                        <div className="text-lg font-bold flex items-center gap-1 justify-end">
                                             {marketData[activeCommodity].trend === 'up' ? '▲' : marketData[activeCommodity].trend === 'down' ? '▼' : '—'}
                                             {marketData[activeCommodity].history.length > 0 ? Math.abs((marketData[activeCommodity].price - marketData[activeCommodity].history[0]) / marketData[activeCommodity].history[0] * 100).toFixed(2) : '0.00'}%
                                         </div>
@@ -484,7 +484,7 @@ export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: 
                                 >
                                     {/* SVG Chart */}
                                     <div className={`w-full h-full transition-all duration-500 ${(!firstLoadComplete || isChartUpdating) ? 'blur-md opacity-30' : 'blur-0 opacity-100'}`}>
-                                        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto max-h-[300px] overflow-visible" preserveAspectRatio="none">
+                                        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
                                             <defs>
                                                 <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
                                                     <stop offset="0%" stopColor="#F97316" stopOpacity="0.3" />
@@ -736,13 +736,13 @@ export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: 
             {/* --- BOTTOM SECTION: INTELLIGENCE FEED --- */}
             <div id="report-section" className="flex-1 max-w-7xl mx-auto px-6 py-12 w-full flex flex-col">
                 
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                <div className="flex justify-between items-center mb-8">
                     <div>
                         <h2 className="text-2xl font-bold text-slate-900">{t(lang, 'intel_channels')}</h2>
                         <p className="text-sm text-slate-500">{t(lang, 'intel_desc')}</p>
                     </div>
                     {/* Search Bar */}
-                    <div className="relative w-full md:max-w-xs">
+                    <div className="relative w-full max-w-xs hidden md:block">
                         <input 
                             type="text" 
                             value={query}
@@ -764,22 +764,20 @@ export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: 
                     
                     {/* LEFT SIDEBAR */}
                     <div className="lg:col-span-3 space-y-3">
-                        <div className="flex flex-row lg:flex-col overflow-x-auto lg:overflow-visible gap-3 pb-2 lg:pb-0">
-                            {categories.map((cat) => (
-                                <button
-                                    key={cat.id}
-                                    onClick={() => fetchHeadlines(cat.id)}
-                                    disabled={isGeneratingHeadlines}
-                                    className={`flex-none lg:w-full text-left px-4 py-4 rounded-xl transition-all duration-200 flex items-center gap-3 border whitespace-nowrap lg:whitespace-normal min-w-[150px] lg:min-w-0 ${activeCategory === cat.id ? 'bg-white shadow-lg shadow-slate-200/50 border-slate-100 ring-1 ring-slate-100' : 'bg-transparent border-transparent hover:bg-white hover:border-slate-100'}`}
-                                >
-                                    <span className="text-xl">{cat.icon}</span>
-                                    <div className="flex-1">
-                                        <div className={`text-sm font-bold ${activeCategory === cat.id ? 'text-slate-900' : 'text-slate-500'}`}>{cat.title}</div>
-                                    </div>
-                                    {activeCategory === cat.id && <svg className="w-4 h-4 text-brandOrange hidden lg:block" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>}
-                                </button>
-                            ))}
-                        </div>
+                        {categories.map((cat) => (
+                            <button
+                                key={cat.id}
+                                onClick={() => fetchHeadlines(cat.id)}
+                                disabled={isGeneratingHeadlines}
+                                className={`w-full text-left px-4 py-4 rounded-xl transition-all duration-200 flex items-center gap-3 border ${activeCategory === cat.id ? 'bg-white shadow-lg shadow-slate-200/50 border-slate-100 ring-1 ring-slate-100' : 'bg-transparent border-transparent hover:bg-white hover:border-slate-100'}`}
+                            >
+                                <span className="text-xl">{cat.icon}</span>
+                                <div className="flex-1">
+                                    <div className={`text-sm font-bold ${activeCategory === cat.id ? 'text-slate-900' : 'text-slate-500'}`}>{cat.title}</div>
+                                </div>
+                                {activeCategory === cat.id && <svg className="w-4 h-4 text-brandOrange" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>}
+                            </button>
+                        ))}
                     </div>
 
                     {/* MAIN CONTENT AREA */}
