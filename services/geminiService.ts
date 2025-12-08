@@ -1,10 +1,10 @@
 
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Rfq, LineItem, FileAttachment, Language, RiskAnalysisItem, InsightSource, InsightResponse, TrendingTopic, MarketDataResponse } from "../types";
 
 // Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// WARNING: If process.env.API_KEY is missing at build time, this will be empty string.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
 const MODEL_FAST = "gemini-2.5-flash";
 const MODEL_IMAGE = "gemini-2.5-flash-image";
@@ -531,6 +531,7 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
         Use approximate recent values if live data is strictly gated, but prioritize Grounding search results.
     `;
 
+    // Strategy 1: Try with Search Grounding
     try {
         const response = await ai.models.generateContent({
             model: MODEL_FAST,
@@ -538,7 +539,6 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
             config: {
                 systemInstruction,
                 tools: [{googleSearch: {}}]
-                // Note: responseMimeType and responseSchema are NOT supported when using tools.
             }
         });
 
@@ -547,14 +547,50 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
         data.isFallback = false;
         return data;
     } catch (e) {
-        console.error("Market Data Fetch Error", e);
-        // Fallback data if rate limited or failed
-        return {
-            nickel: 16200, moly: 42, chrome: 1.45, steel: 820, oil: 78,
-            copper: 8900, aluminum: 2200, zinc: 2400, lead: 2100, tin: 26000,
-            last_updated: new Date().toISOString(),
-            isFallback: true
-        };
+        console.error("Live Market Data Fetch Failed (Grounding)", e);
+        
+        // Strategy 2: Fallback to AI Estimate (No Search)
+        // This handles cases where the API key is valid but search tools are restricted/rate-limited
+        try {
+            console.log("Attempting fallback to AI Estimate...");
+            const response = await ai.models.generateContent({
+                model: MODEL_FAST,
+                contents: "Estimate current 2024/2025 market prices for: LME Nickel USD/Ton, Molybdenum USD/lb, Ferrochrome USD/lb, US HRC Steel USD/ST, Brent Crude USD/bbl, LME Copper, LME Aluminum, LME Zinc, LME Lead, LME Tin. Return JSON only based on your internal knowledge.",
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: Type.OBJECT,
+                        properties: {
+                            nickel: { type: Type.NUMBER },
+                            moly: { type: Type.NUMBER },
+                            chrome: { type: Type.NUMBER },
+                            steel: { type: Type.NUMBER },
+                            oil: { type: Type.NUMBER },
+                            copper: { type: Type.NUMBER },
+                            aluminum: { type: Type.NUMBER },
+                            zinc: { type: Type.NUMBER },
+                            lead: { type: Type.NUMBER },
+                            tin: { type: Type.NUMBER },
+                            last_updated: { type: Type.STRING }
+                        }
+                    }
+                }
+            });
+            const clean = cleanJson(response.text || "{}");
+            const data = JSON.parse(clean);
+            // Mark as 'isFallback' true so UI shows it's not live, but at least we have data
+            data.isFallback = true; 
+            return data;
+        } catch (e2) {
+            console.error("AI Estimate Failed", e2);
+            // Strategy 3: Hardcoded Data (Last Resort)
+            return {
+                nickel: 16200, moly: 42, chrome: 1.45, steel: 820, oil: 78,
+                copper: 8900, aluminum: 2200, zinc: 2400, lead: 2100, tin: 26000,
+                last_updated: new Date().toISOString(),
+                isFallback: true
+            };
+        }
     }
 };
 

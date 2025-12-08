@@ -28,6 +28,9 @@ export default function App() {
   const [lang, setLang] = useState<Language>('en');
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  // Check for API Key presence
+  const apiKey = process.env.API_KEY;
+
   // Central Navigation Handler
   const handleNavigate = (target: string) => {
     setView(target as ViewMode);
@@ -197,58 +200,70 @@ export default function App() {
       setLang
   };
 
-  // Routing Logic
-  if (view === 'TECH') return <TechCapabilities {...navProps} />;
-  if (view === 'QUALITY') return <QualityStandards {...navProps} />;
-  if (view === 'ABOUT') return <About {...navProps} />;
-  if (view === 'ROI') return <RoiPage {...navProps} />;
-  if (view === 'SUPPLIER_LANDING') return <SupplierLandingPage {...navProps} />;
-  if (view === 'PRIVACY') return <PrivacyPolicy {...navProps} />;
-  if (view === 'TERMS') return <TermsOfService {...navProps} />;
-  if (view === 'BLOG') return <BlogPage {...navProps} />;
-  if (view === 'INSIGHTS') return <IndustryInsights {...navProps} />;
-
-  if (view === 'SUPPLIER') {
-      return <SupplierView rfq={rfq} onSubmitQuote={handleQuoteSubmit} lang={lang} onExit={handleSupplierExit} />;
-  }
-  
-  if (view === 'HOME' && !user) {
-      return (
-        <LandingPage 
-            onStart={() => setView('BUYER')}
-            onNavigate={handleNavigate} 
-            onTechDemo={() => handleNavigate('TECH')} 
-            onQuality={() => handleNavigate('QUALITY')}
-            onAbout={() => handleNavigate('ABOUT')}
-            onRoi={() => handleNavigate('ROI')}
-            onSupplierPage={() => handleNavigate('SUPPLIER_LANDING')}
-            onPrivacy={() => handleNavigate('PRIVACY')}
-            onTerms={() => handleNavigate('TERMS')}
-            onBlog={() => handleNavigate('BLOG')}
-            lang={lang}
-            setLang={setLang}
-        />
-      );
-  }
-
-  if (view === 'BUYER' && !user) {
-    return <AuthView onLogin={handleLogin} onBack={() => handleNavigate('HOME')} />;
-  }
-
   return (
-    <Layout view={view} setView={setView} lang={lang} setLang={setLang} user={user} onLogout={handleLogout}>
-      {view === 'HOME' && user && (
-         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-in fade-in duration-700">
-          <div className="h-20 w-20 rounded-2xl bg-accent/10 border border-accent flex items-center justify-center mb-4">
-            <span className="text-accent font-bold text-4xl">C</span>
-          </div>
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">{t(lang, 'home_welcome', { name: user.name })}</h1>
-          <div className="flex gap-4 mt-8">
-            <button onClick={() => setView('BUYER')} className="px-6 py-3 rounded-xl bg-accent text-white font-medium hover:bg-accent/90 transition shadow-lg shadow-accent/20">{t(lang, 'start_rfq')}</button>
-          </div>
+    <>
+      {!apiKey && (
+        <div className="bg-red-600 text-white text-center py-2 text-xs font-bold fixed top-0 w-full z-[100] shadow-md">
+          ⚠️ DEPLOYMENT WARNING: API_KEY is missing. App is running in offline mode. Please check Cloudflare Environment Variables.
         </div>
       )}
-      {view === 'BUYER' && <BuyerView rfq={rfq} setRfq={handleRfqUpdate} quotes={quotes} lang={lang} />}
-    </Layout>
+      <div className={!apiKey ? 'mt-8' : ''}>
+        {(() => {
+          if (view === 'TECH') return <TechCapabilities {...navProps} />;
+          if (view === 'QUALITY') return <QualityStandards {...navProps} />;
+          if (view === 'ABOUT') return <About {...navProps} />;
+          if (view === 'ROI') return <RoiPage {...navProps} />;
+          if (view === 'SUPPLIER_LANDING') return <SupplierLandingPage {...navProps} />;
+          if (view === 'PRIVACY') return <PrivacyPolicy {...navProps} />;
+          if (view === 'TERMS') return <TermsOfService {...navProps} />;
+          if (view === 'BLOG') return <BlogPage {...navProps} />;
+          if (view === 'INSIGHTS') return <IndustryInsights {...navProps} />;
+
+          if (view === 'SUPPLIER') {
+              return <SupplierView rfq={rfq} onSubmitQuote={handleQuoteSubmit} lang={lang} onExit={handleSupplierExit} />;
+          }
+          
+          if (view === 'HOME' && !user) {
+              return (
+                <LandingPage 
+                    onStart={() => setView('BUYER')}
+                    onNavigate={handleNavigate} 
+                    onTechDemo={() => handleNavigate('TECH')} 
+                    onQuality={() => handleNavigate('QUALITY')}
+                    onAbout={() => handleNavigate('ABOUT')}
+                    onRoi={() => handleNavigate('ROI')}
+                    onSupplierPage={() => handleNavigate('SUPPLIER_LANDING')}
+                    onPrivacy={() => handleNavigate('PRIVACY')}
+                    onTerms={() => handleNavigate('TERMS')}
+                    onBlog={() => handleNavigate('BLOG')}
+                    lang={lang}
+                    setLang={setLang}
+                />
+              );
+          }
+
+          if (view === 'BUYER' && !user) {
+            return <AuthView onLogin={handleLogin} onBack={() => handleNavigate('HOME')} />;
+          }
+
+          return (
+            <Layout view={view} setView={setView} lang={lang} setLang={setLang} user={user} onLogout={handleLogout}>
+              {view === 'HOME' && user && (
+                 <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-in fade-in duration-700">
+                  <div className="h-20 w-20 rounded-2xl bg-accent/10 border border-accent flex items-center justify-center mb-4">
+                    <span className="text-accent font-bold text-4xl">C</span>
+                  </div>
+                  <h1 className="text-4xl font-bold tracking-tight text-slate-900">{t(lang, 'home_welcome', { name: user.name })}</h1>
+                  <div className="flex gap-4 mt-8">
+                    <button onClick={() => setView('BUYER')} className="px-6 py-3 rounded-xl bg-accent text-white font-medium hover:bg-accent/90 transition shadow-lg shadow-accent/20">{t(lang, 'start_rfq')}</button>
+                  </div>
+                </div>
+              )}
+              {view === 'BUYER' && <BuyerView rfq={rfq} setRfq={handleRfqUpdate} quotes={quotes} lang={lang} />}
+            </Layout>
+          );
+        })()}
+      </div>
+    </>
   );
 }
