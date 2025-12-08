@@ -1,7 +1,5 @@
 
 
-import { RiskAnalysisItem } from './services/geminiService';
-
 export interface Dimension {
     value: number | null;
     unit: string | null;
@@ -46,6 +44,46 @@ export interface Dimension {
     req_tpi: boolean; // Third Party Inspection
     warranty_months: number;
   }
+
+  // Moved from geminiService.ts
+  export interface RiskAnalysisItem {
+    category: 'Technical' | 'Commercial' | 'Strategic';
+    risk: string;
+    recommendation: string;
+    impact_level: 'High' | 'Medium' | 'Low';
+}
+
+export interface InsightSource {
+    title: string;
+    uri: string;
+}
+
+export interface InsightResponse {
+    content: string;
+    sources: InsightSource[];
+}
+
+export interface TrendingTopic {
+    title: string;
+    subtitle: string;
+    tag: string;
+    impact: 'High' | 'Medium' | 'Low';
+}
+
+export interface MarketDataResponse {
+    nickel: number;
+    moly: number;
+    chrome: number; // Added Ferrochrome
+    steel: number;
+    oil: number;
+    copper: number;
+    aluminum: number;
+    zinc: number;
+    lead: number;
+    tin: number;
+    last_updated: string;
+    isFallback?: boolean; // New flag to indicate quota limits
+}
   
   export interface Rfq {
     id: string;

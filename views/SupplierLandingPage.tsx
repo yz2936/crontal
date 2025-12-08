@@ -1,5 +1,4 @@
 
-import React from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
 import { Language } from '../types';
@@ -13,7 +12,7 @@ interface SupplierLandingPageProps {
   setLang: (lang: Language) => void;
 }
 
-export default function SupplierLandingPage({ onBack, onStartDemo, onNavigate, lang, setLang }: SupplierLandingPageProps) {
+export default function SupplierLandingPage({ onStartDemo, onNavigate, lang, setLang }: SupplierLandingPageProps) {
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans flex flex-col">
       <MarketingNavbar onStart={onStartDemo} onNavigate={onNavigate} lang={lang} setLang={setLang} />

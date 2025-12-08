@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, ViewMode, Language, User } from './types';
 import BuyerView from './views/BuyerView';

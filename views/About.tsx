@@ -1,5 +1,4 @@
 
-import React from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
 import { Language } from '../types';
@@ -13,7 +12,7 @@ interface AboutProps {
     setLang: (lang: Language) => void;
 }
 
-export default function About({ onBack, onStart, onNavigate, lang, setLang }: AboutProps) {
+export default function About({ onStart, onNavigate, lang, setLang }: AboutProps) {
     return (
         <div className="min-h-screen bg-white text-slate-900 font-sans flex flex-col">
              <MarketingNavbar onStart={onStart} onNavigate={onNavigate} lang={lang} setLang={setLang} />

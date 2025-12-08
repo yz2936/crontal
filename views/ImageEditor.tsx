@@ -1,7 +1,6 @@
 
 import React, { useState, useRef } from 'react';
 import { editImage } from '../services/geminiService';
-import { t } from '../utils/i18n';
 import { Language } from '../types';
 
 interface ImageEditorProps {
@@ -9,7 +8,7 @@ interface ImageEditorProps {
     lang?: Language;
 }
 
-export default function ImageEditor({ onBack, lang = 'en' }: ImageEditorProps) {
+export default function ImageEditor({ onBack }: ImageEditorProps) {
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const [mimeType, setMimeType] = useState<string>('image/png');
     const [editedImage, setEditedImage] = useState<string | null>(null);

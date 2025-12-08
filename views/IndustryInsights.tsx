@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
-import { generateIndustryInsights, getTrendingTopics, getLatestMarketData, InsightResponse, TrendingTopic } from '../services/geminiService';
-import { Language } from '../types';
+import { generateIndustryInsights, getTrendingTopics, getLatestMarketData } from '../services/geminiService';
+import { Language, InsightResponse, TrendingTopic } from '../types';
 import { t } from '../utils/i18n';
 
 interface IndustryInsightsProps {
@@ -48,7 +48,7 @@ export default function IndustryInsights({ onBack, onNavigate, lang, setLang }: 
     const [marketData, setMarketData] = useState<Record<string, MarketDataPoint>>(INITIAL_MARKET_DATA);
     const [activeCommodity, setActiveCommodity] = useState<string>('NICKEL');
     const [activeRange, setActiveRange] = useState<TimeRange>('1D');
-    const [isFetchingPrices, setIsFetchingPrices] = useState(true);
+    const [, setIsFetchingPrices] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<string>(t(lang, 'initializing'));
     const [firstLoadComplete, setFirstLoadComplete] = useState(false);
     const [isChartUpdating, setIsChartUpdating] = useState(false);

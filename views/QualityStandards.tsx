@@ -1,5 +1,4 @@
 
-import React from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
 import { Language } from '../types';
@@ -13,7 +12,7 @@ interface QualityStandardsProps {
   setLang: (lang: Language) => void;
 }
 
-export default function QualityStandards({ onBack, onStartDemo, onNavigate, lang, setLang }: QualityStandardsProps) {
+export default function QualityStandards({ onStartDemo, onNavigate, lang, setLang }: QualityStandardsProps) {
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans overflow-hidden relative flex flex-col">
       

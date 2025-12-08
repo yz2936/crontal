@@ -1,52 +1,13 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { Rfq, LineItem, FileAttachment, Language } from "../types";
+import { Rfq, LineItem, FileAttachment, Language, RiskAnalysisItem, InsightSource, InsightResponse, TrendingTopic, MarketDataResponse } from "../types";
 
 // Initialize Gemini Client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const MODEL_FAST = "gemini-2.5-flash";
 const MODEL_IMAGE = "gemini-2.5-flash-image";
-
-// Export the Risk Interface here so it can be used in views
-export interface RiskAnalysisItem {
-    category: 'Technical' | 'Commercial' | 'Strategic';
-    risk: string;
-    recommendation: string;
-    impact_level: 'High' | 'Medium' | 'Low';
-}
-
-export interface InsightSource {
-    title: string;
-    uri: string;
-}
-
-export interface InsightResponse {
-    content: string;
-    sources: InsightSource[];
-}
-
-export interface TrendingTopic {
-    title: string;
-    subtitle: string;
-    tag: string;
-    impact: 'High' | 'Medium' | 'Low';
-}
-
-export interface MarketDataResponse {
-    nickel: number;
-    moly: number;
-    chrome: number; // Added Ferrochrome
-    steel: number;
-    oil: number;
-    copper: number;
-    aluminum: number;
-    zinc: number;
-    lead: number;
-    tin: number;
-    last_updated: string;
-    isFallback?: boolean; // New flag to indicate quota limits
-}
 
 const getLanguageName = (lang: Language): string => {
     switch (lang) {

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
 import { Language } from '../types';
@@ -13,7 +13,7 @@ interface RoiPageProps {
     setLang: (lang: Language) => void;
 }
 
-export default function RoiPage({ onBack, onStart, onNavigate, lang, setLang }: RoiPageProps) {
+export default function RoiPage({ onStart, onNavigate, lang, setLang }: RoiPageProps) {
     const [rfqVolume, setRfqVolume] = useState(20);
     const [timePerRfq, setTimePerRfq] = useState(4); // hours
     const [hourlyRate, setHourlyRate] = useState(65); // USD

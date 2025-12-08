@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage } from '../types';
-import { parseRequest, analyzeRfqRisks, RiskAnalysisItem } from '../services/geminiService';
+import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage, RiskAnalysisItem } from '../types';
+import { parseRequest, analyzeRfqRisks, auditRfqSpecs } from '../services/geminiService';
 import { storageService } from '../services/storageService';
 import { t } from '../utils/i18n';
 import LZString from 'lz-string';
@@ -36,6 +36,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     // Risk Analysis State
     const [isRiskAnalyzing, setIsRiskAnalyzing] = useState(false);
     const [showRiskModal, setShowRiskModal] = useState(false);
+    const [auditWarnings, setAuditWarnings] = useState<string[]>([]);
+    const [isAuditing, setIsAuditing] = useState(false);
 
     // UI State
     const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); 
@@ -67,7 +69,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         if (rfq && rfq.line_items.length > prevItemCount.current) {
             const newIndex = rfq.line_items.length - 1;
             setTimeout(() => {
-                const el = document.getElementById(`cell-shape-${newIndex}`);
+                const el = document.getElementById(`cell-product_type-${newIndex}`);
                 if (el) (el as HTMLInputElement).focus();
             }, 100); 
         }
@@ -77,25 +79,21 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     // Default Table Configuration
     const [tableConfig, setTableConfig] = useState<ColumnConfig[]>([
         { id: 'line', label: t(lang, 'line'), visible: true, width: 'sm' },
-        { id: 'shape', label: t(lang, 'shape'), visible: true, width: 'md' },
+        { id: 'product_type', label: t(lang, 'shape'), visible: true, width: 'md' },
         { id: 'description', label: t(lang, 'description'), visible: true, width: 'lg' },
-        { id: 'grade', label: t(lang, 'grade'), visible: true, width: 'md' },
+        { id: 'material_grade', label: t(lang, 'grade'), visible: true, width: 'md' },
         { id: 'tolerance', label: t(lang, 'tolerance'), visible: true, width: 'sm' },
-        { id: 'tests', label: t(lang, 'tests'), visible: true, width: 'sm' },
-        { id: 'od', label: t(lang, 'od'), visible: true, width: 'sm' },
-        { id: 'wt', label: t(lang, 'wt'), visible: true, width: 'sm' },
-        { id: 'length', label: t(lang, 'length'), visible: true, width: 'sm' },
-        { id: 'qty', label: t(lang, 'qty'), visible: true, width: 'sm' },
+        { id: 'size', label: t(lang, 'size'), visible: true, width: 'lg' }, 
+        { id: 'quantity', label: t(lang, 'qty'), visible: true, width: 'sm' },
         { id: 'uom', label: t(lang, 'uom'), visible: true, width: 'sm' },
     ]);
 
-    const getWidthClass = (width: 'sm' | 'md' | 'lg') => {
-        switch (width) {
-            case 'sm': return 'w-24 min-w-[6rem]';
-            case 'md': return 'w-32 min-w-[8rem]';
-            case 'lg': return 'w-64 min-w-[16rem]';
-            default: return 'w-32';
-        }
+    // Helper for rendering size
+    const renderSize = (item: LineItem) => {
+        const od = item.size.outer_diameter.value ? `${item.size.outer_diameter.value}${item.size.outer_diameter.unit}` : '';
+        const wt = item.size.wall_thickness.value ? ` x ${item.size.wall_thickness.value}${item.size.wall_thickness.unit}` : '';
+        const len = item.size.length.value ? ` x ${item.size.length.value}${item.size.length.unit}` : '';
+        return `${od}${wt}${len}`;
     };
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,8 +160,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
             const result = await parseRequest(currentInput, projectName, processedFiles, lang, currentItems);
             
-            let newItemCount = 0;
-
             if (rfq) {
                 const updatedRfq: Rfq = {
                     ...rfq,
@@ -175,9 +171,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                     }
                 };
                 setRfq(updatedRfq);
-                newItemCount = result.rfqUpdates.line_items ? result.rfqUpdates.line_items.length : 0;
             } else {
-                newItemCount = result.rfqUpdates.line_items ? result.rfqUpdates.line_items.length : 0;
                 const newRfq: Rfq = {
                     id: `RFQ-${Date.now()}`,
                     project_name: result.rfqUpdates.project_name || "New RFP",
@@ -197,6 +191,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                     }
                 };
                 setRfq(newRfq);
+                setCurrentStep(2);
             }
             
             setIsHeaderInfoOpen(true); 
@@ -241,6 +236,27 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             setIsRiskAnalyzing(false);
         }
     };
+
+    const handleAuditSpecs = async () => {
+        if (!rfq) return;
+        setIsAuditing(true);
+        try {
+            const warnings = await auditRfqSpecs(rfq, lang);
+            setAuditWarnings(warnings);
+            if (warnings.length > 0) {
+                setRfq({
+                    ...rfq,
+                    audit_warnings: warnings
+                });
+            } else {
+                alert(t(lang, 'audit_clean'));
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsAuditing(false);
+        }
+    }
 
     const handleIgnoreRisk = (index: number) => {
         if (!rfq || !rfq.risks) return;
@@ -338,6 +354,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             };
             setRfq(newRfq);
             setIsHeaderInfoOpen(true); 
+            setCurrentStep(2);
         }
     };
 
@@ -362,12 +379,12 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 {
                     item_id: "L1", line: 1, raw_description: "", description: "Seamless Pipe, API 5L Gr.B", product_type: "Pipe", material_grade: "API 5L Gr.B",
                     size: { outer_diameter: { value: 168.3, unit: 'mm' }, wall_thickness: { value: 7.11, unit: 'mm' }, length: { value: 12, unit: 'm' } },
-                    quantity: 500, uom: 'm', other_requirements: []
+                    quantity: 500, uom: 'm', other_requirements: [], tolerance: "Sch40"
                 },
                 {
                     item_id: "L2", line: 2, raw_description: "", description: "Weld Neck Flange, Class 150", product_type: "Flange", material_grade: "ASTM A105",
                     size: { outer_diameter: { value: 168.3, unit: 'mm' }, wall_thickness: { value: null, unit: null }, length: { value: null, unit: null } },
-                    quantity: 20, uom: 'pcs', other_requirements: []
+                    quantity: 20, uom: 'pcs', other_requirements: [], tolerance: "#150"
                 }
             ]
         };
@@ -383,13 +400,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         setChatHistory([]);
         setIsHeaderInfoOpen(true);
         setCurrentStep(1);
-    };
-
-    const handleSaveRfq = () => {
-        if (!rfq) return;
-        storageService.saveRfq(rfq);
-        setSavedRfqs(storageService.getRfqs());
-        alert(t(lang, 'save_success'));
     };
 
     const handleSelectRfq = (id: string) => {
@@ -421,19 +431,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         if (!rfq) return;
         const newItems = [...rfq.line_items];
         newItems[index] = { ...newItems[index], [field]: value };
-        setRfq({ ...rfq, line_items: newItems });
-    };
-
-    const handleUpdateDimension = (index: number, dim: 'outer_diameter' | 'wall_thickness' | 'length', field: 'value' | 'unit', value: any) => {
-        if (!rfq) return;
-        const newItems = [...rfq.line_items];
-        newItems[index] = { 
-            ...newItems[index], 
-            size: {
-                ...newItems[index].size,
-                [dim]: { ...newItems[index].size[dim], [field]: value }
-            }
-        };
         setRfq({ ...rfq, line_items: newItems });
     };
 
@@ -707,9 +704,37 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                             </button>
                         </div>
                     )}
+
+                    {/* RISK MODAL */}
+                    {showRiskModal && rfq?.risks && (
+                        <div className="absolute inset-0 bg-white/95 z-50 p-6 flex flex-col animate-in fade-in zoom-in-95">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-xl font-bold text-slate-900">Risk Analysis Report</h2>
+                                <button onClick={() => setShowRiskModal(false)} className="text-slate-400 hover:text-slate-600">Close</button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto space-y-4">
+                                {rfq.risks.map((risk, idx) => (
+                                    <div key={idx} className={`p-4 rounded-xl border flex gap-4 ${risk.impact_level === 'High' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
+                                        <div className={`w-2 flex-shrink-0 rounded-full ${risk.impact_level === 'High' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
+                                        <div className="flex-1">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <h3 className={`font-bold ${risk.impact_level === 'High' ? 'text-red-800' : 'text-amber-800'}`}>{risk.risk}</h3>
+                                                <span className="text-[10px] uppercase font-bold tracking-wider opacity-60">{risk.category}</span>
+                                            </div>
+                                            <p className="text-sm text-slate-600 mb-3">{risk.recommendation}</p>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleMitigateRisk(risk, idx)} className="text-xs font-bold px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition shadow-sm">Fix Issue</button>
+                                                <button onClick={() => handleIgnoreRisk(idx)} className="text-xs text-slate-400 hover:text-slate-600 px-2">Ignore</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     
                     {!rfq ? (
-                        // EMPTY DASHBOARD
+                        // STEP 1: EMPTY DASHBOARD
                         <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex flex-col items-center justify-center animate-in fade-in">
                             <h2 className="text-xl font-bold text-slate-900 mb-2">{t(lang, 'dashboard_title')}</h2>
                             <p className="text-slate-500 text-sm mb-10 text-center max-w-md">Select An Option To Begin Your Procurement Process.</p>
@@ -726,447 +751,281 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                 </button>
                                 <button onClick={() => fileInputRef.current?.click()} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-green-50 hover:border-green-100 transition-all flex flex-col items-center text-center gap-4 min-w-[200px]">
                                     <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
-                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                                     </div>
                                     <div>
-                                        <div className="font-bold text-slate-800 text-sm">Upload Docs</div>
-                                        <div className="text-xs text-slate-500 mt-1">Parse PDF/Excel</div>
+                                        <div className="font-bold text-slate-800 text-sm">Upload Spec/MTO</div>
+                                        <div className="text-xs text-slate-500 mt-1">PDF, Excel, Images</div>
                                     </div>
                                 </button>
-                                <button onClick={handleAddItem} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-orange-50 hover:border-orange-100 transition-all flex flex-col items-center text-center gap-4 min-w-[200px]">
-                                    <div className="w-12 h-12 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center">
-                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                <button onClick={handleLoadSample} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-blue-50 hover:border-blue-100 transition-all flex flex-col items-center text-center gap-4 min-w-[200px]">
+                                    <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
                                     </div>
                                     <div>
-                                        <div className="font-bold text-slate-800 text-sm">Manual Entry</div>
-                                        <div className="text-xs text-slate-500 mt-1">Line-By-Line</div>
+                                        <div className="font-bold text-slate-800 text-sm">Load Sample Data</div>
+                                        <div className="text-xs text-slate-500 mt-1">Try Pre-Loaded RFQ</div>
                                     </div>
                                 </button>
                             </div>
-                            <button onClick={handleLoadSample} className="mt-8 text-xs text-slate-400 hover:text-slate-600 underline">
-                                {t(lang, 'load_sample')}
-                            </button>
                         </div>
                     ) : (
-                        // CONTENT SWITCH
-                        <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden animate-in fade-in relative min-h-[500px]">
+                        <div className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in">
                             
-                            {/* --- QUOTE DETAILS MODAL (OVERLAY) --- */}
-                            {viewQuoteDetails && (
-                                <div className="absolute inset-0 bg-white z-50 flex flex-col animate-in slide-in-from-bottom-4">
-                                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
-                                        <div className="flex items-center gap-3">
-                                            <button onClick={() => setViewQuoteDetails(null)} className="text-slate-400 hover:text-slate-600 text-sm font-bold flex items-center gap-1">
-                                                ← Back
-                                            </button>
-                                            <div className="h-4 w-px bg-slate-300"></div>
-                                            <h3 className="font-bold text-slate-800">{viewQuoteDetails.supplierName} - Quote Details</h3>
-                                        </div>
-                                        <button 
-                                            onClick={() => handleGenerateAwardPO(viewQuoteDetails)}
-                                            className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-700"
-                                        >
-                                            Award & Generate PO
-                                        </button>
-                                    </div>
-                                    <div className="flex-1 overflow-auto p-6">
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-sm">
-                                            <div className="p-3 bg-slate-50 rounded border border-slate-100">
-                                                <div className="text-xs text-slate-500">Total Price</div>
-                                                <div className="font-bold text-lg">{viewQuoteDetails.currency} {viewQuoteDetails.total.toLocaleString()}</div>
+                            {/* --- STEP 2: REVIEW & EDIT --- */}
+                            {currentStep === 2 && (
+                                <>
+                                    {/* Toolbar / Header */}
+                                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-4">
+                                        <div className="flex justify-between items-start">
+                                            <div onClick={() => setIsHeaderInfoOpen(!isHeaderInfoOpen)} className="cursor-pointer group">
+                                                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                                    {rfq.project_name || "Untitled Project"}
+                                                    <svg className={`w-4 h-4 text-slate-400 transition transform ${isHeaderInfoOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                                </h2>
+                                                <p className="text-xs text-slate-500">Created: {new Date(rfq.created_at).toLocaleDateString()}</p>
                                             </div>
-                                            <div className="p-3 bg-slate-50 rounded border border-slate-100">
-                                                <div className="text-xs text-slate-500">Lead Time</div>
-                                                <div className="font-bold">{viewQuoteDetails.leadTime} Days</div>
-                                            </div>
-                                            <div className="p-3 bg-slate-50 rounded border border-slate-100">
-                                                <div className="text-xs text-slate-500">Payment</div>
-                                                <div className="font-bold">{viewQuoteDetails.payment}</div>
-                                            </div>
-                                            <div className="p-3 bg-slate-50 rounded border border-slate-100">
-                                                <div className="text-xs text-slate-500">Validity</div>
-                                                <div className="font-bold">{viewQuoteDetails.validity}</div>
+                                            <div className="flex gap-2">
+                                                <button onClick={handleAuditSpecs} disabled={isAuditing} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:text-blue-600 hover:border-blue-200 transition shadow-sm flex items-center gap-1">
+                                                    {isAuditing ? 'Auditing...' : t(lang, 'audit_specs')}
+                                                </button>
+                                                <button onClick={handleRiskAnalysis} disabled={isRiskAnalyzing} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:text-amber-600 hover:border-amber-200 transition shadow-sm flex items-center gap-1">
+                                                    {isRiskAnalyzing ? 'Analyzing...' : 'Analyze Risks'}
+                                                </button>
+                                                <button onClick={handleShare} className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition shadow-sm flex items-center gap-1">
+                                                    {t(lang, 'share_link')}
+                                                </button>
                                             </div>
                                         </div>
-
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-xs text-left border-collapse mb-6 min-w-[600px]">
-                                                <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
-                                                    <tr>
-                                                        <th className="px-4 py-2 w-12">Line</th>
-                                                        <th className="px-4 py-2">RFQ Description</th>
-                                                        <th className="px-4 py-2">Supplier Remarks / Alternates</th>
-                                                        <th className="px-4 py-2 text-right">Qty</th>
-                                                        <th className="px-4 py-2 text-right">Unit Price</th>
-                                                        <th className="px-4 py-2 text-right">Total</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100">
-                                                    {rfq.line_items.map(item => {
-                                                        const qItem = viewQuoteDetails.items.find(i => i.line === item.line);
-                                                        return (
-                                                            <tr key={item.item_id}>
-                                                                <td className="px-4 py-2 text-slate-400">{item.line}</td>
-                                                                <td className="px-4 py-2 font-medium">{item.description}</td>
-                                                                <td className="px-4 py-2 text-blue-600 italic">{qItem?.alternates || "-"}</td>
-                                                                <td className="px-4 py-2 text-right">{item.quantity} {item.uom}</td>
-                                                                <td className="px-4 py-2 text-right">{viewQuoteDetails.currency} {qItem?.unitPrice?.toFixed(2)}</td>
-                                                                <td className="px-4 py-2 text-right font-bold">{viewQuoteDetails.currency} {(qItem?.lineTotal || 0).toFixed(2)}</td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {currentStep === 3 ? (
-                                // --- COMPARISON VIEW (STEP 3) - COMPACT SUMMARY TABLE ---
-                                <div className="flex flex-col h-full">
-                                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center shrink-0">
-                                        <div className="flex items-center gap-2">
-                                            <span className="w-5 h-5 flex items-center justify-center bg-brandOrange text-white rounded-full text-[10px] font-bold">3</span>
-                                            <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'received_quotes')}</span>
-                                        </div>
-                                        <button 
-                                            onClick={() => setCurrentStep(2)}
-                                            className="text-xs text-slate-500 hover:text-slate-800 underline"
-                                        >
-                                            Back to Items
-                                        </button>
-                                    </div>
-                                    
-                                    {quotes.length === 0 ? (
-                                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 text-center">
-                                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-2xl">📭</div>
-                                            <p className="text-sm">No Quotes Received Yet.</p>
-                                            <p className="text-xs mt-2">Share The Link With Suppliers To Get Started.</p>
-                                            <button onClick={handleShare} className="mt-6 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold">{t(lang, 'share_link')}</button>
-                                        </div>
-                                    ) : (
-                                        <div className="flex-1 overflow-auto bg-white p-6">
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-left text-sm border-collapse rounded-lg overflow-hidden min-w-[700px]">
-                                                    <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold">
-                                                        <tr>
-                                                            <th className="px-6 py-4 border-b border-slate-200">Supplier</th>
-                                                            <th className="px-6 py-4 border-b border-slate-200">Total Price</th>
-                                                            <th className="px-6 py-4 border-b border-slate-200">Lead Time</th>
-                                                            <th className="px-6 py-4 border-b border-slate-200">Compliance</th>
-                                                            <th className="px-6 py-4 border-b border-slate-200 text-right">Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {quotes.map((quote) => {
-                                                            const isBestPrice = quote.total === Math.min(...quotes.map(q => q.total));
-                                                            const isFastest = parseInt(quote.leadTime) === Math.min(...quotes.map(q => parseInt(q.leadTime) || 999));
-                                                            const complianceStatus = rfq.commercial.req_mtr ? (quote.attachments && quote.attachments.length > 0 ? "Pass" : "Pending") : "N/A";
-                                                            const complianceColor = complianceStatus === "Pass" ? "bg-green-100 text-green-700" : complianceStatus === "Pending" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500";
-
-                                                            return (
-                                                                <tr key={quote.id} className="hover:bg-slate-50 transition group">
-                                                                    <td className="px-6 py-4">
-                                                                        <div className="font-bold text-slate-900">{quote.supplierName}</div>
-                                                                        <div className="text-xs text-slate-400">{new Date(quote.timestamp).toLocaleDateString()}</div>
-                                                                    </td>
-                                                                    <td className="px-6 py-4">
-                                                                        <div className="font-bold text-slate-900 flex items-center gap-2">
-                                                                            {quote.currency} {quote.total.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                                                                            {isBestPrice && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold uppercase">Best</span>}
-                                                                        </div>
-                                                                    </td>
-                                                                    <td className="px-6 py-4">
-                                                                        <div className="flex items-center gap-2">
-                                                                            {quote.leadTime} Days
-                                                                            {isFastest && !isBestPrice && <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold uppercase">Fastest</span>}
-                                                                        </div>
-                                                                    </td>
-                                                                    <td className="px-6 py-4">
-                                                                        <span className={`px-2 py-1 rounded text-xs font-bold ${complianceColor}`}>
-                                                                            {complianceStatus}
-                                                                        </span>
-                                                                    </td>
-                                                                    <td className="px-6 py-4 text-right flex justify-end gap-3">
-                                                                        <button 
-                                                                            onClick={() => setViewQuoteDetails(quote)}
-                                                                            className="text-slate-500 hover:text-slate-800 text-xs font-bold px-3 py-1.5 rounded hover:bg-slate-200 transition"
-                                                                        >
-                                                                            Details
-                                                                        </button>
-                                                                        <button 
-                                                                            onClick={() => handleGenerateAwardPO(quote)}
-                                                                            className="bg-slate-900 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-slate-700 transition shadow-sm"
-                                                                        >
-                                                                            Award
-                                                                        </button>
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                // --- REVIEW TABLE (STEP 1 & 2) ---
-                                <div className="flex flex-col h-full relative">
-                                    <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex flex-col gap-3">
-                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                                            <div className="flex items-center gap-2 w-full md:w-auto">
-                                                <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold shrink-0">2</span>
-                                                <div className="flex items-center gap-3 w-full">
-                                                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wide whitespace-nowrap">{t(lang, 'live_preview')}</span>
-                                                    <div className="h-4 w-px bg-slate-300"></div>
+                                        
+                                        {/* Collapsible Header Info */}
+                                        {isHeaderInfoOpen && (
+                                            <div id="commercial-section" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 animate-in slide-in-from-top-2">
+                                                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Project Name</label>
                                                     <input 
-                                                        value={rfq.project_name || ''}
-                                                        onChange={(e) => setRfq({ ...rfq, project_name: e.target.value })}
-                                                        className="font-bold text-sm text-slate-800 bg-transparent border-none p-0 focus:ring-0 placeholder-slate-300 w-full md:w-48 focus:border-b focus:border-accent"
-                                                        placeholder="Untitled RFP"
+                                                        className="w-full text-sm font-medium outline-none bg-transparent" 
+                                                        value={rfq.project_name || ''} 
+                                                        onChange={(e) => setRfq({...rfq, project_name: e.target.value})}
                                                     />
                                                 </div>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
-                                                <div className="px-3 py-1 rounded bg-green-50 text-green-700 text-[10px] font-bold border border-green-200 flex items-center gap-1.5">
-                                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                                                    <span>Live Server</span>
+                                                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">{t(lang, 'destination')}</label>
+                                                    <input 
+                                                        className="w-full text-sm font-medium outline-none bg-transparent" 
+                                                        value={rfq.commercial.destination} 
+                                                        onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, destination: e.target.value}})}
+                                                    />
                                                 </div>
-
-                                                {/* Actions Toolbar */}
-                                                <button 
-                                                    onClick={handleShare}
-                                                    className={`flex-shrink-0 text-xs font-bold border px-3 py-1.5 rounded-lg transition shadow-sm flex items-center gap-2 ${linkCopied ? 'bg-green-50 text-green-700 border-green-200' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                                                >
-                                                    {linkCopied ? (
-                                                        <>
-                                                            <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                                            Copied!
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                                                            {t(lang, 'share_link')}
-                                                        </>
-                                                    )}
-                                                </button>
-
-                                                <div className="flex items-center gap-2 flex-shrink-0">
-                                                    {rfq?.risks && rfq.risks.length > 0 && (
-                                                        <div className={`px-2 py-1 rounded text-[10px] font-bold border ${riskColorClass} flex items-center gap-1`}>
-                                                            <span className="hidden sm:inline">Score:</span>
-                                                            <span>{riskScore}</span>
-                                                        </div>
-                                                    )}
-                                                    <button 
-                                                        onClick={handleRiskAnalysis}
-                                                        disabled={isRiskAnalyzing}
-                                                        className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition shadow-sm flex items-center gap-2 ${isRiskAnalyzing ? 'bg-indigo-50 border-indigo-100 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'}`}
-                                                    >
-                                                        {isRiskAnalyzing ? "Analyzing..." : "Check Risks"}
-                                                    </button>
+                                                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">{t(lang, 'incoterm')}</label>
+                                                    <input 
+                                                        className="w-full text-sm font-medium outline-none bg-transparent" 
+                                                        value={rfq.commercial.incoterm} 
+                                                        onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, incoterm: e.target.value}})}
+                                                    />
                                                 </div>
-
-                                                <button 
-                                                    onClick={() => setIsHeaderInfoOpen(!isHeaderInfoOpen)}
-                                                    className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border transition whitespace-nowrap ${isHeaderInfoOpen ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-white border-slate-200 text-slate-500'}`}
-                                                >
-                                                    {isHeaderInfoOpen ? "Hide Info" : "Info"}
-                                                </button>
-                                                
-                                                <button onClick={handleAddItem} className="flex-shrink-0 text-xs bg-brandOrange text-white font-bold px-4 py-1.5 rounded-lg hover:bg-orange-600 transition shadow-sm flex items-center gap-1 whitespace-nowrap">
-                                                    + Item
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* EXPANDABLE RFP DETAILS PANEL */}
-                                        {isHeaderInfoOpen && (
-                                            <div id="commercial-section" className="bg-white border border-slate-200 rounded-lg p-4 animate-in slide-in-from-top-2 text-xs shadow-sm">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'project_description')}</label>
-                                                        <textarea 
-                                                            className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700"
-                                                            rows={3}
-                                                            value={rfq.project_description || ''}
-                                                            onChange={(e) => setRfq({ ...rfq, project_description: e.target.value })}
-                                                            placeholder="Provide context for suppliers..."
-                                                        />
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div>
-                                                            <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'destination')}</label>
-                                                            <input className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700" value={rfq.commercial.destination || ''} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, destination: e.target.value } })} />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'incoterm')}</label>
-                                                            <input className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700" value={rfq.commercial.incoterm || ''} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, incoterm: e.target.value } })} />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-slate-500 font-semibold mb-1">{t(lang, 'payment_terms')}</label>
-                                                            <input className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700" value={rfq.commercial.paymentTerm || ''} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, paymentTerm: e.target.value } })} />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-slate-500 font-semibold mb-1">Warranty (Months)</label>
-                                                            <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded p-2 focus:ring-1 focus:ring-accent outline-none text-slate-700" value={rfq.commercial.warranty_months || 12} onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, warranty_months: parseInt(e.target.value) } })} />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                
-                                                {/* Compliance Checkboxes restored */}
-                                                <div className="mt-4 pt-3 border-t border-slate-100">
-                                                    <label className="block text-slate-500 font-bold text-xs uppercase tracking-wider mb-3">Quality & Compliance Requirements</label>
-                                                    <div className="flex flex-wrap gap-4 md:gap-6">
-                                                        <label className="flex items-center gap-2 cursor-pointer group">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={rfq.commercial.req_mtr || false} 
-                                                                onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_mtr: e.target.checked } })}
-                                                                className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer" 
-                                                            />
-                                                            <span className="text-slate-600 font-semibold group-hover:text-slate-900 transition-colors">Req. MTR (EN 10204 3.1)</span>
-                                                        </label>
-                                                        <label className="flex items-center gap-2 cursor-pointer group">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={rfq.commercial.req_avl || false} 
-                                                                onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_avl: e.target.checked } })}
-                                                                className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer" 
-                                                            />
-                                                            <span className="text-slate-600 font-semibold group-hover:text-slate-900 transition-colors">Req. Approved Vendor List (AVL)</span>
-                                                        </label>
-                                                        <label className="flex items-center gap-2 cursor-pointer group">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={rfq.commercial.req_tpi || false} 
-                                                                onChange={(e) => setRfq({ ...rfq, commercial: { ...rfq.commercial, req_tpi: e.target.checked } })}
-                                                                className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer" 
-                                                            />
-                                                            <span className="text-slate-600 font-semibold group-hover:text-slate-900 transition-colors">Req. Third Party Inspection (TPI)</span>
-                                                        </label>
-                                                    </div>
+                                                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">{t(lang, 'payment')}</label>
+                                                    <input 
+                                                        className="w-full text-sm font-medium outline-none bg-transparent" 
+                                                        value={rfq.commercial.paymentTerm} 
+                                                        onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, paymentTerm: e.target.value}})}
+                                                    />
                                                 </div>
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* TABLE */}
-                                    <div className="flex-1 overflow-auto">
-                                        <div className="overflow-x-auto min-h-[300px]">
-                                            <table className="w-full text-xs text-left border-collapse table-fixed min-w-[1000px]">
-                                                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 sticky top-0 z-20 shadow-sm">
-                                                    <tr>
-                                                        {tableConfig.filter(c => c.visible).map((col) => (
-                                                            <th key={col.id} className={`px-2 py-3 border-b border-slate-200 bg-slate-50 border-r border-slate-200 text-center ${getWidthClass(col.width)}`}>{col.label}</th>
-                                                        ))}
-                                                        <th className="px-2 py-3 text-center w-12 bg-white border-b border-slate-200 sticky right-0 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] border-l border-slate-200 z-30"><span className="sr-only">Actions</span></th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-200 bg-white">
-                                                    {rfq.line_items.map((item, index) => (
-                                                        <tr key={item.item_id} className="hover:bg-blue-50/10 transition-colors group">
-                                                            {tableConfig.filter(c => c.visible).map(col => {
-                                                                const cellClass = "px-2 py-2 border-r border-slate-200 align-middle";
-                                                                const inputClass = "w-full bg-slate-50 border border-slate-200 rounded px-2 py-1.5 text-xs text-slate-700 placeholder-slate-300 focus:bg-white focus:border-accent focus:ring-1 focus:ring-accent/20 focus:outline-none transition-all";
-                                                                const inputId = col.id === 'description' ? `cell-description-${index}` : `cell-${col.id}-${index}`;
-
-                                                                if (col.id === 'line') return <td key={col.id} className={`${cellClass} text-center bg-slate-50/50 text-slate-400 font-mono w-24`}>{item.line}</td>;
-                                                                if (col.id === 'shape') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={`cell-shape-${index}`} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.product_type || ''} onChange={(e) => handleUpdateLineItem(index, 'product_type', e.target.value)} className={inputClass} placeholder="-" /></td>;
-                                                                if (col.id === 'description') return <td key={col.id} className={`${cellClass} w-64`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.description} onChange={(e) => handleUpdateLineItem(index, 'description', e.target.value)} className={`${inputClass} font-medium`} /></td>;
-                                                                if (col.id === 'grade') return <td key={col.id} className={`${cellClass} w-32`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.material_grade || ''} onChange={(e) => handleUpdateLineItem(index, 'material_grade', e.target.value)} className={inputClass} /></td>;
-                                                                if (col.id === 'tolerance') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.tolerance || ''} onChange={(e) => handleUpdateLineItem(index, 'tolerance', e.target.value)} placeholder="-" className={`${inputClass} text-center`} /></td>;
-                                                                if (col.id === 'tests') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.test_reqs?.join(', ') || ''} onChange={(e) => handleUpdateLineItem(index, 'test_reqs', e.target.value.split(',').map(s => s.trim()))} placeholder="-" className={inputClass} /></td>;
-                                                                if (col.id === 'od') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.outer_diameter.value || ''} onChange={(e) => handleUpdateDimension(index, 'outer_diameter', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.outer_diameter.unit}</span></div></td>;
-                                                                if (col.id === 'wt') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.wall_thickness.value || ''} onChange={(e) => handleUpdateDimension(index, 'wall_thickness', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.wall_thickness.unit}</span></div></td>;
-                                                                if (col.id === 'length') return <td key={col.id} className={`${cellClass} w-24`}><div className="flex items-center gap-1"><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.size.length.value || ''} onChange={(e) => handleUpdateDimension(index, 'length', 'value', Number(e.target.value))} className={`${inputClass} text-right`} /><span className="text-[9px] text-slate-400 font-medium shrink-0">{item.size.length.unit}</span></div></td>;
-                                                                if (col.id === 'qty') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} type="number" value={item.quantity || 0} onChange={(e) => handleUpdateLineItem(index, 'quantity', Number(e.target.value))} className={`${inputClass} text-right font-bold text-slate-800`} /></td>;
-                                                                if (col.id === 'uom') return <td key={col.id} className={`${cellClass} w-24`}><input autoComplete="off" id={inputId} onKeyDown={(e) => handleKeyDown(e, col.id, index)} value={item.uom || ''} onChange={(e) => handleUpdateLineItem(index, 'uom', e.target.value)} className={`${inputClass} text-center text-slate-500`} /></td>;
-                                                                return null;
-                                                            })}
-                                                            <td className="px-2 py-2 text-center w-12 sticky right-0 bg-white group-hover:bg-slate-50 transition-colors shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] align-middle z-10 border-l border-slate-200">
-                                                                <button onClick={() => handleDeleteItem(index)} className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-all">
-                                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                                                </button>
-                                                            </td>
-                                                        </tr>
+                                    {/* Main Table */}
+                                    <div className="flex-1 overflow-auto relative">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                                                <tr>
+                                                    <th className="p-3 border-b border-r border-slate-200 w-10 text-center">#</th>
+                                                    {tableConfig.filter(c => c.visible).map(col => (
+                                                        <th key={col.id} className="p-3 border-b border-r border-slate-200 last:border-r-0 min-w-[100px] whitespace-nowrap">
+                                                            {col.label}
+                                                        </th>
                                                     ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                                    <th className="p-3 border-b border-slate-200 w-10"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="text-sm divide-y divide-slate-100">
+                                                {rfq.line_items.map((item, idx) => (
+                                                    <tr key={item.item_id} className="group hover:bg-slate-50/80 transition-colors">
+                                                        <td className="p-2 border-r border-slate-100 text-center text-slate-400 font-mono text-xs">{item.line}</td>
+                                                        {tableConfig.filter(c => c.visible).map(col => (
+                                                            <td key={col.id} className="p-0 border-r border-slate-100 last:border-r-0 relative">
+                                                                {col.id === 'size' ? (
+                                                                    <div className="flex items-center h-full px-3 py-2 text-slate-600 font-mono text-xs bg-slate-50/30">
+                                                                        {renderSize(item)}
+                                                                    </div>
+                                                                ) : (
+                                                                    <input 
+                                                                        id={`cell-${col.id}-${idx}`}
+                                                                        className="w-full h-full px-3 py-2 bg-transparent outline-none focus:bg-blue-50 focus:ring-inset focus:ring-2 focus:ring-blue-500/20 transition-all text-slate-700 placeholder-slate-300"
+                                                                        value={(item as any)[col.id] || ''}
+                                                                        onChange={(e) => handleUpdateLineItem(idx, col.id as keyof LineItem, e.target.value)}
+                                                                        onKeyDown={(e) => handleKeyDown(e, col.id, idx)}
+                                                                        placeholder="-"
+                                                                    />
+                                                                )}
+                                                            </td>
+                                                        ))}
+                                                        <td className="p-2 text-center">
+                                                            <button onClick={() => handleDeleteItem(idx)} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                        
+                                        {/* Empty State / Add Button */}
+                                        <button onClick={handleAddItem} className="w-full p-3 text-slate-400 text-xs font-bold uppercase tracking-wide hover:bg-slate-50 hover:text-slate-600 transition border-t border-slate-100 flex items-center justify-center gap-2">
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                            {t(lang, 'add_line_item')}
+                                        </button>
                                     </div>
-
-                                    {/* RISK REPORT MODAL */}
-                                    {showRiskModal && (rfq.risks || []).length >= 0 && (
-                                        <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
-                                            <div className="bg-white w-full max-w-3xl h-full max-h-[80vh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
-                                                
-                                                <div className="bg-slate-900 text-white p-6 shrink-0 flex justify-between items-start">
-                                                    <div>
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <h2 className="text-xl font-bold">Procurement Risk Analysis</h2>
-                                                        </div>
-                                                        <div className="flex gap-4 items-center">
-                                                            <p className="text-indigo-200 text-sm">AI-Driven Audit Of Technical & Commercial Gaps.</p>
-                                                            <div className={`px-2 py-0.5 rounded text-xs font-bold border ${riskScore >= 80 ? 'bg-green-500/20 text-green-300 border-green-500/30' : riskScore >= 50 ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-red-500/20 text-red-300 border-red-500/30'}`}>
-                                                                Health Score: {riskScore}/100
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <button onClick={() => setShowRiskModal(false)} className="text-white/60 hover:text-white transition">X</button>
-                                                </div>
-
-                                                <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
-                                                    <div className="space-y-4">
-                                                        {(!rfq.risks || rfq.risks.length === 0) ? (
-                                                            <div className="text-center p-12 text-slate-500">
-                                                                <h3 className="font-bold text-slate-900">No Major Risks Detected</h3>
-                                                            </div>
-                                                        ) : (
-                                                            rfq.risks.map((item, i) => (
-                                                                <div key={i} className={`p-5 rounded-xl border flex gap-4 bg-white ${item.impact_level === 'High' ? 'border-red-200 shadow-sm' : item.impact_level === 'Medium' ? 'border-amber-200' : 'border-slate-200'}`}>
-                                                                    <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                                                                        item.impact_level === 'High' ? 'bg-red-100 text-red-600' : 
-                                                                        item.impact_level === 'Medium' ? 'bg-amber-100 text-amber-600' : 
-                                                                        'bg-blue-100 text-blue-600'
-                                                                    }`}>
-                                                                        {item.impact_level === 'High' ? '!' : 'i'}
-                                                                    </div>
-                                                                    <div className="flex-1">
-                                                                        <div className="flex justify-between items-start mb-1">
-                                                                            <h4 className="font-bold text-slate-900">{item.risk}</h4>
-                                                                        </div>
-                                                                        <p className="text-sm text-slate-600 leading-relaxed mb-4">{item.recommendation}</p>
-                                                                        <div className="flex gap-3">
-                                                                            <button 
-                                                                                onClick={() => handleMitigateRisk(item, i)}
-                                                                                className="text-xs font-bold bg-slate-900 text-white px-3 py-1.5 rounded hover:bg-slate-700 transition"
-                                                                            >
-                                                                                Mitigate & Fix
-                                                                            </button>
-                                                                            <button 
-                                                                                onClick={() => handleIgnoreRisk(i)}
-                                                                                className="text-xs font-bold text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded border border-transparent hover:border-slate-200 transition"
-                                                                            >
-                                                                                Ignore
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                </div>
+                                    
+                                    {/* Bottom Bar: Switch to Compare */}
+                                    {quotes.length > 0 && (
+                                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center animate-in slide-in-from-bottom-2">
+                                            <div className="text-sm font-medium text-slate-600">
+                                                <span className="font-bold text-slate-900">{quotes.length}</span> Quotes Received
                                             </div>
+                                            <button 
+                                                onClick={() => setCurrentStep(3)}
+                                                className="bg-brandOrange text-white px-6 py-2 rounded-lg font-bold shadow-lg hover:bg-orange-600 transition flex items-center gap-2"
+                                            >
+                                                Compare Quotes →
+                                            </button>
                                         </div>
                                     )}
-                                </div>
+                                </>
                             )}
-                        </div>
+
+                            {/* --- STEP 3: COMPARE --- */}
+                            {currentStep === 3 && (
+                                <>
+                                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                                        <h2 className="text-lg font-bold text-slate-900">Bid Evaluation</h2>
+                                        <button onClick={() => setCurrentStep(2)} className="text-sm font-medium text-slate-500 hover:text-slate-900">
+                                            ← Back to Editor
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="flex-1 overflow-auto p-6">
+                                        {/* Summary Cards */}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                            {quotes.map((quote) => {
+                                                const isBestPrice = quote.total === Math.min(...quotes.map(q => q.total));
+                                                return (
+                                                    <div key={quote.id} className={`bg-white rounded-xl border p-6 relative group hover:shadow-lg transition-all ${isBestPrice ? 'border-green-200 ring-1 ring-green-100' : 'border-slate-200'}`}>
+                                                        {isBestPrice && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide shadow-sm">Best Price</div>}
+                                                        
+                                                        <div className="flex justify-between items-start mb-4">
+                                                            <div>
+                                                                <h3 className="font-bold text-slate-900 text-lg">{quote.supplierName}</h3>
+                                                                <div className="text-xs text-slate-500">{new Date(quote.timestamp).toLocaleDateString()}</div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className={`text-2xl font-bold ${isBestPrice ? 'text-green-600' : 'text-slate-900'}`}>
+                                                                    {quote.currency} {quote.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                                </div>
+                                                                <div className="text-xs text-slate-400">Total</div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="space-y-2 text-sm text-slate-600 mb-6">
+                                                            <div className="flex justify-between border-b border-slate-50 pb-1">
+                                                                <span>Lead Time</span>
+                                                                <span className="font-medium">{quote.leadTime || '-'} Days</span>
+                                                            </div>
+                                                            <div className="flex justify-between border-b border-slate-50 pb-1">
+                                                                <span>Payment</span>
+                                                                <span className="font-medium">{quote.payment || '-'}</span>
+                                                            </div>
+                                                            <div className="flex justify-between border-b border-slate-50 pb-1">
+                                                                <span>Validity</span>
+                                                                <span className="font-medium">{quote.validity || '-'}</span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => handleGenerateAwardPO(quote)} className="flex-1 bg-slate-900 text-white py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition">Award PO</button>
+                                                            <button className="px-3 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-400">
+                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+
+                                        {/* Comparison Table */}
+                                        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left text-sm">
+                                                    <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-bold">
+                                                        <tr>
+                                                            <th className="p-4 w-12 bg-slate-50 sticky left-0 z-10">Line</th>
+                                                            <th className="p-4 bg-slate-50 sticky left-12 z-10 min-w-[200px]">Description</th>
+                                                            {quotes.map((q, i) => (
+                                                                <th key={q.id} className="p-4 text-right min-w-[120px] border-l border-slate-100">
+                                                                    {q.supplierName}
+                                                                </th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {rfq.line_items.map((item) => (
+                                                            <tr key={item.item_id} className="hover:bg-slate-50">
+                                                                <td className="p-4 font-mono text-slate-400 text-xs bg-white sticky left-0 z-10 border-r border-slate-100">{item.line}</td>
+                                                                <td className="p-4 font-medium text-slate-700 bg-white sticky left-12 z-10 border-r border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                                                                    <div className="line-clamp-2">{item.description}</div>
+                                                                    <div className="text-xs text-slate-400 font-normal mt-1">{item.quantity} {item.uom}</div>
+                                                                </td>
+                                                                {quotes.map((q) => {
+                                                                    const qItem = q.items.find(qi => qi.line === item.line);
+                                                                    const isLowest = qItem && quotes.every(otherQ => {
+                                                                        const otherItem = otherQ.items.find(i => i.line === item.line);
+                                                                        return !otherItem || (qItem.unitPrice || 0) <= (otherItem.unitPrice || 0);
+                                                                    });
+
+                                                                    return (
+                                                                        <td key={q.id} className={`p-4 text-right border-l border-slate-100 font-mono ${isLowest ? 'bg-green-50/30' : ''}`}>
+                                                                            {qItem ? (
+                                                                                <>
+                                                                                    <div className={`font-bold ${isLowest ? 'text-green-700' : 'text-slate-700'}`}>
+                                                                                        {Number(qItem.unitPrice).toFixed(2)}
+                                                                                    </div>
+                                                                                    {qItem.alternates && (
+                                                                                        <div className="text-[10px] text-amber-600 bg-amber-50 px-1 rounded inline-block mt-1 max-w-[100px] truncate" title={qItem.alternates}>
+                                                                                            Note: {qItem.alternates}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </>
+                                                                            ) : (
+                                                                                <span className="text-slate-300">-</span>
+                                                                            )}
+                                                                        </td>
+                                                                    );
+                                                                })}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                         </div>
                     )}
-                </div>
+                 </div>
             </div>
         </div>
     );

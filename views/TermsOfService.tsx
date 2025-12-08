@@ -1,5 +1,4 @@
 
-import React from 'react';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
 import { Language } from '../types';

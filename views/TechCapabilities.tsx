@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Language } from '../types';
 import { MarketingNavbar } from '../components/MarketingNavbar';
 import { MarketingFooter } from '../components/MarketingFooter';
@@ -13,7 +13,7 @@ interface TechCapabilitiesProps {
   setLang: (lang: Language) => void;
 }
 
-export default function TechCapabilities({ onBack, onStartDemo, onNavigate, lang, setLang }: TechCapabilitiesProps) {
+export default function TechCapabilities({ onStartDemo, onNavigate, lang, setLang }: TechCapabilitiesProps) {
   const [activeFeature, setActiveFeature] = useState(0);
 
   // Auto cycle features smoothly
