@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, Language, FileAttachment } from '../types';
@@ -25,9 +26,11 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
       notes: ''
   });
   const [submittedLink, setSubmittedLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [quoteHistory, setQuoteHistory] = useState<Quote[]>([]);
   const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isSending, setIsSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -110,6 +113,8 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
   const handleSubmit = async () => {
       if (!rfq) return;
 
+      setIsSending(true);
+
       // Process attachments
       const processedAttachments: FileAttachment[] = [];
       for (const file of attachedFiles) {
@@ -150,47 +155,36 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
           }))
       };
 
-      // Save locally (Supplier's own record - keeps full files)
+      // 1. Save locally (Supplier's own record)
       const updatedHistory = storageService.saveQuote(quote);
       setQuoteHistory(updatedHistory);
 
-      // Prepare Quote for Link
-      // CRITICAL: We MUST strip the file data for the URL generation.
-      // Browsers limit URLs to ~2KB-8KB. Even a small PDF is 50KB+.
-      // We keep the metadata (name, type) so the Buyer knows a file was attached.
-      const quoteForLink = { ...quote };
-      quoteForLink.attachments = quote.attachments?.map(a => ({
-          name: a.name,
-          mimeType: a.mimeType,
-          data: "" // STRIPPED FOR URL LINK SAFETY
-      }));
+      // 2. Broadcast to Buyer (Real-time Simulation - Local)
+      storageService.broadcastNewQuote(quote);
 
-      // Generate Response Link
-      try {
-        const jsonStr = JSON.stringify(quoteForLink);
-        const compressed = LZString.compressToEncodedURIComponent(jsonStr);
-        const url = `${window.location.origin}${window.location.pathname}?mode=quote_response&data=${compressed}`;
-        
-        setSubmittedLink(url);
-        onSubmitQuote(quote); // Optimistic update
-      } catch (e) {
-        console.error("Link generation failed", e);
-        alert("Error generating link. Please try again.");
-      }
-  };
+      // 3. Generate Secure Link (Remote / Cloudflare)
+      const jsonQuote = JSON.stringify(quote);
+      const compressed = LZString.compressToEncodedURIComponent(jsonQuote);
+      
+      const urlObj = new URL(window.location.href);
+      urlObj.search = ''; // Clear params
+      urlObj.searchParams.set('mode', 'quote_response');
+      urlObj.searchParams.set('data', compressed);
+      const responseUrl = urlObj.toString();
 
-  const copyToClipboard = () => {
-      if (submittedLink) {
-          navigator.clipboard.writeText(submittedLink);
-          alert(t(lang, 'link_copied'));
-      }
+      // Simulate network delay for realism
+      setTimeout(() => {
+          setIsSending(false);
+          setSubmittedLink(responseUrl);
+          onSubmitQuote(quote); // Optimistic UI update
+      }, 800);
   };
 
   if (submittedLink) {
       return (
         <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
             <div className="bg-white max-w-lg w-full rounded-2xl p-8 shadow-xl text-center space-y-6 animate-in zoom-in-95">
-                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto">
+                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto animate-bounce">
                     <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                 </div>
                 <h2 className="text-2xl font-bold text-slate-900">{t(lang, 'quote_submitted_title')}</h2>
@@ -198,28 +192,34 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                     {t(lang, 'quote_submitted_desc')}
                 </p>
                 
-                <div className="bg-slate-100 p-4 rounded-xl break-all text-xs font-mono text-slate-600 border border-slate-200 max-h-32 overflow-y-auto">
-                    {submittedLink}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
+                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2 block">Secure Response Link</label>
+                     <div className="bg-white border border-slate-200 rounded p-2 text-xs text-slate-500 break-all font-mono mb-3 max-h-24 overflow-y-auto">
+                         {submittedLink}
+                     </div>
+                     <button 
+                        onClick={() => {
+                            navigator.clipboard.writeText(submittedLink);
+                            setLinkCopied(true);
+                            setTimeout(() => setLinkCopied(false), 2000);
+                        }}
+                        className={`w-full py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${linkCopied ? 'bg-green-500 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
+                     >
+                         {linkCopied ? (
+                             <>
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                Copied!
+                             </>
+                         ) : (
+                             t(lang, 'copy_response_link')
+                         )}
+                     </button>
                 </div>
-
-                {attachedFiles.length > 0 && (
-                    <div className="text-[10px] text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 flex items-start gap-2 text-left">
-                        <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        <span>Note: {attachedFiles.length} file(s) were attached. For this demo link, only file metadata is transmitted to keep the URL short.</span>
-                    </div>
-                )}
 
                 <div className="flex flex-col gap-3">
                     <button 
-                        onClick={copyToClipboard}
-                        className="w-full bg-accent hover:bg-accent/90 text-white font-medium py-3 rounded-xl transition shadow-lg shadow-accent/20 flex items-center justify-center gap-2"
-                    >
-                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
-                         {t(lang, 'copy_response_link')}
-                    </button>
-                    <button 
                         onClick={() => { setSubmittedLink(null); setViewMode('history'); }}
-                        className="text-slate-500 hover:text-slate-800 text-sm py-2"
+                        className="text-slate-500 hover:text-slate-800 text-sm py-2 underline"
                     >
                         {t(lang, 'nav_history')}
                     </button>
@@ -498,9 +498,15 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                             <div className="mt-8 flex justify-end">
                                 <button 
                                     onClick={handleSubmit}
-                                    className="bg-slate-900 text-white hover:bg-slate-800 px-8 py-3 rounded-xl font-medium transition shadow-lg shadow-slate-300 transform hover:-translate-y-0.5 active:translate-y-0"
+                                    disabled={isSending}
+                                    className="bg-slate-900 text-white hover:bg-slate-800 px-8 py-3 rounded-xl font-medium transition shadow-lg shadow-slate-300 transform hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2"
                                 >
-                                    {t(lang, 'submit_quote')}
+                                    {isSending ? (
+                                        <>
+                                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                            Submitting...
+                                        </>
+                                    ) : t(lang, 'submit_quote')}
                                 </button>
                             </div>
                         </div>

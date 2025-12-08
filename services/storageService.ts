@@ -4,7 +4,29 @@ import { Rfq, Quote } from '../types';
 const BUYER_RFQ_KEY = 'crontal_buyer_rfqs';
 const SUPPLIER_QUOTE_KEY = 'crontal_supplier_quotes';
 
+// Initialize Broadcast Channel for Real-time Sync (Simulates Server WebSocket)
+const channel = new BroadcastChannel('crontal_sync_network');
+
 export const storageService = {
+    // --- REAL-TIME NETWORK SIMULATION ---
+    subscribeToEvents: (callback: (event: { type: string, payload: any }) => void) => {
+        channel.onmessage = (msg) => {
+            if (msg.data && msg.data.type) {
+                callback(msg.data);
+            }
+        };
+    },
+
+    broadcastNewQuote: (quote: Quote) => {
+        channel.postMessage({ type: 'NEW_QUOTE', payload: quote });
+    },
+
+    broadcastRfqUpdate: (rfq: Rfq) => {
+        channel.postMessage({ type: 'RFQ_UPDATED', payload: rfq });
+    },
+
+    // --- LOCAL STORAGE PERSISTENCE ---
+
     // Buyer Methods
     saveRfq: (rfq: Rfq) => {
         const existingStr = localStorage.getItem(BUYER_RFQ_KEY);

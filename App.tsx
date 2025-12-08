@@ -44,6 +44,26 @@ export default function App() {
     }
   }, [rfq?.id]);
 
+  // Real-time Server Sync (Simulated)
+  useEffect(() => {
+    storageService.subscribeToEvents((event) => {
+        if (event.type === 'NEW_QUOTE') {
+            const incomingQuote = event.payload as Quote;
+            // Only update if it matches current RFQ context
+            if (rfq && incomingQuote.rfqId === rfq.id) {
+                // Save and update state
+                storageService.saveReceivedQuote(incomingQuote);
+                setQuotes(prev => {
+                    // Avoid duplicates
+                    if (prev.find(q => q.id === incomingQuote.id)) return prev;
+                    return [incomingQuote, ...prev];
+                });
+                console.log("Real-time quote received:", incomingQuote.supplierName);
+            }
+        }
+    });
+  }, [rfq]);
+
   useEffect(() => {
     const handleUrlState = () => {
         const params = new URLSearchParams(window.location.search);
@@ -59,39 +79,68 @@ export default function App() {
         
         if (mode === 'supplier' && encodedData) {
             try {
-                const decompressed = LZString.decompressFromEncodedURIComponent(encodedData);
+                // Fix for potential spaces being treated as + in URL encoding sometimes
+                const safeData = encodedData.replace(/ /g, '+');
+                const decompressed = LZString.decompressFromEncodedURIComponent(safeData);
                 if (decompressed) {
                     const sharedRfq = JSON.parse(decompressed);
                     setRfq(sharedRfq);
                     setView('SUPPLIER');
                     setCheckingAuth(false);
+                    // Clean URL to prevent re-triggering logic on refresh
+                    window.history.replaceState({}, '', window.location.pathname);
                     return;
                 }
             } catch (e) {
                 console.error("Failed to load shared RFQ", e);
+                alert("Failed to load RFQ data. The link might be corrupted.");
             }
         }
 
         if (mode === 'quote_response' && encodedData) {
             try {
-                const decompressed = LZString.decompressFromEncodedURIComponent(encodedData);
+                const safeData = encodedData.replace(/ /g, '+');
+                const decompressed = LZString.decompressFromEncodedURIComponent(safeData);
                 if (decompressed) {
                     const incomingQuote: Quote = JSON.parse(decompressed);
+                    
+                    // Attempt to load the original RFQ
+                    // 1. Try direct key
+                    let originalRfq = null;
                     const storedRfqStr = localStorage.getItem(`rfq_${incomingQuote.rfqId}`);
                     
                     if (storedRfqStr) {
-                        const originalRfq = JSON.parse(storedRfqStr);
+                         originalRfq = JSON.parse(storedRfqStr);
+                    } else {
+                        // 2. Fallback: Search in the saved list
+                        const allRfqs = storageService.getRfqs();
+                        originalRfq = allRfqs.find(r => r.id === incomingQuote.rfqId);
+                    }
+                    
+                    if (originalRfq) {
                         setRfq(originalRfq);
                         storageService.saveReceivedQuote(incomingQuote);
                         const updatedQuotes = storageService.getReceivedQuotes(incomingQuote.rfqId);
                         setQuotes(updatedQuotes);
-                        alert(t('en', 'quote_imported_success', { supplier: incomingQuote.supplierName }));
+                        
+                        // Clean URL and switch view
+                        window.history.replaceState({}, '', window.location.pathname);
+                        setView('BUYER');
+                        
+                        // Small delay to allow UI to render before alert
+                        setTimeout(() => {
+                            alert(t('en', 'quote_imported_success', { supplier: incomingQuote.supplierName }));
+                        }, 500);
                     } else {
-                        alert("Quote received, but the original RFQ was not found on this device.");
+                        alert("Quote received, but the original RFQ was not found on this device. Please ensure you are on the same device where you created the RFQ.");
+                        // Even if RFQ not found, we might want to show the quote data raw? 
+                        // For now, redirect home to avoid broken state.
+                        setView('HOME');
                     }
                 }
             } catch (e) {
                 console.error("Failed to import quote", e);
+                alert("Failed to import quote response.");
             }
         }
 
@@ -121,6 +170,8 @@ export default function App() {
     setRfq(updatedRfq);
     if (updatedRfq && updatedRfq.id) {
         localStorage.setItem(`rfq_${updatedRfq.id}`, JSON.stringify(updatedRfq));
+        // Also update main list to keep in sync
+        storageService.saveRfq(updatedRfq);
     }
   };
 
