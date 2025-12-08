@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage, RiskAnalysisItem } from '../types';
 import { parseRequest, analyzeRfqRisks, auditRfqSpecs } from '../services/geminiService';
@@ -30,13 +29,9 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
     const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
     
-    // Comparison State
-    const [viewQuoteDetails, setViewQuoteDetails] = useState<Quote | null>(null);
-
     // Risk Analysis State
     const [isRiskAnalyzing, setIsRiskAnalyzing] = useState(false);
     const [showRiskModal, setShowRiskModal] = useState(false);
-    const [auditWarnings, setAuditWarnings] = useState<string[]>([]);
     const [isAuditing, setIsAuditing] = useState(false);
 
     // UI State
@@ -77,7 +72,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     }, [rfq?.line_items.length]);
 
     // Default Table Configuration
-    const [tableConfig, setTableConfig] = useState<ColumnConfig[]>([
+    const [tableConfig] = useState<ColumnConfig[]>([
         { id: 'line', label: t(lang, 'line'), visible: true, width: 'sm' },
         { id: 'product_type', label: t(lang, 'shape'), visible: true, width: 'md' },
         { id: 'description', label: t(lang, 'description'), visible: true, width: 'lg' },
@@ -209,16 +204,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         }
     };
 
-    const calculateRiskScore = (risks: RiskAnalysisItem[]) => {
-        let score = 100;
-        risks.forEach(r => {
-            if (r.impact_level === 'High') score -= 15;
-            else if (r.impact_level === 'Medium') score -= 5;
-            else if (r.impact_level === 'Low') score -= 2;
-        });
-        return Math.max(0, Math.min(100, score));
-    };
-
     const handleRiskAnalysis = async () => {
         if (!rfq) return;
         setIsRiskAnalyzing(true);
@@ -242,12 +227,13 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         setIsAuditing(true);
         try {
             const warnings = await auditRfqSpecs(rfq, lang);
-            setAuditWarnings(warnings);
+            // Warnings are displayed via the rfq object update below or alert
             if (warnings.length > 0) {
                 setRfq({
                     ...rfq,
                     audit_warnings: warnings
                 });
+                alert(`${t(lang, 'audit_warnings')}:\n` + warnings.join('\n'));
             } else {
                 alert(t(lang, 'audit_clean'));
             }
@@ -495,11 +481,9 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         const doc = new jsPDF();
         
         doc.setFontSize(22);
-        doc.setFont("times", "bold");
         doc.text("PURCHASE ORDER", 14, 20);
         
         doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
         const poNum = `PO-${rfq.id.replace('RFQ-', '')}`;
         doc.text(`Order Number: ${poNum}`, 140, 18);
         doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 23);
@@ -513,19 +497,13 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
         const startY = 45;
         doc.setFontSize(10);
-        doc.setFont("helvetica", "bold");
         doc.text("VENDOR:", 14, startY);
-        doc.setFont("helvetica", "normal");
         doc.text(winningQuote.supplierName, 14, startY + 5);
         
-        doc.setFont("helvetica", "bold");
         doc.text("DELIVERY TO:", 110, startY);
-        doc.setFont("helvetica", "normal");
         doc.text(rfq.commercial.destination || "See Below", 110, startY + 5);
         
-        doc.setFont("helvetica", "bold");
         doc.text("Project Ref:", 14, startY + 25);
-        doc.setFont("helvetica", "normal");
         doc.text(rfq.project_name || "N/A", 35, startY + 25);
 
         const tableBody = rfq.line_items.map(item => {
@@ -555,15 +533,11 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         // @ts-ignore
         let finalY = doc.lastAutoTable.finalY + 5;
         doc.setFontSize(10);
-        doc.setFont("helvetica", "bold");
         doc.text("TOTAL:", 140, finalY + 5);
         doc.text(`${winningQuote.currency} ${winningQuote.total.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 170, finalY + 5, { align: 'right' });
 
         doc.save(`PO_${rfq.id}_${winningQuote.supplierName.replace(/\s+/g, '_')}.pdf`);
     };
-
-    const riskScore = rfq?.risks ? calculateRiskScore(rfq.risks) : 100;
-    const riskColorClass = riskScore >= 80 ? 'bg-green-100 text-green-700' : riskScore >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700';
 
     return (
         <div className="flex flex-col lg:flex-row h-full min-h-screen gap-0 relative pb-20 lg:pb-0">
@@ -973,7 +947,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                         <tr>
                                                             <th className="p-4 w-12 bg-slate-50 sticky left-0 z-10">Line</th>
                                                             <th className="p-4 bg-slate-50 sticky left-12 z-10 min-w-[200px]">Description</th>
-                                                            {quotes.map((q, i) => (
+                                                            {quotes.map((q) => (
                                                                 <th key={q.id} className="p-4 text-right min-w-[120px] border-l border-slate-100">
                                                                     {q.supplierName}
                                                                 </th>
