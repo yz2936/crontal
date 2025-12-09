@@ -1,4 +1,5 @@
 
+
 import { User, Rfq, Quote } from "../types";
 
 // --- SIMULATED DATABASE KEYS ---
@@ -60,7 +61,7 @@ export const api = {
 
     // --- RFQ OPERATIONS ---
     rfq: {
-        list: async (userId: string): Promise<Rfq[]> => {
+        list: async (_userId: string): Promise<Rfq[]> => {
             await delay(400);
             const allRfqs: Rfq[] = JSON.parse(localStorage.getItem(DB_RFQS) || '[]');
             // Filter assuming simplified ownership (all RFQs created by this user)
