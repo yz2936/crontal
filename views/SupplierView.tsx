@@ -230,12 +230,12 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
   }
 
   return (
-    <div className="min-h-screen py-6 px-4 bg-slate-50/50">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="min-h-screen py-6 px-4 bg-slate-50/50 pb-24">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
             {/* Sidebar */}
             <div className="md:w-64 flex-shrink-0 flex flex-col gap-4">
-                 <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+                 <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm sticky top-6">
                     <div className="flex items-center gap-3 mb-6">
                         <svg viewBox="0 0 40 40" fill="none" className="h-8 w-8 rounded-lg shadow-sm">
                             <rect width="40" height="40" rx="8" fill="#0B1121"/>
@@ -284,14 +284,14 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                 <div className="p-8 text-center text-slate-400 text-sm">No history found on this device.</div>
                             ) : (
                                 quoteHistory.map(q => (
-                                    <div key={q.id} className="p-4 hover:bg-slate-50 flex justify-between items-center">
+                                    <div key={q.id} className="p-4 hover:bg-slate-50 flex justify-between items-center transition-colors">
                                         <div>
                                             <div className="font-medium text-slate-900">{q.projectName || "Untitled RFP"}</div>
                                             <div className="text-xs text-slate-500">Ref: {q.rfqId} • {new Date(q.timestamp).toLocaleDateString()}</div>
                                         </div>
                                         <div className="text-right">
                                             <div className="font-bold text-slate-900">{q.currency} {q.total.toLocaleString()}</div>
-                                            <div className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full inline-block mt-1">{t(lang, 'status_sent')}</div>
+                                            <div className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full inline-block mt-1 font-bold">{t(lang, 'status_sent')}</div>
                                         </div>
                                     </div>
                                 ))
@@ -304,100 +304,102 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                     <div className="space-y-6">
                         {/* AI Summary Banner (If Exists) */}
                         {rfq.ai_summary && (
-                            <div className="bg-gradient-to-r from-accent/10 to-transparent p-5 rounded-2xl border border-accent/20 relative overflow-hidden bg-white">
+                            <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-5 rounded-2xl border border-slate-700 relative overflow-hidden text-white shadow-lg">
                                 <div className="absolute top-0 right-0 p-4 opacity-10">
                                     <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1010 10A10 10 0 0012 2zm0 18a8 8 0 118-8 8 8 0 01-8 8z" /></svg>
                                 </div>
                                 <div className="relative z-10">
                                     <div className="flex items-center gap-2 mb-2">
-                                        <div className="px-2 py-0.5 bg-accent text-white text-[10px] font-bold rounded-full uppercase tracking-wide">Executive Summary</div>
-                                        <span className="text-[10px] text-slate-400">Powered by Gemini</span>
+                                        <div className="px-2 py-0.5 bg-white/20 text-white text-[10px] font-bold rounded-full uppercase tracking-wide">Executive Summary</div>
                                     </div>
-                                    <p className="text-slate-800 text-sm font-medium leading-relaxed italic max-w-3xl">
+                                    <p className="text-slate-100 text-sm font-medium leading-relaxed italic max-w-3xl">
                                         "{rfq.ai_summary}"
                                     </p>
                                 </div>
                             </div>
                         )}
 
-                        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl shadow-slate-200/50">
-                            <div className="flex flex-col md:flex-row justify-between items-start mb-6 border-b border-slate-100 pb-4 gap-4">
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <h2 className="text-lg font-semibold text-slate-900">{t(lang, 'rfq_label')} {rfq.id}</h2>
-                                        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-medium border border-blue-100">Open for Quote</span>
+                        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                                <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-xl font-bold text-slate-900">{rfq.project_name}</h2>
+                                            <span className="px-2 py-0.5 rounded text-blue-700 bg-blue-50 text-[10px] font-bold uppercase tracking-wide border border-blue-100">Open for Bid</span>
+                                        </div>
+                                        <div className="text-xs text-slate-500 mt-1 font-mono">Ref: {rfq.id}</div>
+                                        <div className="flex flex-wrap gap-2 mt-3">
+                                            {rfq.commercial.req_mtr && <span className="text-[10px] bg-red-50 text-red-700 px-2 py-1 rounded border border-red-100 font-bold uppercase">MTR Required</span>}
+                                            {rfq.commercial.req_avl && <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded border border-amber-100 font-bold uppercase">AVL Only</span>}
+                                        </div>
                                     </div>
-                                    <p className="text-sm text-slate-500 mt-1"><span className="font-semibold">{t(lang, 'project_label')}</span> {rfq.project_name}</p>
-                                    {rfq.project_description && (
-                                        <p className="text-xs text-slate-400 mt-1 max-w-xl">{rfq.project_description}</p>
-                                    )}
-                                    <div className="flex gap-2 mt-3">
-                                        {rfq.commercial.req_mtr && <span className="text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded border border-red-100 font-medium">MTR Required</span>}
-                                        {rfq.commercial.req_avl && <span className="text-[10px] bg-orange-50 text-orange-600 px-2 py-0.5 rounded border border-orange-100 font-medium">AVL Only</span>}
-                                        {rfq.commercial.req_tpi && <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded border border-purple-100 font-medium">TPI Required</span>}
+                                    <div className="text-right text-xs text-slate-600 bg-white p-3 rounded-lg border border-slate-200 shadow-sm w-full md:w-auto">
+                                        <div className="flex justify-between md:justify-end gap-4 mb-1">
+                                            <span className="text-slate-400">Destination</span>
+                                            <span className="font-bold">{rfq.commercial.destination || "Not Specified"}</span>
+                                        </div>
+                                        <div className="flex justify-between md:justify-end gap-4">
+                                            <span className="text-slate-400">Incoterm</span>
+                                            <span className="font-bold">{rfq.commercial.incoterm || "Not Specified"}</span>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="text-right text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                                    <p><span className="font-semibold">{t(lang, 'dest_label')}</span> {rfq.commercial.destination || t(lang, 'notSpecified')}</p>
-                                    <p><span className="font-semibold">{t(lang, 'incoterm_label')}</span> {rfq.commercial.incoterm || t(lang, 'notSpecified')}</p>
                                 </div>
                             </div>
 
-                            <div className="overflow-x-auto rounded-lg border border-slate-100">
+                            <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-left">
-                                    <thead className="bg-slate-50 text-slate-500 font-medium">
+                                    <thead className="bg-slate-50 text-slate-500 font-bold text-xs uppercase tracking-wide border-b border-slate-200">
                                         <tr>
-                                            <th className="px-4 py-3 border-r border-slate-100 w-12">{t(lang, 'line')}</th>
-                                            <th className="px-4 py-3 w-1/4">{t(lang, 'description')}</th>
-                                            <th className="px-4 py-3 w-32 bg-slate-100/50 text-center border-x border-slate-100">{t(lang, 'size')} (OD x WT)</th>
-                                            <th className="px-4 py-3 text-right w-20">{t(lang, 'qty')}</th>
-                                            {/* Supplier Input Columns */}
-                                            <th className="px-4 py-3 w-20 bg-slate-50">{t(lang, 'moq')}</th>
-                                            <th className="px-4 py-3 w-32 bg-slate-50">{t(lang, 'unit_price')}</th>
-                                            <th className="px-4 py-3 w-40 bg-slate-50">{t(lang, 'alternates')}</th>
+                                            <th className="px-4 py-3 w-12 text-center">#</th>
+                                            <th className="px-4 py-3 min-w-[200px]">{t(lang, 'description')}</th>
+                                            <th className="px-4 py-3 w-32 text-center">{t(lang, 'size')}</th>
+                                            <th className="px-4 py-3 text-right w-24">{t(lang, 'qty')}</th>
+                                            <th className="px-4 py-3 w-24 bg-blue-50/50 text-blue-800">{t(lang, 'moq')}</th>
+                                            <th className="px-4 py-3 w-32 bg-blue-50/50 text-blue-800">{t(lang, 'unit_price')}</th>
+                                            <th className="px-4 py-3 w-40 bg-blue-50/50 text-blue-800">{t(lang, 'alternates')}</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {rfq.line_items.map(item => (
-                                            <tr key={item.item_id} className="hover:bg-slate-50/50 group">
-                                                <td className="px-4 py-3 text-slate-400 font-mono text-xs border-r border-slate-100 align-top">{item.line}</td>
-                                                <td className="px-4 py-3 font-medium text-slate-800 align-top">
-                                                    <div className="text-sm">{item.description}</div>
-                                                    <div className="text-xs text-slate-500 mt-1">{item.material_grade}</div>
+                                            <tr key={item.item_id} className="hover:bg-slate-50 transition-colors group">
+                                                <td className="px-4 py-4 text-slate-400 font-mono text-xs text-center">{item.line}</td>
+                                                <td className="px-4 py-4">
+                                                    <div className="font-medium text-slate-900">{item.description}</div>
+                                                    <div className="text-xs text-slate-500 mt-0.5">{item.material_grade}</div>
                                                     {(item.tolerance || (item.test_reqs && item.test_reqs.length > 0)) && (
-                                                        <div className="text-[10px] text-slate-400 mt-1 bg-slate-100 inline-block px-1 rounded">
+                                                        <div className="text-[10px] text-slate-500 mt-1 inline-block bg-slate-100 px-1.5 py-0.5 rounded">
                                                             {item.tolerance} {item.test_reqs?.join(', ')}
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-3 text-slate-600 text-xs text-center border-x border-slate-100 font-mono align-top pt-4">
-                                                    {item.size.outer_diameter.value ? `${item.size.outer_diameter.value}${item.size.outer_diameter.unit}` : '-'} x 
-                                                    {item.size.wall_thickness.value ? ` ${item.size.wall_thickness.value}${item.size.wall_thickness.unit}` : ' -'}
+                                                <td className="px-4 py-4 text-slate-600 text-xs text-center font-mono">
+                                                    {item.size.outer_diameter.value ? `${item.size.outer_diameter.value}` : '-'} x 
+                                                    {item.size.wall_thickness.value ? ` ${item.size.wall_thickness.value}` : ' -'}
                                                 </td>
-                                                <td className="px-4 py-3 text-right text-slate-700 font-medium align-top pt-4">{item.quantity} {item.uom}</td>
+                                                <td className="px-4 py-4 text-right font-bold text-slate-700">{item.quantity} <span className="text-[10px] font-normal text-slate-400">{item.uom}</span></td>
                                                 
                                                 {/* Supplier Inputs */}
-                                                <td className="px-2 py-3 bg-slate-50/30 align-top">
+                                                <td className="px-2 py-3 bg-blue-50/10">
                                                     <input 
                                                         type="number" 
-                                                        placeholder="Min"
-                                                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-center focus:border-accent focus:ring-1 focus:ring-accent outline-none shadow-sm"
+                                                        placeholder="-"
+                                                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-2 text-sm text-center focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm"
                                                         onChange={(e) => handleMoqChange(item.line, e.target.value)}
                                                     />
                                                 </td>
-                                                <td className="px-2 py-3 bg-slate-50/30 align-top">
+                                                <td className="px-2 py-3 bg-blue-50/10">
                                                     <input 
                                                         type="number" 
                                                         placeholder="0.00"
-                                                        className="w-full text-right bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none shadow-sm"
+                                                        className="w-full text-right bg-white border border-slate-200 rounded-lg px-2 py-2 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm"
                                                         onChange={(e) => handlePriceChange(item.line, e.target.value)}
                                                     />
                                                 </td>
-                                                <td className="px-2 py-3 bg-slate-50/30 align-top">
+                                                <td className="px-2 py-3 bg-blue-50/10">
                                                     <textarea 
-                                                        rows={2}
-                                                        placeholder="Remarks..."
-                                                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:border-accent focus:ring-1 focus:ring-accent outline-none shadow-sm resize-none"
+                                                        rows={1}
+                                                        placeholder="..."
+                                                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-2 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm resize-none"
                                                         onChange={(e) => handleAltChange(item.line, e.target.value)}
                                                     />
                                                 </td>
@@ -406,62 +408,67 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                     </tbody>
                                 </table>
                             </div>
-                            
-                            <div className="mt-6 flex justify-end items-center gap-4 pt-4 border-t border-slate-100">
-                                <span className="text-sm text-slate-500">{t(lang, 'total_estimate')}</span>
-                                <span className="text-2xl font-bold text-slate-900">
-                                    {formData.currency} {calculateTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                </span>
-                            </div>
                         </div>
 
-                        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xl shadow-slate-200/50">
-                            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-4">{t(lang, 'commercial_terms')}</h3>
-                            <div className="grid md:grid-cols-2 gap-6 text-sm">
-                                <div>
-                                    <label className="block text-slate-500 mb-1.5 text-xs font-medium">{t(lang, 'supplier_name')}</label>
-                                    <input 
-                                        className="w-full rounded-xl border border-slate-200 px-4 py-2.5 focus:ring-2 focus:ring-accent/10 focus:border-accent outline-none" 
-                                        value={formData.supplierName}
-                                        onChange={e => setFormData({...formData, supplierName: e.target.value})}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-slate-500 mb-1.5 text-xs font-medium">{t(lang, 'currency')}</label>
-                                    <select 
-                                        className="w-full rounded-xl border border-slate-200 px-4 py-2.5 bg-white focus:ring-2 focus:ring-accent/10 focus:border-accent outline-none"
-                                        value={formData.currency}
-                                        onChange={e => setFormData({...formData, currency: e.target.value})}
-                                    >
-                                        <option value="USD">USD</option>
-                                        <option value="EUR">EUR</option>
-                                        <option value="CNY">CNY</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-slate-500 mb-1.5 text-xs font-medium">{t(lang, 'lead_time')}</label>
-                                    <input 
-                                        type="number"
-                                        className="w-full rounded-xl border border-slate-200 px-4 py-2.5 focus:ring-2 focus:ring-accent/10 focus:border-accent outline-none" 
-                                        value={formData.leadTime}
-                                        onChange={e => setFormData({...formData, leadTime: e.target.value})}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-slate-500 mb-1.5 text-xs font-medium">{t(lang, 'payment_terms')}</label>
-                                    <input 
-                                        className="w-full rounded-xl border border-slate-200 px-4 py-2.5 focus:ring-2 focus:ring-accent/10 focus:border-accent outline-none" 
-                                        placeholder="e.g. Net 30"
-                                        value={formData.payment}
-                                        onChange={e => setFormData({...formData, payment: e.target.value})}
-                                    />
+                        <div className="grid md:grid-cols-2 gap-6">
+                            {/* Commercial Terms Card */}
+                            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">{t(lang, 'commercial_terms')}</h3>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-slate-500 mb-1 text-xs font-bold">{t(lang, 'supplier_name')}</label>
+                                            <input 
+                                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-brandOrange/20 focus:border-brandOrange outline-none transition" 
+                                                value={formData.supplierName}
+                                                onChange={e => setFormData({...formData, supplierName: e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 mb-1 text-xs font-bold">{t(lang, 'currency')}</label>
+                                            <select 
+                                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-brandOrange/20 focus:border-brandOrange outline-none transition"
+                                                value={formData.currency}
+                                                onChange={e => setFormData({...formData, currency: e.target.value})}
+                                            >
+                                                <option value="USD">USD</option>
+                                                <option value="EUR">EUR</option>
+                                                <option value="CNY">CNY</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-slate-500 mb-1 text-xs font-bold">{t(lang, 'lead_time')}</label>
+                                            <input 
+                                                type="number"
+                                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-brandOrange/20 focus:border-brandOrange outline-none transition" 
+                                                value={formData.leadTime}
+                                                onChange={e => setFormData({...formData, leadTime: e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 mb-1 text-xs font-bold">{t(lang, 'payment_terms')}</label>
+                                            <input 
+                                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-brandOrange/20 focus:border-brandOrange outline-none transition" 
+                                                placeholder="e.g. Net 30"
+                                                value={formData.payment}
+                                                onChange={e => setFormData({...formData, payment: e.target.value})}
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* File Upload Section for MTRs */}
-                            <div className="mt-6 pt-6 border-t border-slate-100">
-                                <label className="block text-slate-500 mb-2 text-xs font-medium uppercase tracking-wider">{t(lang, 'upload_mtr')}</label>
-                                <div className="flex items-center gap-4">
+                            {/* Attachments Card */}
+                            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">{t(lang, 'upload_mtr')}</h3>
+                                <div className="flex-1 flex flex-col justify-center items-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 hover:bg-slate-100 transition cursor-pointer group p-4" onClick={() => fileInputRef.current?.click()}>
+                                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm mb-2 group-hover:scale-110 transition-transform">
+                                        <svg className="w-5 h-5 text-slate-400 group-hover:text-brandOrange" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                    </div>
+                                    <p className="text-xs font-bold text-slate-500 group-hover:text-slate-700">Click to upload files</p>
+                                    <p className="text-[10px] text-slate-400">PDF, Excel, Images</p>
                                     <input 
                                         type="file" 
                                         multiple 
@@ -470,50 +477,43 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                         className="hidden"
                                         accept=".pdf,.jpg,.png,.xlsx"
                                     />
-                                    <button 
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-50 hover:text-accent transition flex items-center gap-2"
-                                    >
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                                        Select Files
-                                    </button>
-                                    {attachedFiles.length > 0 && (
-                                        <div className="text-xs text-slate-500">
-                                            {attachedFiles.length} {t(lang, 'mtr_attached')}
-                                        </div>
-                                    )}
                                 </div>
                                 {attachedFiles.length > 0 && (
-                                    <div className="flex flex-wrap gap-2 mt-3">
+                                    <div className="flex flex-wrap gap-2 mt-4">
                                         {attachedFiles.map((file, i) => (
-                                            <div key={i} className="flex items-center gap-1 bg-slate-100 text-slate-600 text-[10px] px-2 py-1 rounded border border-slate-200">
+                                            <div key={i} className="flex items-center gap-2 bg-slate-100 text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-200">
                                                 <span className="truncate max-w-[150px]">{file.name}</span>
-                                                <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500 ml-1">×</button>
+                                                <button onClick={(e) => { e.stopPropagation(); removeFile(i); }} className="text-slate-400 hover:text-red-500 font-bold">×</button>
                                             </div>
                                         ))}
                                     </div>
                                 )}
                             </div>
+                        </div>
 
-                            <div className="mt-8 flex justify-end">
+                        {/* Sticky Action Footer for Mobile */}
+                        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] md:static md:bg-transparent md:border-0 md:shadow-none md:p-0 z-30">
+                            <div className="max-w-6xl mx-auto flex justify-between items-center">
+                                <div>
+                                    <div className="text-xs text-slate-500">{t(lang, 'total_estimate')}</div>
+                                    <div className="text-2xl font-bold text-slate-900 leading-none">
+                                        {formData.currency} {calculateTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </div>
+                                </div>
                                 <button 
                                     onClick={handleSubmit}
                                     disabled={isSending}
-                                    className="bg-slate-900 text-white hover:bg-slate-800 px-8 py-3 rounded-xl font-medium transition shadow-lg shadow-slate-300 transform hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2"
+                                    className="bg-slate-900 text-white hover:bg-slate-800 px-8 py-3 rounded-xl font-bold transition shadow-lg shadow-slate-900/20 transform hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                                 >
                                     {isSending ? (
                                         <>
                                             <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                                            Submitting...
+                                            Sending...
                                         </>
                                     ) : t(lang, 'submit_quote')}
                                 </button>
                             </div>
                         </div>
-                        
-                        <p className="text-center text-xs text-slate-400 pb-8">
-                            Powered by Crontal
-                        </p>
                     </div>
                     ) : (
                          <div className="flex flex-col items-center justify-center h-[50vh] text-slate-400">

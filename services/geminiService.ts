@@ -1,6 +1,7 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { Rfq, LineItem, FileAttachment, Language, RiskAnalysisItem, InsightSource, InsightResponse, TrendingTopic, MarketDataResponse } from "../types";
+import { Rfq, LineItem, FileAttachment, Language, RiskAnalysisItem, InsightSource, InsightResponse, TrendingTopic, MarketDataResponse, SupplierCandidate } from "../types";
 
 // Initialize Gemini Client
 // WARNING: If process.env.API_KEY is missing at build time, this will be empty string.
@@ -261,6 +262,86 @@ export const parseRequest = async (
     console.error("Gemini Parse Error:", error);
     return { rfqUpdates: { line_items: [] }, responseText: "I encountered an error processing that request." }; 
   }
+};
+
+export const findSuppliers = async (rfq: Rfq, sourceCountry: string | null = null): Promise<SupplierCandidate[]> => {
+    // Construct a concise summary for the prompt
+    const summary = `
+        Project: ${rfq.project_name || "Industrial Project"}
+        Delivery Location: ${rfq.commercial.destination || "Not Specified (Assume Global)"}
+        Key Items: ${rfq.line_items.slice(0, 5).map(i => `${i.quantity} ${i.uom} ${i.description}`).join('; ')}
+        Special Requirements: ${rfq.commercial.req_avl ? "AVL Required" : "Open Market"}, ${rfq.commercial.req_mtr ? "MTR Required" : ""}
+    `;
+
+    let strategy = "";
+    if (sourceCountry && sourceCountry !== "Global") {
+        strategy = `
+            STRATEGY: EXCLUSIVE SOURCING FROM ${sourceCountry.toUpperCase()}.
+            - Only find suppliers that have manufacturing or major stock-holding facilities in ${sourceCountry}.
+            - Prioritize suppliers that are known to export to the Delivery Location (${rfq.commercial.destination}).
+        `;
+    } else {
+        strategy = `
+            STRATEGY: GLOBAL INTELLIGENT SOURCING (Best Value Analysis).
+            - Evaluate the Geopolitical Situation, Supply Chain Efficiency, and Logistics Cost for the Delivery Location (${rfq.commercial.destination}).
+            - Compare options: 
+               1. Local Suppliers (Speed/Low Logistics Cost).
+               2. Low-Cost Country Sourcing (China/India/Vietnam) vs Quality/Premium (EU/USA/Korea).
+            - Recommend a MIX of suppliers that balances these factors.
+        `;
+    }
+
+    const prompt = `
+        You are an expert Strategic Sourcing Specialist and Supply Chain Analyst.
+        TASK: Find 4-6 real, high-quality potential suppliers for this project using Google Search.
+        
+        PROJECT DETAILS:
+        ${summary}
+        
+        ${strategy}
+        
+        OUTPUT FORMAT:
+        Return ONLY a raw JSON Array of objects. Do not use Markdown formatting.
+        
+        JSON Structure:
+        [
+          {
+            "name": "Supplier Name",
+            "website": "URL or N/A",
+            "location": "City, Country",
+            "match_reason": "Brief reason why they are a fit (e.g. 'Specialist in X')",
+            "rationale": "Strategic reason for selection (e.g. 'Low cost leader, high tariff risk' or 'Domestic supplier, fast delivery')"
+          }
+        ]
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: MODEL_FAST,
+            contents: prompt,
+            config: {
+                tools: [{googleSearch: {}}],
+            }
+        });
+
+        const clean = cleanJson(response.text || "[]");
+        const results = JSON.parse(clean);
+        
+        return results.map((s: any, i: number) => ({
+            id: `SUP-${i}`,
+            name: s.name,
+            website: s.website,
+            location: s.location,
+            match_reason: s.match_reason,
+            rationale: s.rationale,
+            selected: true, // Select by default
+            contacts: []    // Initialize empty contacts array for buyer input
+        }));
+
+    } catch (e) {
+        console.error("Sourcing Error", e);
+        return [];
+    }
 };
 
 export const analyzeRfqRisks = async (rfq: Rfq, lang: Language = 'en'): Promise<RiskAnalysisItem[]> => {
@@ -550,7 +631,6 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
         console.error("Live Market Data Fetch Failed (Grounding)", e);
         
         // Strategy 2: Fallback to AI Estimate (No Search)
-        // This handles cases where the API key is valid but search tools are restricted/rate-limited
         try {
             console.log("Attempting fallback to AI Estimate...");
             const response = await ai.models.generateContent({
@@ -578,7 +658,6 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
             });
             const clean = cleanJson(response.text || "{}");
             const data = JSON.parse(clean);
-            // Mark as 'isFallback' true so UI shows it's not live, but at least we have data
             data.isFallback = true; 
             return data;
         } catch (e2) {

@@ -1,6 +1,8 @@
+
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage, RiskAnalysisItem } from '../types';
-import { parseRequest, analyzeRfqRisks, auditRfqSpecs } from '../services/geminiService';
+import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage, RiskAnalysisItem, SupplierCandidate } from '../types';
+import { parseRequest, analyzeRfqRisks, auditRfqSpecs, findSuppliers } from '../services/geminiService';
 import { storageService } from '../services/storageService';
 import { t } from '../utils/i18n';
 import LZString from 'lz-string';
@@ -34,15 +36,45 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [showRiskModal, setShowRiskModal] = useState(false);
     const [isAuditing, setIsAuditing] = useState(false);
 
+    // Sourcing & Share State
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [sourcingStep, setSourcingStep] = useState<1 | 2 | 3>(1); // 1: Discover, 2: Review, 3: Broadcast
+    const [isSourcing, setIsSourcing] = useState(false);
+    const [sourceCountry, setSourceCountry] = useState<string>(''); // Empty = Global Logic
+    const [suggestedSuppliers, setSuggestedSuppliers] = useState<SupplierCandidate[]>([]);
+    const [manualSupplierEmail, setManualSupplierEmail] = useState('');
+    const [emailDraft, setEmailDraft] = useState<string>('');
+    const [generatedLink, setGeneratedLink] = useState<string>('');
+    const [linkCopied, setLinkCopied] = useState(false);
+    const [isBroadcasting, setIsBroadcasting] = useState(false);
+    
+    // Contact Management (Temporary input state per supplier id)
+    const [contactInputs, setContactInputs] = useState<Record<string, string>>({});
+
     // UI State
     const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); 
     const prevItemCount = useRef(0);
-    const [linkCopied, setLinkCopied] = useState(false);
-    const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+
+    // Resizable Table Configuration - Initial State in Pixels
+    const [tableConfig, setTableConfig] = useState<ColumnConfig[]>([
+        { id: 'line', label: '#', visible: true, width: 50 },
+        { id: 'product_type', label: t(lang, 'shape'), visible: true, width: 140 },
+        { id: 'description', label: t(lang, 'description'), visible: true, width: 320 },
+        { id: 'material_grade', label: t(lang, 'grade'), visible: true, width: 140 },
+        { id: 'tolerance', label: 'Rating/Sch', visible: true, width: 110 },
+        { id: 'od', label: t(lang, 'od'), visible: true, width: 100, isCustom: true }, 
+        { id: 'wt', label: t(lang, 'wt'), visible: true, width: 100, isCustom: true },
+        { id: 'quantity', label: t(lang, 'qty'), visible: true, width: 80 },
+        { id: 'uom', label: t(lang, 'uom'), visible: true, width: 70 },
+    ]);
 
     // Load drafts on mount
     useEffect(() => {
         setSavedRfqs(storageService.getRfqs());
+        // On mobile, default sidebar to closed
+        if (window.innerWidth < 1024) {
+            setIsSidebarOpen(false);
+        }
     }, [rfq]); 
 
     // Auto-switch to Comparison Step if Quotes exist (e.g. after import)
@@ -71,24 +103,38 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         prevItemCount.current = rfq ? rfq.line_items.length : 0;
     }, [rfq?.line_items.length]);
 
-    // Default Table Configuration
-    const [tableConfig] = useState<ColumnConfig[]>([
-        { id: 'line', label: t(lang, 'line'), visible: true, width: 'sm' },
-        { id: 'product_type', label: t(lang, 'shape'), visible: true, width: 'md' },
-        { id: 'description', label: t(lang, 'description'), visible: true, width: 'lg' },
-        { id: 'material_grade', label: t(lang, 'grade'), visible: true, width: 'md' },
-        { id: 'tolerance', label: t(lang, 'tolerance'), visible: true, width: 'sm' },
-        { id: 'size', label: t(lang, 'size'), visible: true, width: 'lg' }, 
-        { id: 'quantity', label: t(lang, 'qty'), visible: true, width: 'sm' },
-        { id: 'uom', label: t(lang, 'uom'), visible: true, width: 'sm' },
-    ]);
+    // --- COLUMN RESIZING LOGIC ---
+    const startResize = (e: React.MouseEvent, colId: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const startX = e.pageX;
+        const colIndex = tableConfig.findIndex(c => c.id === colId);
+        if (colIndex === -1) return;
+        
+        const startWidth = tableConfig[colIndex].width;
 
-    // Helper for rendering size
-    const renderSize = (item: LineItem) => {
-        const od = item.size.outer_diameter.value ? `${item.size.outer_diameter.value}${item.size.outer_diameter.unit}` : '';
-        const wt = item.size.wall_thickness.value ? ` x ${item.size.wall_thickness.value}${item.size.wall_thickness.unit}` : '';
-        const len = item.size.length.value ? ` x ${item.size.length.value}${item.size.length.unit}` : '';
-        return `${od}${wt}${len}`;
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            const currentX = moveEvent.pageX;
+            const diff = currentX - startX;
+            const newWidth = Math.max(50, startWidth + diff); // Minimum width 50px
+
+            setTableConfig(prev => {
+                const newConfig = [...prev];
+                newConfig[colIndex] = { ...newConfig[colIndex], width: newWidth };
+                return newConfig;
+            });
+        };
+
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.body.style.cursor = 'default';
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        document.body.style.cursor = 'col-resize';
     };
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -344,40 +390,49 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         }
     };
 
-    const handleLoadSample = () => {
-        const sampleRfq: Rfq = {
-            id: `RFQ-SAMPLE-${Date.now()}`,
-            project_name: "Houston Pipeline Project",
+    // Replaced Sample Loading with Manual Entry Start
+    const handleManualEntry = () => {
+        const newRfq: Rfq = {
+            id: `RFQ-${Date.now()}`,
+            project_name: "New Material Request",
             status: 'draft',
             created_at: Date.now(),
-            original_text: "Sample Data",
+            original_text: "Manual Entry",
             commercial: {
-                destination: "Houston, TX",
-                incoterm: "DDP",
-                paymentTerm: "Net 30",
+                destination: "",
+                incoterm: "",
+                paymentTerm: "",
                 otherRequirements: "",
                 req_mtr: true,
-                req_avl: true,
+                req_avl: false,
                 req_tpi: false,
                 warranty_months: 12
             },
             line_items: [
                 {
-                    item_id: "L1", line: 1, raw_description: "", description: "Seamless Pipe, API 5L Gr.B", product_type: "Pipe", material_grade: "API 5L Gr.B",
-                    size: { outer_diameter: { value: 168.3, unit: 'mm' }, wall_thickness: { value: 7.11, unit: 'mm' }, length: { value: 12, unit: 'm' } },
-                    quantity: 500, uom: 'm', other_requirements: [], tolerance: "Sch40"
-                },
-                {
-                    item_id: "L2", line: 2, raw_description: "", description: "Weld Neck Flange, Class 150", product_type: "Flange", material_grade: "ASTM A105",
-                    size: { outer_diameter: { value: 168.3, unit: 'mm' }, wall_thickness: { value: null, unit: null }, length: { value: null, unit: null } },
-                    quantity: 20, uom: 'pcs', other_requirements: [], tolerance: "#150"
+                    item_id: `L${Date.now()}`,
+                    line: 1,
+                    raw_description: "",
+                    description: "",
+                    product_type: "",
+                    material_grade: "",
+                    tolerance: "",
+                    test_reqs: [],
+                    size: {
+                        outer_diameter: { value: null, unit: 'mm' },
+                        wall_thickness: { value: null, unit: 'mm' },
+                        length: { value: null, unit: 'mm' }
+                    },
+                    quantity: null,
+                    uom: 'pcs',
+                    other_requirements: []
                 }
             ]
         };
-        setRfq(sampleRfq);
+        setRfq(newRfq);
         setIsHeaderInfoOpen(true);
         setCurrentStep(2);
-        setChatHistory([{ role: 'user', content: "Load sample piping data." }, { role: 'assistant', content: t(lang, 'rfq_created_msg', { count: '2' }) }]);
+        setChatHistory([]);
     };
 
     const handleNewRfp = () => {
@@ -413,10 +468,26 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         }
     };
 
-    const handleUpdateLineItem = (index: number, field: keyof LineItem, value: any) => {
+    const handleUpdateLineItem = (index: number, field: keyof LineItem | 'od' | 'wt', value: any) => {
         if (!rfq) return;
         const newItems = [...rfq.line_items];
-        newItems[index] = { ...newItems[index], [field]: value };
+        const item = newItems[index];
+
+        if (field === 'od') {
+            item.size = { 
+                ...item.size, 
+                outer_diameter: { ...item.size.outer_diameter, value: value } 
+            };
+        } else if (field === 'wt') {
+            item.size = { 
+                ...item.size, 
+                wall_thickness: { ...item.size.wall_thickness, value: value } 
+            };
+        } else {
+            // @ts-ignore
+            item[field] = value;
+        }
+        
         setRfq({ ...rfq, line_items: newItems });
     };
 
@@ -427,16 +498,15 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         setRfq({ ...rfq, line_items: reindexed });
     };
 
-    const handleShare = async () => {
-        if (!rfq) return;
-        
-        // Optimize payload: Remove internal buyer data to shorten URL
+    // --- SOURCING & SHARING LOGIC ---
+
+    const generateRfqLink = () => {
+        if (!rfq) return '';
         const rfqForSupplier = {
             id: rfq.id,
             project_name: rfq.project_name,
             project_description: rfq.project_description,
             line_items: rfq.line_items.map(li => ({
-                // Keep only essential fields for supplier
                 line: li.line,
                 item_id: li.item_id,
                 description: li.description,
@@ -451,29 +521,153 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             commercial: rfq.commercial,
             created_at: rfq.created_at
         };
-
         const jsonStr = JSON.stringify(rfqForSupplier);
         const compressed = LZString.compressToEncodedURIComponent(jsonStr);
-        
-        // Robust URL construction using the URL API to prevent malformed domains
         const urlObj = new URL(window.location.href);
-        urlObj.search = ''; // Clear existing params
+        urlObj.search = '';
         urlObj.searchParams.set('mode', 'supplier');
         urlObj.searchParams.set('data', compressed);
-        
-        const url = urlObj.toString();
-        
-        // Show the link in a modal for manual copying as backup
-        setGeneratedLink(url);
-        
+        return urlObj.toString();
+    };
+
+    const handleOpenSourcingModal = () => {
+        if (!rfq) return;
+        const link = generateRfqLink();
+        setGeneratedLink(link);
+        setEmailDraft(''); // Reset email
+        setSourcingStep(1); // Start at Discovery
+        setSuggestedSuppliers([]); // Reset suppliers
+        setShowShareModal(true);
+    };
+
+    const handleFindSuppliers = async () => {
+        if (!rfq) return;
+        setIsSourcing(true);
         try {
-            await navigator.clipboard.writeText(url);
-            setLinkCopied(true);
-            setTimeout(() => setLinkCopied(false), 2000);
-        } catch (err) {
-            console.error('Clipboard failed', err);
-            // Fallback is handled by the visual modal showing up
+            // Pass sourceCountry (empty string means "Global" logic)
+            const results = await findSuppliers(rfq, sourceCountry || "Global");
+            setSuggestedSuppliers(results);
+        } catch (e) {
+            console.error("Failed to find suppliers", e);
+        } finally {
+            setIsSourcing(false);
         }
+    };
+
+    const toggleSupplierSelection = (id: string) => {
+        setSuggestedSuppliers(prev => prev.map(s => s.id === id ? { ...s, selected: !s.selected } : s));
+    };
+
+    const handleAddContact = (supplierId: string) => {
+        const contact = contactInputs[supplierId]?.trim();
+        if (!contact) return;
+        
+        setSuggestedSuppliers(prev => prev.map(s => {
+            if (s.id === supplierId) {
+                return { ...s, contacts: [...(s.contacts || []), contact] };
+            }
+            return s;
+        }));
+        setContactInputs(prev => ({ ...prev, [supplierId]: '' }));
+    };
+
+    const handleRemoveContact = (supplierId: string, contactIndex: number) => {
+        setSuggestedSuppliers(prev => prev.map(s => {
+            if (s.id === supplierId) {
+                const newContacts = [...(s.contacts || [])];
+                newContacts.splice(contactIndex, 1);
+                return { ...s, contacts: newContacts };
+            }
+            return s;
+        }));
+    };
+
+    const handleAddManualSupplier = () => {
+        if (!manualSupplierEmail) return;
+        const newSup: SupplierCandidate = {
+            id: `MANUAL-${Date.now()}`,
+            name: "Manual Contact",
+            email: manualSupplierEmail,
+            contacts: [manualSupplierEmail],
+            match_reason: "Manually added by user",
+            selected: true,
+            location: "N/A",
+            sendStatus: 'idle'
+        };
+        setSuggestedSuppliers(prev => [...prev, newSup]);
+        setManualSupplierEmail('');
+    };
+
+    const handleBroadcastRfq = async () => {
+        const selected = suggestedSuppliers.filter(s => s.selected);
+        if (selected.length === 0) return;
+
+        setIsBroadcasting(true);
+
+        // Reset statuses
+        setSuggestedSuppliers(prev => prev.map(s => s.selected ? { ...s, sendStatus: 'idle' } : s));
+
+        // Simulate sending process one by one
+        for (const supplier of selected) {
+            // Update to Sending
+            setSuggestedSuppliers(prev => prev.map(s => s.id === supplier.id ? { ...s, sendStatus: 'sending' } : s));
+            
+            // Artificial Delay
+            await new Promise(r => setTimeout(r, 800));
+
+            // Update to Sent
+            setSuggestedSuppliers(prev => prev.map(s => s.id === supplier.id ? { ...s, sendStatus: 'sent' } : s));
+        }
+
+        setIsBroadcasting(false);
+        
+        // Ensure link is ready if they want to copy/paste
+        generateEmailDraft();
+
+        // Auto close after success? Or just show done state
+        if (rfq) {
+            setRfq({ ...rfq, status: 'sent' }); // Update RFQ status
+            storageService.saveRfq({ ...rfq, status: 'sent' });
+        }
+    };
+
+    const generateEmailDraft = () => {
+        if (!rfq) return;
+        
+        // Regenerate link to be sure it's fresh
+        const link = generateRfqLink();
+        setGeneratedLink(link);
+
+        const selected = suggestedSuppliers.filter(s => s.selected);
+        
+        // Collect all contacts from selected suppliers
+        const allContacts: string[] = [];
+        selected.forEach(s => {
+            if (s.email) allContacts.push(s.email);
+            if (s.contacts && s.contacts.length > 0) allContacts.push(...s.contacts);
+        });
+        
+        const subject = `RFQ: ${rfq.project_name || 'Materials Inquiry'} - Due ASAP`;
+        
+        const body = `Hello,
+
+We are requesting a quotation for the following project:
+Project: ${rfq.project_name}
+Location: ${rfq.commercial.destination || 'TBD'}
+
+Please review the requirements and submit your best offer using the secure link below. This link allows you to input unit prices directly into our system.
+
+SECURE BIDDING LINK:
+[PASTE_LINK_HERE]
+
+(Note: If the link is too long, please ensure you copy the entire text).
+
+Best regards,
+Procurement Team`;
+
+        const bodyWithLink = body.replace('[PASTE_LINK_HERE]', link);
+        
+        setEmailDraft(bodyWithLink);
     };
 
     const handleGenerateAwardPO = (winningQuote: Quote) => {
@@ -543,7 +737,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         <div className="flex flex-col lg:flex-row h-full min-h-screen gap-0 relative pb-20 lg:pb-0">
             
             {/* TOP BAR: STEPS & NAVIGATION (MOBILE ONLY) */}
-            <div className="flex items-center justify-between px-2 pb-4 shrink-0 lg:absolute lg:top-0 lg:left-0 lg:w-full lg:z-10 lg:bg-slate-50 lg:hidden">
+            <div className="flex items-center justify-between px-4 py-3 shrink-0 lg:absolute lg:top-0 lg:left-0 lg:w-full lg:z-10 lg:bg-slate-50 lg:hidden bg-white border-b border-slate-200">
+                <span className="font-bold text-slate-800 text-sm">{rfq ? rfq.project_name : 'New Project'}</span>
                 <div className="flex items-center gap-2">
                     {[1, 2, 3].map(step => (
                         <button 
@@ -561,7 +756,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             <div className="flex flex-col lg:flex-row flex-1 lg:overflow-hidden gap-6 w-full lg:h-[calc(100vh-100px)]">
                 
                 {/* COLUMN 1: SIDEBAR (COLLAPSIBLE) */}
-                <div className={`transition-all duration-300 ease-in-out flex flex-col gap-4 relative ${isSidebarOpen ? 'w-full lg:w-64 opacity-100 h-auto lg:h-full min-h-0' : 'w-0 h-0 lg:h-full opacity-0 overflow-hidden lg:ml-[-1rem] hidden lg:flex'}`}>
+                <div className={`transition-all duration-300 ease-in-out flex flex-col gap-4 relative z-20 ${isSidebarOpen ? 'w-full lg:w-64 opacity-100 h-auto lg:h-full min-h-0' : 'w-0 h-0 lg:h-full opacity-0 overflow-hidden lg:ml-[-1rem] hidden lg:flex'}`}>
                      <div className="flex justify-between items-center mb-1">
                         <button 
                             onClick={handleNewRfp}
@@ -599,7 +794,9 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                             <div className={`font-bold ${rfq?.id === r.id ? 'text-blue-900' : 'text-slate-700'}`}>{r.project_name || "Untitled"}</div>
                                             <div className="flex justify-between items-center mt-1">
                                                 <span className="text-xs text-slate-400">{new Date(r.created_at).toLocaleDateString()}</span>
-                                                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase">{r.line_items.length} items</span>
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${r.status === 'sent' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                    {r.status === 'sent' ? 'Sent' : `${r.line_items.length} items`}
+                                                </span>
                                             </div>
                                         </button>
                                     ))
@@ -665,40 +862,303 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                 {/* COLUMN 3: CONTENT SWITCHER (Dashboard/Table/Comparison) */}
                 <div className="flex-1 flex flex-col gap-4 overflow-visible lg:overflow-y-auto min-h-[500px] lg:min-h-0 relative">
                     
-                    {/* LINK SHARE MODAL (VISUAL FALLBACK) */}
-                    {generatedLink && (
-                        <div className="absolute top-16 right-4 z-50 bg-white p-4 rounded-xl shadow-2xl border border-slate-200 max-w-sm animate-in slide-in-from-top-2">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs font-bold text-slate-500 uppercase">Share with Supplier</span>
-                                <button onClick={() => setGeneratedLink(null)} className="text-slate-400 hover:text-slate-600">×</button>
+                    {/* SOURCING & EMAIL MODAL WIZARD */}
+                    {showShareModal && (
+                        <div className="absolute inset-0 bg-white/95 z-50 p-4 lg:p-6 flex flex-col animate-in fade-in zoom-in-95 overflow-hidden backdrop-blur-sm">
+                            <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-4">
+                                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full bg-brandOrange/10 flex items-center justify-center text-brandOrange">
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                    </div>
+                                    Distribute RFQ
+                                </h2>
+                                <button onClick={() => setShowShareModal(false)} className="text-slate-400 hover:text-slate-600 bg-slate-100 p-2 rounded-full hover:bg-slate-200 transition">×</button>
                             </div>
-                            <input readOnly value={generatedLink} className="w-full text-xs bg-slate-50 border border-slate-200 rounded p-2 mb-2 break-all text-slate-600" onClick={(e) => e.currentTarget.select()} />
-                            <button onClick={() => { navigator.clipboard.writeText(generatedLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000); }} className="w-full bg-slate-900 text-white text-xs font-bold py-2 rounded hover:bg-slate-800 transition">
-                                {linkCopied ? "Copied!" : "Copy to Clipboard"}
-                            </button>
+
+                            {/* Wizard Progress Bar */}
+                            <div className="flex justify-center mb-8 px-4">
+                                <div className="flex items-center w-full max-w-lg relative">
+                                    <div className="absolute top-1/2 left-0 w-full h-1 bg-slate-100 -z-10 rounded"></div>
+                                    <div 
+                                        className="absolute top-1/2 left-0 h-1 bg-brandOrange/20 -z-10 rounded transition-all duration-500" 
+                                        style={{ width: sourcingStep === 1 ? '0%' : sourcingStep === 2 ? '50%' : '100%' }}
+                                    ></div>
+                                    
+                                    <div className="flex justify-between w-full">
+                                        <div className="flex flex-col items-center gap-2 cursor-pointer" onClick={() => setSourcingStep(1)}>
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${sourcingStep >= 1 ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400'}`}>1</div>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${sourcingStep >= 1 ? 'text-slate-900' : 'text-slate-400'}`}>Discover</span>
+                                        </div>
+                                        <div className="flex flex-col items-center gap-2 cursor-pointer" onClick={() => { if(suggestedSuppliers.length > 0) setSourcingStep(2) }}>
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${sourcingStep >= 2 ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400'}`}>2</div>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${sourcingStep >= 2 ? 'text-slate-900' : 'text-slate-400'}`}>Review</span>
+                                        </div>
+                                        <div className="flex flex-col items-center gap-2">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${sourcingStep >= 3 ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400'}`}>3</div>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${sourcingStep >= 3 ? 'text-slate-900' : 'text-slate-400'}`}>Broadcast</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto flex flex-col px-2">
+                                
+                                {/* STEP 1: DISCOVER */}
+                                {sourcingStep === 1 && (
+                                    <div className="flex flex-col gap-6 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="bg-slate-50/50 rounded-xl p-6 border border-slate-200">
+                                            <div className="mb-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-3">Sourcing Strategy</label>
+                                                <div className="flex flex-col md:flex-row gap-3">
+                                                    <select 
+                                                        value={sourceCountry}
+                                                        onChange={(e) => setSourceCountry(e.target.value)}
+                                                        className="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
+                                                    >
+                                                        <option value="">Global (AI Best Value Analysis)</option>
+                                                        <option value="USA">USA Only (Domestic)</option>
+                                                        <option value="China">China (Low Cost)</option>
+                                                        <option value="India">India</option>
+                                                        <option value="Germany">Germany (Premium)</option>
+                                                        <option value="South Korea">South Korea</option>
+                                                        <option value="Vietnam">Vietnam</option>
+                                                        <option value="Mexico">Mexico (Nearshoring)</option>
+                                                    </select>
+                                                    <button 
+                                                        onClick={handleFindSuppliers} 
+                                                        disabled={isSourcing}
+                                                        className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-blue-500/20"
+                                                    >
+                                                        {isSourcing ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>}
+                                                        {isSourcing ? 'Analyzing...' : 'Find Suppliers'}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Results List */}
+                                            <div className="space-y-3 mb-4">
+                                                {suggestedSuppliers.length === 0 && !isSourcing && (
+                                                    <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 flex flex-col items-center justify-center text-slate-400">
+                                                        <svg className="w-12 h-12 mb-3 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                        <p className="text-sm">Select a strategy above to find suppliers.</p>
+                                                    </div>
+                                                )}
+                                                {suggestedSuppliers.map((s) => (
+                                                    <div key={s.id} onClick={() => toggleSupplierSelection(s.id)} className={`flex items-center gap-4 p-4 rounded-xl border cursor-pointer transition-all duration-200 ${s.selected ? 'bg-white border-brandOrange shadow-md ring-1 ring-brandOrange' : 'bg-white border-slate-200 hover:border-brandOrange/50'}`}>
+                                                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${s.selected ? 'bg-brandOrange border-brandOrange' : 'border-slate-300 bg-white'}`}>
+                                                            {s.selected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className="flex justify-between items-start">
+                                                                <div className="font-bold text-slate-800">{s.name}</div>
+                                                                <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-medium">{s.location}</span>
+                                                            </div>
+                                                            <div className="text-xs text-slate-500 mt-0.5">{s.match_reason}</div>
+                                                            {s.rationale && <div className="text-[10px] text-blue-600 mt-2 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded w-fit">
+                                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                                {s.rationale}
+                                                            </div>}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* Manual Add */}
+                                            <div className="flex gap-2 pt-4 border-t border-slate-200">
+                                                <input 
+                                                    placeholder="Manually add a supplier email..." 
+                                                    value={manualSupplierEmail}
+                                                    onChange={(e) => setManualSupplierEmail(e.target.value)}
+                                                    className="flex-1 text-sm px-4 py-2 rounded-lg border border-slate-300 focus:border-brandOrange outline-none transition"
+                                                    onKeyDown={(e) => e.key === 'Enter' && handleAddManualSupplier()}
+                                                />
+                                                <button onClick={handleAddManualSupplier} className="bg-white border border-slate-300 text-slate-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 hover:text-slate-900 transition">+</button>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex justify-end">
+                                            <button 
+                                                onClick={() => setSourcingStep(2)}
+                                                disabled={suggestedSuppliers.filter(s => s.selected).length === 0}
+                                                className="bg-brandOrange text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
+                                            >
+                                                Next: Review Selection <span className="bg-white/20 px-2 py-0.5 rounded text-xs">{suggestedSuppliers.filter(s => s.selected).length}</span> →
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* STEP 2: REVIEW */}
+                                {sourcingStep === 2 && (
+                                    <div className="flex flex-col gap-6 animate-in slide-in-from-right-4 duration-300">
+                                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col">
+                                            <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                                                Review Recipients & Add Contacts
+                                            </h3>
+                                            <div className="space-y-4 overflow-y-auto pr-2 flex-1">
+                                                {suggestedSuppliers.filter(s => s.selected).map(s => (
+                                                    <div key={s.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all">
+                                                        <div className="flex justify-between items-center mb-3">
+                                                            <div className="font-bold text-slate-800">{s.name}</div>
+                                                            <div className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded">{s.location || 'N/A'}</div>
+                                                        </div>
+                                                        
+                                                        {/* Contact List */}
+                                                        <div className="flex flex-wrap gap-2 mb-3">
+                                                            {/* AI Discovered Email */}
+                                                            {s.email && (
+                                                                <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-3 py-1.5 rounded-full border border-blue-100 font-medium">
+                                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                                                    {s.email}
+                                                                </span>
+                                                            )}
+                                                            {/* Added Contacts */}
+                                                            {s.contacts?.map((contact, idx) => (
+                                                                <span key={idx} className="inline-flex items-center gap-1 bg-white text-slate-700 text-xs px-3 py-1.5 rounded-full border border-slate-200 shadow-sm group">
+                                                                    {contact}
+                                                                    <button onClick={() => handleRemoveContact(s.id, idx)} className="text-slate-400 hover:text-red-500 ml-1 font-bold">×</button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+
+                                                        {/* Add Contact Input */}
+                                                        <div className="flex gap-2">
+                                                            <input 
+                                                                placeholder="Add specific contact email..." 
+                                                                className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-300 focus:border-brandOrange outline-none transition"
+                                                                value={contactInputs[s.id] || ''}
+                                                                onChange={(e) => setContactInputs(prev => ({...prev, [s.id]: e.target.value}))}
+                                                                onKeyDown={(e) => e.key === 'Enter' && handleAddContact(s.id)}
+                                                            />
+                                                            <button onClick={() => handleAddContact(s.id)} className="text-xs bg-slate-800 text-white px-3 py-1 rounded-lg font-bold hover:bg-slate-700 transition">Add</button>
+                                                        </div>
+                                                        
+                                                        {(!s.email && (!s.contacts || s.contacts.length === 0)) && (
+                                                            <div className="text-[10px] text-red-500 mt-2 font-bold flex items-center gap-1 bg-red-50 px-2 py-1 rounded w-fit">
+                                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                                                Missing contact email
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex justify-between items-center">
+                                            <button onClick={() => setSourcingStep(1)} className="text-slate-500 hover:text-slate-800 font-bold text-sm px-4 py-2 hover:bg-slate-100 rounded-lg transition">← Back</button>
+                                            
+                                            {/* Manual Fallback Options */}
+                                            <div className="flex gap-3">
+                                                <button 
+                                                    onClick={() => { generateEmailDraft(); setSourcingStep(3); handleBroadcastRfq(); }}
+                                                    className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-green-500/20 hover:bg-green-700 transition flex items-center gap-2"
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                                                    Broadcast RFQ
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* STEP 3: BROADCAST */}
+                                {sourcingStep === 3 && (
+                                    <div className="flex flex-col gap-6 animate-in slide-in-from-right-4 duration-300 h-full">
+                                        
+                                        {/* Broadcast Status / Manual Send */}
+                                        <div className="flex-1 flex flex-col justify-center items-center">
+                                            {!isBroadcasting && suggestedSuppliers.every(s => !s.selected || s.sendStatus === 'sent') ? (
+                                                 <div className="text-center animate-in zoom-in duration-500 w-full max-w-lg">
+                                                    <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl shadow-green-100">
+                                                        <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                                    </div>
+                                                    <h2 className="text-3xl font-bold text-slate-900 mb-2">Ready to Send</h2>
+                                                    <p className="text-slate-500 mb-6 max-w-sm mx-auto">
+                                                        Your secure RFQ links are ready. Copy the draft below to send via your preferred email client.
+                                                    </p>
+                                                    
+                                                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-left w-full">
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Email Draft</span>
+                                                            <button 
+                                                                onClick={() => { navigator.clipboard.writeText(emailDraft); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000); }} 
+                                                                className="text-xs text-brandOrange font-bold hover:text-orange-700"
+                                                            >
+                                                                {linkCopied ? "Copied!" : "Copy Text"}
+                                                            </button>
+                                                        </div>
+                                                        <textarea 
+                                                            className="w-full h-32 bg-white p-3 rounded border border-slate-200 text-xs font-mono text-slate-600 resize-none outline-none focus:ring-1 focus:ring-slate-300"
+                                                            value={emailDraft}
+                                                            readOnly
+                                                        />
+                                                    </div>
+
+                                                    <div className="flex gap-3">
+                                                        <a 
+                                                            href={`mailto:?subject=${encodeURIComponent(`RFQ: ${rfq?.project_name}`)}&body=${encodeURIComponent(emailDraft)}`}
+                                                            className="flex-1 bg-slate-900 text-white text-center py-3 rounded-xl font-bold hover:bg-slate-800 transition flex items-center justify-center gap-2 shadow-lg"
+                                                        >
+                                                            Open Mail Client
+                                                        </a>
+                                                        <button onClick={() => setShowShareModal(false)} className="px-6 py-3 rounded-xl font-bold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">Close</button>
+                                                    </div>
+                                                 </div>
+                                            ) : (
+                                                <div className="w-full max-w-md space-y-4">
+                                                    <div className="text-center mb-8">
+                                                        <div className="inline-block relative">
+                                                            <div className="w-16 h-16 rounded-full border-4 border-brandOrange/30 border-t-brandOrange animate-spin mb-4"></div>
+                                                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                                                                <svg className="w-6 h-6 text-brandOrange" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                                                            </div>
+                                                        </div>
+                                                        <h3 className="text-lg font-bold text-slate-900">Preparing RFQ Links...</h3>
+                                                    </div>
+                                                    
+                                                    {suggestedSuppliers.filter(s => s.selected).map(s => (
+                                                        <div key={s.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between transition-all duration-300">
+                                                            <div className="font-bold text-slate-700">{s.name}</div>
+                                                            <div>
+                                                                {s.sendStatus === 'idle' && <span className="text-xs text-slate-400 font-bold uppercase tracking-wide">Queued</span>}
+                                                                {s.sendStatus === 'sending' && <span className="text-xs text-brandOrange font-bold uppercase tracking-wide animate-pulse">Generating...</span>}
+                                                                {s.sendStatus === 'sent' && <span className="text-xs text-green-600 font-bold uppercase tracking-wide flex items-center gap-1 bg-green-50 px-2 py-1 rounded">✓ Ready</span>}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                            </div>
                         </div>
                     )}
 
                     {/* RISK MODAL */}
                     {showRiskModal && rfq?.risks && (
-                        <div className="absolute inset-0 bg-white/95 z-50 p-6 flex flex-col animate-in fade-in zoom-in-95">
+                        <div className="absolute inset-0 bg-white/95 z-50 p-6 flex flex-col animate-in fade-in zoom-in-95 backdrop-blur-sm">
                             <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-xl font-bold text-slate-900">Risk Analysis Report</h2>
-                                <button onClick={() => setShowRiskModal(false)} className="text-slate-400 hover:text-slate-600">Close</button>
+                                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                                    <span className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 text-sm">⚠</span>
+                                    Risk Analysis Report
+                                </h2>
+                                <button onClick={() => setShowRiskModal(false)} className="text-slate-400 hover:text-slate-600 bg-slate-100 p-2 rounded-full transition">×</button>
                             </div>
-                            <div className="flex-1 overflow-y-auto space-y-4">
+                            <div className="flex-1 overflow-y-auto space-y-4 pr-2">
                                 {rfq.risks.map((risk, idx) => (
-                                    <div key={idx} className={`p-4 rounded-xl border flex gap-4 ${risk.impact_level === 'High' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
-                                        <div className={`w-2 flex-shrink-0 rounded-full ${risk.impact_level === 'High' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
+                                    <div key={idx} className={`p-5 rounded-2xl border flex gap-4 transition-all hover:shadow-md ${risk.impact_level === 'High' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
+                                        <div className={`w-1.5 self-stretch rounded-full ${risk.impact_level === 'High' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
                                         <div className="flex-1">
-                                            <div className="flex justify-between items-start mb-1">
+                                            <div className="flex justify-between items-start mb-2">
                                                 <h3 className={`font-bold ${risk.impact_level === 'High' ? 'text-red-800' : 'text-amber-800'}`}>{risk.risk}</h3>
-                                                <span className="text-[10px] uppercase font-bold tracking-wider opacity-60">{risk.category}</span>
+                                                <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded ${risk.impact_level === 'High' ? 'bg-red-200/50 text-red-700' : 'bg-amber-200/50 text-amber-700'}`}>{risk.category}</span>
                                             </div>
-                                            <p className="text-sm text-slate-600 mb-3">{risk.recommendation}</p>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => handleMitigateRisk(risk, idx)} className="text-xs font-bold px-3 py-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition shadow-sm">Fix Issue</button>
-                                                <button onClick={() => handleIgnoreRisk(idx)} className="text-xs text-slate-400 hover:text-slate-600 px-2">Ignore</button>
+                                            <p className="text-sm text-slate-700 mb-4 leading-relaxed">{risk.recommendation}</p>
+                                            <div className="flex gap-3">
+                                                <button onClick={() => handleMitigateRisk(risk, idx)} className="text-xs font-bold px-4 py-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition shadow-sm text-slate-700">Apply Fix</button>
+                                                <button onClick={() => handleIgnoreRisk(idx)} className="text-xs text-slate-400 hover:text-slate-600 px-2 font-medium">Dismiss</button>
                                             </div>
                                         </div>
                                     </div>
@@ -709,36 +1169,36 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                     
                     {!rfq ? (
                         // STEP 1: EMPTY DASHBOARD
-                        <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex flex-col items-center justify-center animate-in fade-in">
-                            <h2 className="text-xl font-bold text-slate-900 mb-2">{t(lang, 'dashboard_title')}</h2>
-                            <p className="text-slate-500 text-sm mb-10 text-center max-w-md">Select An Option To Begin Your Procurement Process.</p>
+                        <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm p-4 lg:p-12 flex flex-col items-center justify-center animate-in fade-in">
+                            <h2 className="text-2xl font-bold text-slate-900 mb-3">{t(lang, 'dashboard_title')}</h2>
+                            <p className="text-slate-500 text-sm mb-12 text-center max-w-md leading-relaxed">Select an option below to initialize your procurement process.</p>
                             
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
-                                <button onClick={() => document.querySelector('textarea')?.focus()} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-purple-50 hover:border-purple-100 transition-all flex flex-col items-center text-center gap-4 min-w-[200px]">
-                                    <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center">
-                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
+                                <button onClick={() => document.querySelector('textarea')?.focus()} className="group p-8 rounded-2xl border border-slate-200 bg-white hover:bg-purple-50 hover:border-purple-200 transition-all flex flex-col items-center text-center gap-6 shadow-sm hover:shadow-xl hover:-translate-y-1 duration-300">
+                                    <div className="w-16 h-16 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+                                        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                                     </div>
                                     <div>
-                                        <div className="font-bold text-slate-800 text-sm">Natural Language</div>
-                                        <div className="text-xs text-slate-500 mt-1">Type Requirements</div>
+                                        <div className="font-bold text-slate-900 text-lg mb-1">Natural Language</div>
+                                        <div className="text-sm text-slate-500">Type unstructured requirements</div>
                                     </div>
                                 </button>
-                                <button onClick={() => fileInputRef.current?.click()} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-green-50 hover:border-green-100 transition-all flex flex-col items-center text-center gap-4 min-w-[200px]">
-                                    <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
-                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                <button onClick={() => fileInputRef.current?.click()} className="group p-8 rounded-2xl border border-slate-200 bg-white hover:bg-green-50 hover:border-green-200 transition-all flex flex-col items-center text-center gap-6 shadow-sm hover:shadow-xl hover:-translate-y-1 duration-300">
+                                    <div className="w-16 h-16 rounded-2xl bg-green-100 text-green-600 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+                                        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                                     </div>
                                     <div>
-                                        <div className="font-bold text-slate-800 text-sm">Upload Spec/MTO</div>
-                                        <div className="text-xs text-slate-500 mt-1">PDF, Excel, Images</div>
+                                        <div className="font-bold text-slate-900 text-lg mb-1">Upload Spec/MTO</div>
+                                        <div className="text-sm text-slate-500">Extract from PDF, Excel, Images</div>
                                     </div>
                                 </button>
-                                <button onClick={handleLoadSample} className="group p-6 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-blue-50 hover:border-blue-100 transition-all flex flex-col items-center text-center gap-4 min-w-[200px]">
-                                    <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
-                                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                                <button onClick={handleManualEntry} className="group p-8 rounded-2xl border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-200 transition-all flex flex-col items-center text-center gap-6 shadow-sm hover:shadow-xl hover:-translate-y-1 duration-300">
+                                    <div className="w-16 h-16 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+                                        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                                     </div>
                                     <div>
-                                        <div className="font-bold text-slate-800 text-sm">Load Sample Data</div>
-                                        <div className="text-xs text-slate-500 mt-1">Try Pre-Loaded RFQ</div>
+                                        <div className="font-bold text-slate-900 text-lg mb-1">Manual Entry</div>
+                                        <div className="text-sm text-slate-500">Start from a blank sheet</div>
                                     </div>
                                 </button>
                             </div>
@@ -751,61 +1211,109 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                 <>
                                     {/* Toolbar / Header */}
                                     <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-4">
-                                        <div className="flex justify-between items-start">
-                                            <div onClick={() => setIsHeaderInfoOpen(!isHeaderInfoOpen)} className="cursor-pointer group">
-                                                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                                            <div onClick={() => setIsHeaderInfoOpen(!isHeaderInfoOpen)} className="cursor-pointer group flex-1">
+                                                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 group-hover:text-blue-600 transition">
                                                     {rfq.project_name || "Untitled Project"}
-                                                    <svg className={`w-4 h-4 text-slate-400 transition transform ${isHeaderInfoOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                                    <div className={`p-1 rounded-full bg-slate-200 transition-transform duration-300 ${isHeaderInfoOpen ? 'rotate-180' : ''}`}>
+                                                        <svg className="w-3 h-3 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                                    </div>
                                                 </h2>
-                                                <p className="text-xs text-slate-500">Created: {new Date(rfq.created_at).toLocaleDateString()}</p>
+                                                <p className="text-xs text-slate-500 mt-1">Created: {new Date(rfq.created_at).toLocaleDateString()}</p>
                                             </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={handleAuditSpecs} disabled={isAuditing} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:text-blue-600 hover:border-blue-200 transition shadow-sm flex items-center gap-1">
+                                            <div className="flex flex-wrap gap-2 w-full lg:w-auto">
+                                                <button onClick={handleAuditSpecs} disabled={isAuditing} className="flex-1 lg:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:text-blue-600 hover:border-blue-200 transition shadow-sm flex items-center justify-center gap-1.5">
+                                                    <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                                     {isAuditing ? 'Auditing...' : t(lang, 'audit_specs')}
                                                 </button>
-                                                <button onClick={handleRiskAnalysis} disabled={isRiskAnalyzing} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:text-amber-600 hover:border-amber-200 transition shadow-sm flex items-center gap-1">
+                                                <button onClick={handleRiskAnalysis} disabled={isRiskAnalyzing} className="flex-1 lg:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:text-amber-600 hover:border-amber-200 transition shadow-sm flex items-center justify-center gap-1.5">
+                                                    <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                                                     {isRiskAnalyzing ? 'Analyzing...' : 'Analyze Risks'}
                                                 </button>
-                                                <button onClick={handleShare} className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition shadow-sm flex items-center gap-1">
-                                                    {t(lang, 'share_link')}
+                                                <button onClick={handleOpenSourcingModal} className="flex-1 lg:flex-none px-6 py-2 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-lg text-xs font-bold hover:shadow-lg hover:shadow-slate-500/20 transition flex items-center justify-center gap-2 border border-slate-900">
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                                    Sourcing & Send
                                                 </button>
                                             </div>
                                         </div>
                                         
                                         {/* Collapsible Header Info */}
                                         {isHeaderInfoOpen && (
-                                            <div id="commercial-section" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 animate-in slide-in-from-top-2">
-                                                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Project Name</label>
+                                            <div id="commercial-section" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 animate-in slide-in-from-top-2 border-t border-slate-200 mt-2">
+                                                <div className="bg-white p-3 rounded-lg border border-slate-200 group hover:border-blue-300 transition-colors">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1 group-hover:text-blue-500 transition-colors">Project Name</label>
                                                     <input 
-                                                        className="w-full text-sm font-medium outline-none bg-transparent" 
+                                                        className="w-full text-sm font-medium outline-none bg-transparent text-slate-700" 
                                                         value={rfq.project_name || ''} 
                                                         onChange={(e) => setRfq({...rfq, project_name: e.target.value})}
                                                     />
                                                 </div>
-                                                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">{t(lang, 'destination')}</label>
+                                                <div className="bg-white p-3 rounded-lg border border-slate-200 group hover:border-blue-300 transition-colors">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1 group-hover:text-blue-500 transition-colors">{t(lang, 'destination')}</label>
                                                     <input 
-                                                        className="w-full text-sm font-medium outline-none bg-transparent" 
+                                                        className="w-full text-sm font-medium outline-none bg-transparent text-slate-700" 
                                                         value={rfq.commercial.destination} 
                                                         onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, destination: e.target.value}})}
                                                     />
                                                 </div>
-                                                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">{t(lang, 'incoterm')}</label>
+                                                <div className="bg-white p-3 rounded-lg border border-slate-200 group hover:border-blue-300 transition-colors">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1 group-hover:text-blue-500 transition-colors">{t(lang, 'incoterm')}</label>
                                                     <input 
-                                                        className="w-full text-sm font-medium outline-none bg-transparent" 
+                                                        className="w-full text-sm font-medium outline-none bg-transparent text-slate-700" 
                                                         value={rfq.commercial.incoterm} 
                                                         onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, incoterm: e.target.value}})}
                                                     />
                                                 </div>
-                                                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">{t(lang, 'payment')}</label>
+                                                <div className="bg-white p-3 rounded-lg border border-slate-200 group hover:border-blue-300 transition-colors">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1 group-hover:text-blue-500 transition-colors">{t(lang, 'payment')}</label>
                                                     <input 
-                                                        className="w-full text-sm font-medium outline-none bg-transparent" 
+                                                        className="w-full text-sm font-medium outline-none bg-transparent text-slate-700" 
                                                         value={rfq.commercial.paymentTerm} 
                                                         onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, paymentTerm: e.target.value}})}
                                                     />
+                                                </div>
+                                                
+                                                {/* Compliance Standards Toggles */}
+                                                <div className="col-span-1 md:col-span-2 lg:col-span-4 bg-white p-4 rounded-lg border border-slate-200 mt-1">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-3">Compliance Requirements</label>
+                                                    <div className="flex flex-wrap gap-6">
+                                                        <label className="flex items-center gap-2 cursor-pointer group">
+                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${rfq.commercial.req_mtr ? 'bg-brandOrange border-brandOrange' : 'border-slate-300 bg-white group-hover:border-brandOrange'}`}>
+                                                                {rfq.commercial.req_mtr && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                                            </div>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={rfq.commercial.req_mtr} 
+                                                                onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, req_mtr: e.target.checked}})}
+                                                                className="hidden"
+                                                            />
+                                                            <span className="text-xs font-bold text-slate-700 group-hover:text-brandOrange transition-colors">MTR (EN 10204 3.1)</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer group">
+                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${rfq.commercial.req_avl ? 'bg-brandOrange border-brandOrange' : 'border-slate-300 bg-white group-hover:border-brandOrange'}`}>
+                                                                {rfq.commercial.req_avl && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                                            </div>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={rfq.commercial.req_avl} 
+                                                                onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, req_avl: e.target.checked}})}
+                                                                className="hidden"
+                                                            />
+                                                            <span className="text-xs font-bold text-slate-700 group-hover:text-brandOrange transition-colors">AVL Restricted</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer group">
+                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${rfq.commercial.req_tpi ? 'bg-brandOrange border-brandOrange' : 'border-slate-300 bg-white group-hover:border-brandOrange'}`}>
+                                                                {rfq.commercial.req_tpi && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                                            </div>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={rfq.commercial.req_tpi} 
+                                                                onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, req_tpi: e.target.checked}})}
+                                                                className="hidden"
+                                                            />
+                                                            <span className="text-xs font-bold text-slate-700 group-hover:text-brandOrange transition-colors">Third Party Inspection (TPI)</span>
+                                                        </label>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
@@ -813,13 +1321,21 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
                                     {/* Main Table */}
                                     <div className="flex-1 overflow-auto relative">
-                                        <table className="w-full text-left border-collapse">
+                                        <table className="w-full text-left border-collapse min-w-[800px]">
                                             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm text-xs font-semibold text-slate-500 uppercase tracking-wide">
                                                 <tr>
-                                                    <th className="p-3 border-b border-r border-slate-200 w-10 text-center">#</th>
                                                     {tableConfig.filter(c => c.visible).map(col => (
-                                                        <th key={col.id} className="p-3 border-b border-r border-slate-200 last:border-r-0 min-w-[100px] whitespace-nowrap">
+                                                        <th 
+                                                            key={col.id} 
+                                                            className="p-3 border-b border-r border-slate-200 last:border-r-0 whitespace-nowrap bg-slate-50 relative group select-none transition-colors"
+                                                            style={{ width: col.width, minWidth: col.width }}
+                                                        >
                                                             {col.label}
+                                                            {/* Resize Handle */}
+                                                            <div 
+                                                                className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-brandOrange/50 group-hover:bg-slate-300 transition-colors z-10"
+                                                                onMouseDown={(e) => startResize(e, col.id)}
+                                                            />
                                                         </th>
                                                     ))}
                                                     <th className="p-3 border-b border-slate-200 w-10"></th>
@@ -827,18 +1343,35 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                             </thead>
                                             <tbody className="text-sm divide-y divide-slate-100">
                                                 {rfq.line_items.map((item, idx) => (
-                                                    <tr key={item.item_id} className="group hover:bg-slate-50/80 transition-colors">
-                                                        <td className="p-2 border-r border-slate-100 text-center text-slate-400 font-mono text-xs">{item.line}</td>
+                                                    <tr key={item.item_id} className="group hover:bg-blue-50/30 transition-colors odd:bg-white even:bg-slate-50/50">
                                                         {tableConfig.filter(c => c.visible).map(col => (
                                                             <td key={col.id} className="p-0 border-r border-slate-100 last:border-r-0 relative">
-                                                                {col.id === 'size' ? (
-                                                                    <div className="flex items-center h-full px-3 py-2 text-slate-600 font-mono text-xs bg-slate-50/30">
-                                                                        {renderSize(item)}
+                                                                {col.id === 'line' ? (
+                                                                    <div className="p-2 text-center text-slate-400 font-mono text-xs select-none">{item.line}</div>
+                                                                ) : col.id === 'od' ? (
+                                                                    <div className="flex items-center h-full">
+                                                                        <input 
+                                                                            className="w-full h-full px-3 py-2 bg-transparent outline-none focus:bg-white focus:ring-inset focus:ring-2 focus:ring-blue-500/20 text-slate-700 placeholder-slate-300 text-xs font-mono transition-all"
+                                                                            value={item.size.outer_diameter.value || ''}
+                                                                            onChange={(e) => handleUpdateLineItem(idx, 'od', e.target.value)}
+                                                                            placeholder="OD"
+                                                                        />
+                                                                        <span className="text-[10px] text-slate-400 px-1 select-none">{item.size.outer_diameter.unit}</span>
+                                                                    </div>
+                                                                ) : col.id === 'wt' ? (
+                                                                    <div className="flex items-center h-full border-l border-dashed border-slate-200">
+                                                                        <input 
+                                                                            className="w-full h-full px-3 py-2 bg-transparent outline-none focus:bg-white focus:ring-inset focus:ring-2 focus:ring-blue-500/20 text-slate-700 placeholder-slate-300 text-xs font-mono transition-all"
+                                                                            value={item.size.wall_thickness.value || ''}
+                                                                            onChange={(e) => handleUpdateLineItem(idx, 'wt', e.target.value)}
+                                                                            placeholder="WT"
+                                                                        />
+                                                                        <span className="text-[10px] text-slate-400 px-1 select-none">{item.size.wall_thickness.unit}</span>
                                                                     </div>
                                                                 ) : (
                                                                     <input 
                                                                         id={`cell-${col.id}-${idx}`}
-                                                                        className="w-full h-full px-3 py-2 bg-transparent outline-none focus:bg-blue-50 focus:ring-inset focus:ring-2 focus:ring-blue-500/20 transition-all text-slate-700 placeholder-slate-300"
+                                                                        className="w-full h-full px-3 py-3 bg-transparent outline-none focus:bg-white focus:ring-inset focus:ring-2 focus:ring-blue-500/20 transition-all text-slate-700 placeholder-slate-300 text-xs"
                                                                         value={(item as any)[col.id] || ''}
                                                                         onChange={(e) => handleUpdateLineItem(idx, col.id as keyof LineItem, e.target.value)}
                                                                         onKeyDown={(e) => handleKeyDown(e, col.id, idx)}
@@ -858,21 +1391,23 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                         </table>
                                         
                                         {/* Empty State / Add Button */}
-                                        <button onClick={handleAddItem} className="w-full p-3 text-slate-400 text-xs font-bold uppercase tracking-wide hover:bg-slate-50 hover:text-slate-600 transition border-t border-slate-100 flex items-center justify-center gap-2">
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                        <button onClick={handleAddItem} className="w-full p-4 text-slate-400 text-xs font-bold uppercase tracking-wide hover:bg-slate-50 hover:text-blue-600 transition border-t border-slate-100 flex items-center justify-center gap-2">
+                                            <div className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center">
+                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg>
+                                            </div>
                                             {t(lang, 'add_line_item')}
                                         </button>
                                     </div>
                                     
                                     {/* Bottom Bar: Switch to Compare */}
                                     {quotes.length > 0 && (
-                                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center animate-in slide-in-from-bottom-2">
+                                        <div className="p-4 border-t border-slate-200 bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] flex justify-between items-center animate-in slide-in-from-bottom-2 sticky bottom-0 z-20">
                                             <div className="text-sm font-medium text-slate-600">
-                                                <span className="font-bold text-slate-900">{quotes.length}</span> Quotes Received
+                                                <span className="font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded mr-2">{quotes.length}</span> Quotes Received
                                             </div>
                                             <button 
                                                 onClick={() => setCurrentStep(3)}
-                                                className="bg-brandOrange text-white px-6 py-2 rounded-lg font-bold shadow-lg hover:bg-orange-600 transition flex items-center gap-2"
+                                                className="bg-brandOrange text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-orange-500/20 hover:bg-orange-600 hover:-translate-y-0.5 transition flex items-center gap-2"
                                             >
                                                 Compare Quotes →
                                             </button>
@@ -886,7 +1421,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                 <>
                                     <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
                                         <h2 className="text-lg font-bold text-slate-900">Bid Evaluation</h2>
-                                        <button onClick={() => setCurrentStep(2)} className="text-sm font-medium text-slate-500 hover:text-slate-900">
+                                        <button onClick={() => setCurrentStep(2)} className="text-sm font-medium text-slate-500 hover:text-slate-900 flex items-center gap-1 px-3 py-1.5 rounded hover:bg-slate-200 transition">
                                             ← Back to Editor
                                         </button>
                                     </div>
@@ -897,8 +1432,11 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                             {quotes.map((quote) => {
                                                 const isBestPrice = quote.total === Math.min(...quotes.map(q => q.total));
                                                 return (
-                                                    <div key={quote.id} className={`bg-white rounded-xl border p-6 relative group hover:shadow-lg transition-all ${isBestPrice ? 'border-green-200 ring-1 ring-green-100' : 'border-slate-200'}`}>
-                                                        {isBestPrice && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide shadow-sm">Best Price</div>}
+                                                    <div key={quote.id} className={`bg-white rounded-xl border p-6 relative group hover:shadow-lg transition-all ${isBestPrice ? 'border-green-200 ring-1 ring-green-100 shadow-sm' : 'border-slate-200'}`}>
+                                                        {isBestPrice && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide shadow-sm flex items-center gap-1">
+                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                                            Best Price
+                                                        </div>}
                                                         
                                                         <div className="flex justify-between items-start mb-4">
                                                             <div>
@@ -929,9 +1467,9 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                         </div>
 
                                                         <div className="flex gap-2">
-                                                            <button onClick={() => handleGenerateAwardPO(quote)} className="flex-1 bg-slate-900 text-white py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition">Award PO</button>
-                                                            <button className="px-3 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-400">
-                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                                            <button onClick={() => handleGenerateAwardPO(quote)} className="flex-1 bg-slate-900 text-white py-2 rounded-lg text-xs font-bold hover:bg-slate-800 transition shadow-lg shadow-slate-900/10">Award PO</button>
+                                                            <button className="px-3 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-400 hover:text-slate-600 transition">
+                                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.264 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                                                             </button>
                                                         </div>
                                                     </div>
@@ -956,7 +1494,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-100">
                                                         {rfq.line_items.map((item) => (
-                                                            <tr key={item.item_id} className="hover:bg-slate-50">
+                                                            <tr key={item.item_id} className="hover:bg-slate-50 transition-colors">
                                                                 <td className="p-4 font-mono text-slate-400 text-xs bg-white sticky left-0 z-10 border-r border-slate-100">{item.line}</td>
                                                                 <td className="p-4 font-medium text-slate-700 bg-white sticky left-12 z-10 border-r border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                                                                     <div className="line-clamp-2">{item.description}</div>

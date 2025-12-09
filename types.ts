@@ -84,6 +84,19 @@ export interface MarketDataResponse {
     last_updated: string;
     isFallback?: boolean; // New flag to indicate quota limits
 }
+
+export interface SupplierCandidate {
+    id: string;
+    name: string;
+    website?: string;
+    location?: string;
+    match_reason: string; // The specific reason ("Low Cost Leader")
+    rationale?: string;   // The AI's strategic reasoning
+    email?: string;       // Primary discovered email
+    contacts: string[];   // Buyer added contacts
+    selected?: boolean;
+    sendStatus?: 'idle' | 'sending' | 'sent' | 'error'; // New status for UI feedback
+}
   
   export interface Rfq {
     id: string;
@@ -159,6 +172,6 @@ export interface MarketDataResponse {
     id: string;
     label: string;
     visible: boolean;
-    width: 'sm' | 'md' | 'lg';
+    width: number; // Changed from string union to number for pixels
     isCustom?: boolean;
   }
