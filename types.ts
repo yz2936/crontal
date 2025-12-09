@@ -85,6 +85,12 @@ export interface MarketDataResponse {
     isFallback?: boolean; // New flag to indicate quota limits
 }
 
+export interface SupplierFilters {
+    region: string;
+    types: string[]; // e.g. Manufacturer, Stockist
+    certs: string[]; // e.g. ISO 9001, API 5L
+}
+
 export interface SupplierCandidate {
     id: string;
     name: string;
@@ -96,6 +102,7 @@ export interface SupplierCandidate {
     contacts: string[];   // Buyer added contacts
     selected?: boolean;
     sendStatus?: 'idle' | 'sending' | 'sent' | 'error'; // New status for UI feedback
+    tags?: string[];      // e.g. "ISO 9001", "Manufacturer"
 }
   
   export interface Rfq {
@@ -110,6 +117,7 @@ export interface SupplierCandidate {
     original_text: string;
     commercial: CommercialTerms;
     created_at: number;
+    invited_suppliers?: SupplierCandidate[]; // Track who was invited
   }
   
   export interface QuoteItem {

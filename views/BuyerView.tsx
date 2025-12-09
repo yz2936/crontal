@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage, RiskAnalysisItem, SupplierCandidate } from '../types';
+import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage, RiskAnalysisItem, SupplierCandidate, SupplierFilters } from '../types';
 import { parseRequest, analyzeRfqRisks, auditRfqSpecs, findSuppliers } from '../services/geminiService';
 import { storageService } from '../services/storageService';
 import { t } from '../utils/i18n';
@@ -27,6 +27,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     // Navigation & View State
     const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [isChatOpen, setIsChatOpen] = useState(true); // New state to collapse chat
     const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
     const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
     
@@ -39,11 +40,19 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [showShareModal, setShowShareModal] = useState(false);
     const [sourcingStep, setSourcingStep] = useState<1 | 2 | 3>(1); // 1: Discover, 2: Review, 3: Broadcast
     const [isSourcing, setIsSourcing] = useState(false);
-    const [sourceCountry, setSourceCountry] = useState<string>(''); // Empty = Global Logic
+    
+    // New Advanced Sourcing Filters
+    const [sourcingFilters, setSourcingFilters] = useState<SupplierFilters>({
+        region: '',
+        types: [],
+        certs: []
+    });
+
     const [suggestedSuppliers, setSuggestedSuppliers] = useState<SupplierCandidate[]>([]);
     const [manualSupplierEmail, setManualSupplierEmail] = useState('');
     const [emailDraft, setEmailDraft] = useState<string>('');
     const [isBroadcasting, setIsBroadcasting] = useState(false);
+    const [broadcastComplete, setBroadcastComplete] = useState(false);
     
     // Comparison State
     const [comparisonView, setComparisonView] = useState<'matrix' | 'items'>('matrix');
@@ -75,6 +84,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         // On mobile, default sidebar to closed
         if (window.innerWidth < 1024) {
             setIsSidebarOpen(false);
+            setIsChatOpen(false);
         }
     }, [rfq]); 
 
@@ -84,6 +94,63 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
             setCurrentStep(3);
         }
     }, [quotes]);
+
+    // Auto-populate Email Draft when entering Broadcast step
+    useEffect(() => {
+        if (sourcingStep === 3 && rfq) {
+            // Only regenerate if empty to avoid overwriting user edits if they step back and forth
+            if (!emailDraft.trim()) {
+                const link = generateRfqLink();
+                
+                // Build Compliance List
+                const complianceList = [];
+                if (rfq.commercial.req_mtr) complianceList.push("- MTR Required (EN 10204 3.1)");
+                if (rfq.commercial.req_avl) complianceList.push("- Approved Vendor List (AVL) Sources Only");
+                if (rfq.commercial.req_tpi) complianceList.push("- Third Party Inspection (TPI) Required");
+                if (rfq.commercial.otherRequirements) complianceList.push(`- Note: ${rfq.commercial.otherRequirements}`);
+                
+                const complianceSection = complianceList.length > 0 
+                    ? complianceList.join('\n') 
+                    : "- Standard Commercial Quality";
+
+                const defaultBody = `Subject: RFQ - ${rfq.project_name}
+
+To: [Supplier Contact]
+
+Hello,
+
+We are requesting a quotation for the following project. Please review the commercial and technical requirements below.
+
+PROJECT OVERVIEW
+----------------
+Project: ${rfq.project_name || "N/A"}
+Description: ${rfq.project_description || "Material Supply"}
+Destination: ${rfq.commercial.destination || "TBD"}
+
+COMMERCIAL TERMS
+----------------
+Incoterms: ${rfq.commercial.incoterm || "Ex-Works (Default)"}
+Payment Terms: ${rfq.commercial.paymentTerm || "Standard"}
+Warranty: ${rfq.commercial.warranty_months || "12"} Months
+
+COMPLIANCE & QUALITY
+--------------------
+${complianceSection}
+
+SUBMISSION INSTRUCTIONS
+-----------------------
+Please review the line items and submit your unit prices directly using our secure bidding portal below. This ensures your quote is processed immediately.
+
+SECURE BIDDING LINK:
+${link}
+
+Best regards,
+
+Procurement Team`;
+                setEmailDraft(defaultBody);
+            }
+        }
+    }, [sourcingStep, rfq]);
 
     // Scroll to bottom of chat
     useEffect(() => {
@@ -532,20 +599,39 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
     const handleOpenSourcingModal = () => {
         if (!rfq) return;
-        // Just generate to prep, not storing in unused state anymore
-        generateRfqLink();
-        setEmailDraft(''); // Reset email
-        setSourcingStep(1); // Start at Discovery
-        setSuggestedSuppliers([]); // Reset suppliers
+        // Don't generate draft here, do it when stepping into step 3 or user requests
+        setEmailDraft(''); 
+        setSourcingStep(1); 
+        setSuggestedSuppliers([]); 
         setShowShareModal(true);
+        setBroadcastComplete(false);
+    };
+
+    const handlePreviewSupplierPortal = () => {
+        const link = generateRfqLink();
+        if (link) {
+             window.open(link, '_blank');
+        } else {
+             alert("Could not generate link. Please ensure RFQ data is valid.");
+        }
+    };
+
+    const toggleFilter = (category: keyof SupplierFilters, value: string) => {
+        setSourcingFilters(prev => {
+            const current = prev[category] as string[];
+            if (current.includes(value)) {
+                return { ...prev, [category]: current.filter(v => v !== value) };
+            } else {
+                return { ...prev, [category]: [...current, value] };
+            }
+        });
     };
 
     const handleFindSuppliers = async () => {
         if (!rfq) return;
         setIsSourcing(true);
         try {
-            // Pass sourceCountry (empty string means "Global" logic)
-            const results = await findSuppliers(rfq, sourceCountry || "Global");
+            const results = await findSuppliers(rfq, sourcingFilters);
             setSuggestedSuppliers(results);
         } catch (e) {
             console.error("Failed to find suppliers", e);
@@ -603,59 +689,27 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         if (selected.length === 0) return;
 
         setIsBroadcasting(true);
+        setBroadcastComplete(false);
 
         // Reset statuses
         setSuggestedSuppliers(prev => prev.map(s => s.selected ? { ...s, sendStatus: 'idle' } : s));
 
         // Simulate sending process one by one
         for (const supplier of selected) {
-            // Update to Sending
             setSuggestedSuppliers(prev => prev.map(s => s.id === supplier.id ? { ...s, sendStatus: 'sending' } : s));
-            
-            // Artificial Delay
-            await new Promise(r => setTimeout(r, 800));
-
-            // Update to Sent
+            await new Promise(r => setTimeout(r, 800 + Math.random() * 800));
             setSuggestedSuppliers(prev => prev.map(s => s.id === supplier.id ? { ...s, sendStatus: 'sent' } : s));
         }
 
         setIsBroadcasting(false);
+        setBroadcastComplete(true);
         
-        // Ensure link is ready if they want to copy/paste
-        generateEmailDraft();
+        // No longer set email draft here as it's done before sending
 
-        // Auto close after success? Or just show done state
         if (rfq) {
-            setRfq({ ...rfq, status: 'sent' }); // Update RFQ status
-            storageService.saveRfq({ ...rfq, status: 'sent' });
+            setRfq({ ...rfq, status: 'sent', invited_suppliers: selected }); 
+            storageService.saveRfq({ ...rfq, status: 'sent', invited_suppliers: selected });
         }
-    };
-
-    const generateEmailDraft = () => {
-        if (!rfq) return;
-        
-        // Regenerate link to be sure it's fresh
-        const link = generateRfqLink();
-
-        const body = `Hello,
-
-We are requesting a quotation for the following project:
-Project: ${rfq.project_name}
-Location: ${rfq.commercial.destination || 'TBD'}
-
-Please review the requirements and submit your best offer using the secure link below. This link allows you to input unit prices directly into our system.
-
-SECURE BIDDING LINK:
-[PASTE_LINK_HERE]
-
-(Note: If the link is too long, please ensure you copy the entire text).
-
-Best regards,
-Procurement Team`;
-
-        const bodyWithLink = body.replace('[PASTE_LINK_HERE]', link);
-        
-        setEmailDraft(bodyWithLink);
     };
 
     // Helper for Bid Evaluation Logic
@@ -686,65 +740,88 @@ Procurement Team`;
 
     const handleGenerateAwardPO = (winningQuote: Quote) => {
         if (!rfq) return;
-        const doc = new jsPDF();
         
-        doc.setFontSize(22);
-        doc.text("PURCHASE ORDER", 14, 20);
-        
-        doc.setFontSize(10);
-        const poNum = `PO-${rfq.id.replace('RFQ-', '')}`;
-        doc.text(`Order Number: ${poNum}`, 140, 18);
-        doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 23);
-
-        doc.setFillColor(11, 17, 33);
-        doc.roundedRect(14, 25, 30, 10, 1, 1, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(12);
-        doc.text("CRONTAL", 16, 31.5);
-        doc.setTextColor(0, 0, 0);
-
-        const startY = 45;
-        doc.setFontSize(10);
-        doc.text("VENDOR:", 14, startY);
-        doc.text(winningQuote.supplierName, 14, startY + 5);
-        
-        doc.text("DELIVERY TO:", 110, startY);
-        doc.text(rfq.commercial.destination || "See Below", 110, startY + 5);
-        
-        doc.text("Project Ref:", 14, startY + 25);
-        doc.text(rfq.project_name || "N/A", 35, startY + 25);
-
-        const tableBody = rfq.line_items.map(item => {
-            const quoteItem = winningQuote.items.find(qi => qi.line === item.line);
-            const unitPrice = quoteItem?.unitPrice || 0;
-            const lineTotal = (quoteItem?.unitPrice || 0) * (item.quantity || 0);
+        try {
+            const doc = new jsPDF();
+            doc.setFontSize(22);
+            doc.text("PURCHASE ORDER", 14, 20);
             
-            return [
-                `${item.description} \n${item.product_type || ''} ${item.material_grade || ''}`,
-                item.size.outer_diameter.value?.toString() || '-',
-                item.quantity?.toString() || '0',
-                item.uom || 'pcs',
-                `${winningQuote.currency} ${unitPrice.toFixed(2)}`,
-                `${winningQuote.currency} ${lineTotal.toFixed(2)}`
-            ];
-        });
+            doc.setFontSize(10);
+            const poNum = `PO-${rfq.id.replace('RFQ-', '')}`;
+            doc.text(`Order Number: ${poNum}`, 140, 18);
+            doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 23);
 
-        autoTable(doc, {
-            startY: startY + 30,
-            head: [['Description', 'OD', 'Qty', 'UOM', 'Unit Price', 'Amount']],
-            body: tableBody,
-            theme: 'grid',
-            headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1 },
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, valign: 'middle' },
-        });
+            doc.setFillColor(11, 17, 33);
+            doc.roundedRect(14, 25, 30, 10, 1, 1, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(12);
+            doc.text("CRONTAL", 16, 31.5);
+            doc.setTextColor(0, 0, 0);
 
-        // @ts-ignore
-        let finalY = doc.lastAutoTable.finalY + 5;
-        doc.setFontSize(10);
-        doc.text("TOTAL:", 140, finalY + 5);
-        doc.text(`${winningQuote.currency} ${winningQuote.total.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 170, finalY + 5, { align: 'right' });
+            const startY = 45;
+            doc.setFontSize(10);
+            doc.text("VENDOR:", 14, startY);
+            doc.text(winningQuote.supplierName, 14, startY + 5);
+            
+            doc.text("DELIVERY TO:", 110, startY);
+            doc.text(rfq.commercial.destination || "See Below", 110, startY + 5);
+            
+            doc.text("Project Ref:", 14, startY + 25);
+            doc.text(rfq.project_name || "N/A", 35, startY + 25);
 
-        doc.save(`PO_${rfq.id}_${winningQuote.supplierName.replace(/\s+/g, '_')}.pdf`);
+            const tableBody = rfq.line_items.map(item => {
+                const quoteItem = winningQuote.items.find(qi => qi.line === item.line);
+                const unitPrice = quoteItem?.unitPrice || 0;
+                const lineTotal = (quoteItem?.unitPrice || 0) * (item.quantity || 0);
+                
+                return [
+                    `${item.description} \n${item.product_type || ''} ${item.material_grade || ''}`,
+                    item.size.outer_diameter.value?.toString() || '-',
+                    item.quantity?.toString() || '0',
+                    item.uom || 'pcs',
+                    `${winningQuote.currency} ${unitPrice.toFixed(2)}`,
+                    `${winningQuote.currency} ${lineTotal.toFixed(2)}`
+                ];
+            });
+
+            // Safer invocation for jspdf-autotable
+            // @ts-ignore
+            if (typeof doc.autoTable === 'function') {
+                 // @ts-ignore
+                 doc.autoTable({
+                    startY: startY + 30,
+                    head: [['Description', 'OD', 'Qty', 'UOM', 'Unit Price', 'Amount']],
+                    body: tableBody,
+                    theme: 'grid',
+                    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1 },
+                    styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, valign: 'middle' },
+                });
+            } else {
+                try {
+                    autoTable(doc, {
+                        startY: startY + 30,
+                        head: [['Description', 'OD', 'Qty', 'UOM', 'Unit Price', 'Amount']],
+                        body: tableBody,
+                        theme: 'grid',
+                        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1 },
+                        styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, valign: 'middle' },
+                    });
+                } catch(e) {
+                    console.error("Autotable fail", e);
+                }
+            }
+
+            // @ts-ignore
+            let finalY = (doc as any).lastAutoTable?.finalY || startY + 100;
+            doc.setFontSize(10);
+            doc.text("TOTAL:", 140, finalY + 5);
+            doc.text(`${winningQuote.currency} ${winningQuote.total.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 170, finalY + 5, { align: 'right' });
+
+            doc.save(`PO_${rfq.id}_${winningQuote.supplierName.replace(/\s+/g, '_')}.pdf`);
+        } catch (e) {
+            console.error("PDF Generation failed", e);
+            alert("Could not generate PDF. Please ensure browser supports blobs.");
+        }
     };
 
     return (
@@ -819,23 +896,32 @@ Procurement Team`;
                     </div>
                 </div>
 
-                {/* COLUMN 2: DRAFTING ASSISTANT */}
-                <div className="flex-none lg:flex-1 flex flex-col w-full lg:w-[350px] lg:min-w-[300px] lg:max-w-[400px] gap-4 h-[500px] lg:h-auto min-h-0">
-                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
+                {/* COLUMN 2: DRAFTING ASSISTANT (COLLAPSIBLE) */}
+                <div className={`transition-all duration-300 ease-in-out flex flex-col gap-4 relative z-20 ${isChatOpen ? 'w-full lg:w-[350px] lg:min-w-[300px] lg:max-w-[400px] opacity-100' : 'w-0 opacity-0 overflow-hidden lg:ml-[-1rem] hidden lg:flex'}`}>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden h-[500px] lg:h-auto">
                         <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <span className="w-5 h-5 flex items-center justify-center bg-slate-900 text-white rounded-full text-[10px] font-bold">1</span>
                                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">{t(lang, 'drafting_assistant')}</span>
                             </div>
-                            {!isSidebarOpen && (
+                            <div className="flex items-center gap-1">
+                                {!isSidebarOpen && (
+                                    <button 
+                                        onClick={() => setIsSidebarOpen(true)}
+                                        className="p-1 hover:bg-slate-200 rounded text-slate-500 hidden lg:block"
+                                        title="Show Sidebar"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                                    </button>
+                                )}
                                 <button 
-                                    onClick={() => setIsSidebarOpen(true)}
+                                    onClick={() => setIsChatOpen(false)}
                                     className="p-1 hover:bg-slate-200 rounded text-slate-500 hidden lg:block"
-                                    title="Open Sidebar"
+                                    title="Hide Chat"
                                 >
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                 </button>
-                            )}
+                            </div>
                         </div>
                         <div className="flex-1 p-4 flex flex-col gap-4 overflow-y-auto" ref={chatContainerRef}>
                             <div className="bg-slate-50 p-3 rounded-2xl rounded-tl-none border border-slate-100 text-sm text-slate-600">{t(lang, 'initial_greeting')}</div>
@@ -876,89 +962,351 @@ Procurement Team`;
                 {/* COLUMN 3: CONTENT SWITCHER (Dashboard/Table/Comparison) */}
                 <div className="flex-1 flex flex-col gap-4 overflow-visible lg:overflow-y-auto min-h-[500px] lg:min-h-0 relative">
                     
-                    {/* SOURCING MODAL (Same as before) */}
+                    {/* ENHANCED SOURCING MODAL */}
                     {showShareModal && (
-                        <div className="fixed inset-0 bg-white/95 z-[100] p-4 lg:p-6 flex flex-col animate-in fade-in zoom-in-95 overflow-hidden backdrop-blur-md">
-                            {/* ... (Sourcing Wizard Content - Simplified for brevity in this step) ... */}
-                            <div className="w-full h-full max-w-[1800px] mx-auto flex flex-col">
-                                <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-4">
-                                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center animate-in fade-in p-4">
+                            <div className="bg-white w-full max-w-7xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                                {/* Header */}
+                                <div className="border-b border-slate-100 bg-white px-6 py-3 flex justify-between items-center shadow-sm z-10 shrink-0">
+                                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-full bg-brandOrange/10 flex items-center justify-center text-brandOrange">
                                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                                         </div>
-                                        Distribute RFQ
-                                    </h2>
-                                    <button onClick={() => setShowShareModal(false)} className="text-slate-400 hover:text-slate-600 bg-slate-100 p-2 rounded-full hover:bg-slate-200 transition">×</button>
-                                </div>
-                                <div className="flex justify-center mb-8 px-4">
-                                    <div className="flex items-center w-full max-w-lg relative">
-                                        <div className="absolute top-1/2 left-0 w-full h-1 bg-slate-100 -z-10 rounded"></div>
-                                        <div className="absolute top-1/2 left-0 h-1 bg-brandOrange/20 -z-10 rounded transition-all duration-500" style={{ width: sourcingStep === 1 ? '0%' : sourcingStep === 2 ? '50%' : '100%' }}></div>
-                                        <div className="flex justify-between w-full">
-                                            {[1, 2, 3].map((s, i) => (
-                                                <div key={s} className="flex flex-col items-center gap-2 cursor-pointer" onClick={() => s <= (sourcingStep + 1) && setSourcingStep(s as 1|2|3)}>
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${sourcingStep >= s ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400'}`}>{s}</div>
-                                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${sourcingStep >= s ? 'text-slate-900' : 'text-slate-400'}`}>{['Discover', 'Review', 'Broadcast'][i]}</span>
-                                                </div>
-                                            ))}
+                                        <div>
+                                            <span className="block leading-none">Distribute RFQ</span>
+                                            <span className="text-xs text-slate-400 font-normal block">Find and invite suppliers to quote</span>
                                         </div>
+                                    </h2>
+                                    <button onClick={() => setShowShareModal(false)} className="text-slate-400 hover:text-slate-900 bg-slate-50 p-2 rounded-full hover:bg-slate-200 transition">
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                </div>
+
+                                {/* Stepper */}
+                                <div className="bg-slate-50 border-b border-slate-200 py-2 shrink-0">
+                                    <div className="max-w-3xl mx-auto flex items-center justify-between px-8 relative">
+                                        <div className="absolute left-8 right-8 top-1/2 h-0.5 bg-slate-200 -z-10"></div>
+                                        <div className="absolute left-8 h-0.5 bg-brandOrange -z-10 transition-all duration-500" style={{ right: sourcingStep === 1 ? '100%' : sourcingStep === 2 ? '50%' : '2rem' }}></div>
+
+                                        {[1, 2, 3].map((step, idx) => {
+                                            const labels = ['Smart Discovery', 'Review Contacts', 'Broadcast'];
+                                            const isActive = sourcingStep >= step;
+                                            const isCurrent = sourcingStep === step;
+                                            return (
+                                                <div key={step} className="flex flex-col items-center gap-1 cursor-pointer bg-slate-50 px-2" onClick={() => step < sourcingStep ? setSourcingStep(step as any) : null}>
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${isActive ? 'bg-brandOrange border-brandOrange text-white shadow-lg' : 'bg-white border-slate-300 text-slate-400'}`}>
+                                                        {step}
+                                                    </div>
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${isCurrent ? 'text-brandOrange' : 'text-slate-400'}`}>{labels[idx]}</span>
+                                                </div>
+                                            )
+                                        })}
                                     </div>
                                 </div>
-                                {/* Content for each step ... (reusing existing logic essentially) */}
-                                <div className="flex-1 overflow-y-auto flex flex-col px-2">
+
+                                {/* Main Content Area */}
+                                <div className="flex-1 overflow-hidden flex bg-slate-50/30">
+                                    
+                                    {/* STEP 1: DISCOVER */}
                                     {sourcingStep === 1 && (
-                                        <div className="flex flex-col gap-6 h-full">
-                                            <div className="bg-slate-50/50 rounded-xl p-6 border border-slate-200 flex-1 flex flex-col">
-                                                <div className="flex gap-3 mb-4">
-                                                    <select value={sourceCountry} onChange={(e) => setSourceCountry(e.target.value)} className="flex-1 p-3 rounded-lg border border-slate-200"><option value="">Global</option><option value="USA">USA</option></select>
-                                                    <button onClick={handleFindSuppliers} className="bg-blue-600 text-white px-6 rounded-lg font-bold">{isSourcing ? '...' : 'Find'}</button>
-                                                </div>
-                                                <div className="flex-1 overflow-y-auto space-y-3">
-                                                    {suggestedSuppliers.map(s => (
-                                                        <div key={s.id} onClick={() => toggleSupplierSelection(s.id)} className={`p-4 border rounded-xl cursor-pointer ${s.selected ? 'border-brandOrange bg-orange-50/10' : 'border-slate-200 bg-white'}`}>
-                                                            <div className="font-bold">{s.name}</div>
-                                                            <div className="text-xs text-slate-500">{s.match_reason}</div>
+                                        <div className="flex-1 flex flex-col md:flex-row h-full animate-in fade-in slide-in-from-right-4 duration-300">
+                                            
+                                            {/* Left: Enhanced Filters */}
+                                            <div className="w-full md:w-80 bg-white border-r border-slate-200 p-6 overflow-y-auto shrink-0">
+                                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-6">Discovery Filters</h3>
+                                                
+                                                <div className="space-y-6">
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Target Region</label>
+                                                        <select 
+                                                            value={sourcingFilters.region} 
+                                                            onChange={(e) => setSourcingFilters({...sourcingFilters, region: e.target.value})} 
+                                                            className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-brandOrange/20 focus:border-brandOrange outline-none transition font-medium text-sm"
+                                                        >
+                                                            <option value="">Global (AI Best Value)</option>
+                                                            <option value="USA">USA / North America</option>
+                                                            <option value="Europe">Europe</option>
+                                                            <option value="Asia">Asia (LCC)</option>
+                                                            <option value="Middle East">Middle East</option>
+                                                        </select>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Supplier Type</label>
+                                                        <div className="space-y-2">
+                                                            {['Manufacturer', 'Stockist / Distributor', 'Machine Shop'].map(type => (
+                                                                <label key={type} className="flex items-center gap-2 cursor-pointer group">
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={sourcingFilters.types.includes(type)}
+                                                                        onChange={() => toggleFilter('types', type)}
+                                                                        className="w-4 h-4 rounded border-slate-300 text-brandOrange focus:ring-brandOrange"
+                                                                    />
+                                                                    <span className="text-sm text-slate-700 group-hover:text-brandOrange transition-colors">{type}</span>
+                                                                </label>
+                                                            ))}
                                                         </div>
-                                                    ))}
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Certifications</label>
+                                                        <div className="space-y-2">
+                                                            {['ISO 9001', 'API 5L', 'ASME Stamp', 'PED 2014/68/EU'].map(cert => (
+                                                                <label key={cert} className="flex items-center gap-2 cursor-pointer group">
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={sourcingFilters.certs.includes(cert)}
+                                                                        onChange={() => toggleFilter('certs', cert)}
+                                                                        className="w-4 h-4 rounded border-slate-300 text-brandOrange focus:ring-brandOrange"
+                                                                    />
+                                                                    <span className="text-sm text-slate-700 group-hover:text-brandOrange transition-colors">{cert}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    <button 
+                                                        onClick={handleFindSuppliers} 
+                                                        disabled={isSourcing}
+                                                        className="w-full h-12 bg-slate-900 text-white rounded-xl font-bold shadow-lg hover:bg-slate-800 transition flex items-center justify-center gap-2 disabled:opacity-70 mt-4"
+                                                    >
+                                                        {isSourcing ? (
+                                                            <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Scouting...</>
+                                                        ) : (
+                                                            <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> Find Suppliers</>
+                                                        )}
+                                                    </button>
                                                 </div>
-                                                <div className="mt-3 pt-3 border-t border-slate-100">
+                                                
+                                                {/* Manual Add Small */}
+                                                <div className="mt-8 pt-6 border-t border-slate-100">
+                                                    <p className="text-xs text-slate-400 mb-2">Know someone?</p>
                                                     <div className="flex gap-2">
                                                         <input 
                                                             type="text" 
-                                                            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-brandOrange"
-                                                            placeholder="Add manual supplier email..."
+                                                            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-brandOrange"
+                                                            placeholder="supplier@email.com"
                                                             value={manualSupplierEmail}
                                                             onChange={(e) => setManualSupplierEmail(e.target.value)}
                                                             onKeyDown={(e) => e.key === 'Enter' && handleAddManualSupplier()}
                                                         />
-                                                        <button onClick={handleAddManualSupplier} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 rounded-lg font-bold">+</button>
+                                                        <button onClick={handleAddManualSupplier} className="bg-slate-100 hover:bg-slate-200 text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center font-bold transition">+</button>
                                                     </div>
                                                 </div>
-                                                <div className="mt-4 flex justify-end">
-                                                    <button onClick={() => setSourcingStep(2)} className="bg-brandOrange text-white px-8 py-3 rounded-xl font-bold">Next</button>
-                                                </div>
+                                            </div>
+
+                                            {/* Right: Results Grid */}
+                                            <div className="flex-1 p-8 overflow-y-auto">
+                                                {suggestedSuppliers.length === 0 ? (
+                                                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                                                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-6 text-slate-300">
+                                                            <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                                                        </div>
+                                                        <p className="font-bold text-lg text-slate-600">Start Scouting</p>
+                                                        <p className="text-sm mt-2 max-w-xs text-center">Use the filters on the left to find AI-verified suppliers that match your project requirements.</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                                        {suggestedSuppliers.map(s => (
+                                                            <div 
+                                                                key={s.id} 
+                                                                onClick={() => toggleSupplierSelection(s.id)} 
+                                                                className={`p-6 rounded-2xl border transition-all cursor-pointer group hover:shadow-lg relative overflow-hidden flex flex-col ${s.selected ? 'border-brandOrange bg-white shadow-lg shadow-orange-500/5 ring-1 ring-brandOrange' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                                                            >
+                                                                <div className="flex justify-between items-start mb-4">
+                                                                    <h3 className="font-bold text-lg text-slate-900 group-hover:text-brandOrange transition-colors line-clamp-1">{s.name}</h3>
+                                                                    <div className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors shrink-0 ${s.selected ? 'bg-brandOrange border-brandOrange text-white' : 'border-slate-300'}`}>
+                                                                        {s.selected && <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                <div className="flex-1">
+                                                                    {s.location && <div className="text-sm text-slate-500 mb-1 flex items-center gap-1.5"><svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>{s.location}</div>}
+                                                                    
+                                                                    {s.website && s.website !== 'N/A' && (
+                                                                        <a href={s.website.startsWith('http') ? s.website : `https://${s.website}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1.5 mb-3 ml-0.5">
+                                                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                                            {s.website}
+                                                                        </a>
+                                                                    )}
+
+                                                                    <div className="flex flex-wrap gap-2 mb-4">
+                                                                        {s.tags?.map((tag, i) => (
+                                                                            <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200">{tag}</span>
+                                                                        ))}
+                                                                    </div>
+
+                                                                    <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 italic leading-relaxed">
+                                                                        "{s.match_reason}"
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* STEP 2: REVIEW */}
                                     {sourcingStep === 2 && (
-                                        <div className="flex flex-col gap-6 h-full">
-                                            <div className="bg-white p-6 rounded-xl border border-slate-200 flex-1 overflow-y-auto">
-                                                <h3 className="font-bold mb-4">Review Contacts</h3>
-                                                {suggestedSuppliers.filter(s => s.selected).map(s => (
-                                                    <div key={s.id} className="mb-4 p-4 border rounded-xl">
-                                                        <div className="font-bold">{s.name}</div>
-                                                        <div className="flex gap-2 mt-2"><input placeholder="Add email" className="border rounded px-2 py-1 text-sm" value={contactInputs[s.id] || ''} onChange={e => setContactInputs({...contactInputs, [s.id]: e.target.value})} /><button onClick={() => handleAddContact(s.id)} className="bg-slate-800 text-white px-3 rounded text-xs">Add</button></div>
-                                                        <div className="flex gap-2 mt-2 flex-wrap">{s.contacts?.map((c, i) => <span key={i} className="bg-slate-100 px-2 py-1 rounded text-xs flex items-center gap-1">{c} <button onClick={() => handleRemoveContact(s.id, i)}>x</button></span>)}</div>
+                                        <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-300 w-full p-8 overflow-y-auto">
+                                            <div className="max-w-4xl mx-auto w-full">
+                                                <h3 className="font-bold text-2xl text-slate-900 mb-2">Review Contacts</h3>
+                                                <p className="text-slate-500 mb-8">Ensure we have the correct email addresses for your selected suppliers.</p>
+                                                
+                                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                                                    <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                                                        <span className="font-bold text-slate-700">{suggestedSuppliers.filter(s => s.selected).length} Recipients Selected</span>
                                                     </div>
-                                                ))}
+                                                    <div className="divide-y divide-slate-100">
+                                                        {suggestedSuppliers.filter(s => s.selected).map(s => (
+                                                            <div key={s.id} className="p-6 flex flex-col md:flex-row gap-6 items-start md:items-center">
+                                                                <div className="flex-1">
+                                                                    <div className="font-bold text-lg text-slate-900">{s.name}</div>
+                                                                    <div className="text-sm text-slate-500">{s.location || "Location Unknown"}</div>
+                                                                </div>
+                                                                
+                                                                <div className="flex-1 w-full">
+                                                                    <div className="flex flex-wrap gap-2 mb-3">
+                                                                        {s.contacts && s.contacts.map((c, i) => (
+                                                                            <div key={i} className="bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1.5 rounded-full text-sm flex items-center gap-2 font-medium">
+                                                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 00-2-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                                                                {c}
+                                                                                <button onClick={() => handleRemoveContact(s.id, i)} className="hover:text-blue-900 font-bold ml-1">×</button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+
+                                                                    <div className="flex gap-2">
+                                                                        <input 
+                                                                            placeholder="Add contact email..." 
+                                                                            className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-brandOrange transition bg-slate-50 focus:bg-white" 
+                                                                            value={contactInputs[s.id] || ''} 
+                                                                            onChange={e => setContactInputs({...contactInputs, [s.id]: e.target.value})}
+                                                                            onKeyDown={(e) => {
+                                                                                if (e.key === 'Enter') handleAddContact(s.id);
+                                                                            }}
+                                                                        />
+                                                                        <button onClick={() => handleAddContact(s.id)} className="bg-slate-900 text-white px-5 rounded-xl text-sm font-bold hover:bg-slate-800 transition">Add</button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <div className="flex justify-between"><button onClick={() => setSourcingStep(1)}>Back</button><button onClick={() => { generateEmailDraft(); setSourcingStep(3); handleBroadcastRfq(); }} className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold">Broadcast</button></div>
                                         </div>
                                     )}
+
+                                    {/* STEP 3: BROADCAST */}
                                     {sourcingStep === 3 && (
-                                        <div className="flex flex-col items-center justify-center h-full">
-                                            {!isBroadcasting ? <div className="text-center"><h2 className="text-2xl font-bold mb-4">Ready</h2><textarea value={emailDraft} readOnly className="w-full h-32 p-4 border rounded-xl mb-4 bg-slate-50"/><div className="flex gap-2 justify-center"><a href={`mailto:?body=${encodeURIComponent(emailDraft)}`} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold">Open Mail</a><button onClick={() => setShowShareModal(false)} className="px-6 py-3 border rounded-xl">Close</button></div></div> : <div>Sending...</div>}
+                                        <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-300 w-full overflow-hidden">
+                                            
+                                            {!isBroadcasting && !broadcastComplete ? (
+                                                <div className="flex flex-col h-full w-full max-w-5xl mx-auto px-6 py-4">
+                                                    <div className="shrink-0 mb-4 text-center">
+                                                        <h2 className="text-xl font-bold text-slate-900 mb-1">Ready to Broadcast</h2>
+                                                        <p className="text-sm text-slate-500">Sending to <span className="font-bold text-slate-900">{suggestedSuppliers.filter(s => s.selected).length} suppliers</span>.</p>
+                                                    </div>
+                                                    
+                                                    <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden mb-2">
+                                                        <div className="bg-slate-50 border-b border-slate-100 px-4 py-2 flex justify-between items-center shrink-0">
+                                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Email Preview</label>
+                                                            <div className="flex gap-1">
+                                                                <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
+                                                                <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+                                                                <div className="w-2.5 h-2.5 rounded-full bg-green-400"></div>
+                                                            </div>
+                                                        </div>
+                                                        <textarea
+                                                            className="w-full flex-1 p-6 text-sm text-slate-700 font-mono focus:bg-white focus:outline-none resize-none leading-relaxed transition-all"
+                                                            value={emailDraft}
+                                                            onChange={(e) => setEmailDraft(e.target.value)}
+                                                            placeholder="Loading draft..."
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="w-full max-w-2xl mx-auto mt-12 bg-white rounded-2xl border border-slate-200 shadow-xl p-8">
+                                                    <div className="flex items-center justify-between mb-8">
+                                                        <h3 className="font-bold text-slate-900 text-xl">Transmission Status</h3>
+                                                        {broadcastComplete ? (
+                                                            <span className="text-xs font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full border border-green-100 flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full"></div>COMPLETE</span>
+                                                        ) : (
+                                                            <span className="text-xs font-bold text-brandOrange bg-orange-50 px-3 py-1 rounded-full border border-orange-100 animate-pulse flex items-center gap-2"><div className="w-2 h-2 bg-brandOrange rounded-full"></div>SENDING...</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+                                                        {suggestedSuppliers.filter(s => s.selected).map(s => (
+                                                            <div key={s.id} className="flex items-center justify-between p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition rounded-lg">
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                                                                        s.sendStatus === 'sent' ? 'bg-green-100 text-green-600' : 
+                                                                        s.sendStatus === 'sending' ? 'bg-brandOrange text-white' : 
+                                                                        'bg-slate-100 text-slate-300'
+                                                                    }`}>
+                                                                        {s.sendStatus === 'sent' ? (
+                                                                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                                                        ) : s.sendStatus === 'sending' ? (
+                                                                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                                                        ) : (
+                                                                            <span className="font-bold text-sm">●</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div>
+                                                                        <div className={`font-bold ${s.sendStatus === 'sent' ? 'text-slate-900' : 'text-slate-500'}`}>{s.name}</div>
+                                                                        <div className="text-xs text-slate-400">{s.email || "Primary Contact"}</div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-xs font-mono text-slate-400 font-bold uppercase tracking-wider">
+                                                                    {s.sendStatus === 'sent' ? 'SENT' : s.sendStatus === 'sending' ? 'TRANSMITTING...' : 'PENDING'}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    
+                                                    {broadcastComplete && (
+                                                        <div className="mt-8 pt-6 border-t border-slate-100 text-center animate-in fade-in slide-in-from-bottom-2">
+                                                            <div className="flex justify-center gap-4">
+                                                                <button onClick={() => setShowShareModal(false)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 transition shadow-lg">Return to Dashboard</button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
+                                    )}
+                                </div>
+
+                                {/* Footer Actions */}
+                                <div className="border-t border-slate-200 bg-white p-4 z-10 flex justify-between items-center shrink-0">
+                                    <button 
+                                        onClick={() => sourcingStep > 1 && setSourcingStep((sourcingStep - 1) as any)}
+                                        disabled={sourcingStep === 1 || isBroadcasting}
+                                        className={`text-slate-500 font-bold text-sm px-4 py-2 hover:bg-slate-50 rounded-lg transition ${sourcingStep === 1 ? 'invisible' : ''}`}
+                                    >
+                                        ← Back
+                                    </button>
+
+                                    {sourcingStep < 3 ? (
+                                        <button 
+                                            onClick={() => setSourcingStep((sourcingStep + 1) as any)}
+                                            disabled={suggestedSuppliers.filter(s => s.selected).length === 0}
+                                            className="bg-brandOrange text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                        >
+                                            Next Step →
+                                        </button>
+                                    ) : (
+                                        !broadcastComplete && !isBroadcasting && (
+                                            <button 
+                                                onClick={handleBroadcastRfq}
+                                                className="bg-green-600 text-white px-10 py-3 rounded-xl font-bold shadow-lg shadow-green-500/20 hover:bg-green-700 transition flex items-center gap-2"
+                                            >
+                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                                                Launch Broadcast
+                                            </button>
+                                        )
                                     )}
                                 </div>
                             </div>
@@ -1056,14 +1404,14 @@ Procurement Team`;
                     )}
                     
                     {!rfq ? (
-                        // STEP 1: EMPTY DASHBOARD (Same as before)
+                        // STEP 1: EMPTY DASHBOARD
                         <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm p-4 lg:p-12 flex flex-col items-center justify-center animate-in fade-in">
                             {/* ... (Dashboard Buttons) ... */}
                             <h2 className="text-2xl font-bold text-slate-900 mb-3">{t(lang, 'dashboard_title')}</h2>
                             <p className="text-slate-500 text-sm mb-12 text-center max-w-md leading-relaxed">Select an option below to initialize your procurement process.</p>
                             
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl">
-                                <button onClick={() => document.querySelector('textarea')?.focus()} className="group p-8 rounded-2xl border border-slate-200 bg-white hover:bg-purple-50 hover:border-purple-200 transition-all flex flex-col items-center text-center gap-6 shadow-sm hover:shadow-xl hover:-translate-y-1 duration-300">
+                                <button onClick={() => { setIsChatOpen(true); document.querySelector('textarea')?.focus(); }} className="group p-8 rounded-2xl border border-slate-200 bg-white hover:bg-purple-50 hover:border-purple-200 transition-all flex flex-col items-center text-center gap-6 shadow-sm hover:shadow-xl hover:-translate-y-1 duration-300">
                                     <div className="w-16 h-16 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
                                         <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                                     </div>
@@ -1100,18 +1448,32 @@ Procurement Team`;
                                 <>
                                     {/* Toolbar / Header */}
                                     <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-4">
-                                        {/* ... (Existing Step 2 Header Code) ... */}
                                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                                             <div onClick={() => setIsHeaderInfoOpen(!isHeaderInfoOpen)} className="cursor-pointer group flex-1">
-                                                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 group-hover:text-blue-600 transition">
-                                                    {rfq.project_name || "Untitled Project"}
-                                                    <div className={`p-1 rounded-full bg-slate-200 transition-transform duration-300 ${isHeaderInfoOpen ? 'rotate-180' : ''}`}>
-                                                        <svg className="w-3 h-3 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                                    </div>
-                                                </h2>
+                                                <div className="flex items-center gap-1">
+                                                    {!isChatOpen && (
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); setIsChatOpen(true); }}
+                                                            className="p-1 hover:bg-slate-200 rounded text-slate-500 mr-2"
+                                                            title="Show Assistant"
+                                                        >
+                                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                                                        </button>
+                                                    )}
+                                                    <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 group-hover:text-blue-600 transition">
+                                                        {rfq.project_name || "Untitled Project"}
+                                                        <div className={`p-1 rounded-full bg-slate-200 transition-transform duration-300 ${isHeaderInfoOpen ? 'rotate-180' : ''}`}>
+                                                            <svg className="w-3 h-3 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                                        </div>
+                                                    </h2>
+                                                </div>
                                                 <p className="text-xs text-slate-500 mt-1">Created: {new Date(rfq.created_at).toLocaleDateString()}</p>
                                             </div>
                                             <div className="flex flex-wrap gap-2 w-full lg:w-auto">
+                                                <button onClick={handlePreviewSupplierPortal} className="flex-1 lg:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:text-purple-600 hover:border-purple-200 transition shadow-sm flex items-center justify-center gap-1.5">
+                                                    <svg className="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                    Response Portal
+                                                </button>
                                                 <button onClick={handleAuditSpecs} disabled={isAuditing} className="flex-1 lg:flex-none px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:text-blue-600 hover:border-blue-200 transition shadow-sm flex items-center justify-center gap-1.5">
                                                     <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                                     {isAuditing ? 'Auditing...' : t(lang, 'audit_specs')}
@@ -1161,6 +1523,26 @@ Procurement Team`;
                                                         className="w-full text-sm font-medium outline-none bg-transparent text-slate-700" 
                                                         value={rfq.commercial.paymentTerm} 
                                                         onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, paymentTerm: e.target.value}})}
+                                                    />
+                                                </div>
+
+                                                {/* NEW: Extended Description & Notes */}
+                                                <div className="col-span-1 md:col-span-2 bg-white p-3 rounded-lg border border-slate-200 group hover:border-blue-300 transition-colors">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1 group-hover:text-blue-500 transition-colors">Project Description</label>
+                                                    <input 
+                                                        className="w-full text-sm font-medium outline-none bg-transparent text-slate-700" 
+                                                        value={rfq.project_description || ''} 
+                                                        onChange={(e) => setRfq({...rfq, project_description: e.target.value})}
+                                                        placeholder="Brief scope of work..."
+                                                    />
+                                                </div>
+                                                <div className="col-span-1 md:col-span-2 bg-white p-3 rounded-lg border border-slate-200 group hover:border-blue-300 transition-colors">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1 group-hover:text-blue-500 transition-colors">Special Requirements</label>
+                                                    <input 
+                                                        className="w-full text-sm font-medium outline-none bg-transparent text-slate-700" 
+                                                        value={rfq.commercial.otherRequirements || ''} 
+                                                        onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, otherRequirements: e.target.value}})}
+                                                        placeholder="e.g. Positive Material Identification (PMI)"
                                                     />
                                                 </div>
                                                 
@@ -1305,87 +1687,194 @@ Procurement Team`;
                                 </>
                             )}
 
-                            {/* --- STEP 3: COMPARE & EVALUATE (ENHANCED) --- */}
+                            {/* --- STEP 3: COMPARE & EVALUATE (ENHANCED BID LEVELLING BOARD) --- */}
                             {currentStep === 3 && (
                                 <div className="flex flex-col h-full bg-slate-50">
                                     <div className="p-4 border-b border-slate-200 bg-white shadow-sm z-20">
                                         <div className="flex justify-between items-center mb-4">
                                             <div>
                                                 <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                                                    Bid Evaluation
-                                                    <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{quotes.length} Bidders</span>
+                                                    Bid Levelling Board
+                                                    <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${quotes.length > 0 ? 'text-blue-700 bg-blue-100' : 'text-amber-600 bg-amber-50'}`}>
+                                                        {quotes.length > 0 ? 'Reviewing Offers' : 'Awaiting Responses'}
+                                                    </span>
                                                 </h2>
-                                                <p className="text-xs text-slate-500 mt-1">{getRecommendation()}</p>
+                                                <p className="text-xs text-slate-500 mt-1">Real-time analysis of incoming supplier data.</p>
                                             </div>
                                             <div className="flex gap-2">
                                                 <button onClick={() => setComparisonView('matrix')} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${comparisonView === 'matrix' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Commercial Matrix</button>
                                                 <button onClick={() => setComparisonView('items')} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${comparisonView === 'items' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Line Item Details</button>
+                                                <button onClick={handlePreviewSupplierPortal} className="ml-2 flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:text-purple-600 hover:border-purple-200 transition bg-white">
+                                                    <svg className="w-3.5 h-3.5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                    Response Portal
+                                                </button>
                                                 <button onClick={() => setCurrentStep(2)} className="ml-2 text-sm font-bold text-slate-400 hover:text-slate-600">← Back</button>
                                             </div>
                                         </div>
+                                        
+                                        {/* TOP DASHBOARD METRICS */}
+                                        {quotes.length > 0 && (
+                                            <div className="grid grid-cols-4 gap-4 animate-in slide-in-from-top-2">
+                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Lowest Bid</div>
+                                                    <div className="text-lg font-bold text-green-600 flex items-center gap-2">
+                                                        {quotes.find(q => q.id === getBestPriceId())?.currency} {quotes.find(q => q.id === getBestPriceId())?.total.toLocaleString()}
+                                                        <span className="text-[10px] bg-green-100 px-1.5 py-0.5 rounded text-green-700">BEST</span>
+                                                    </div>
+                                                </div>
+                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Average Bid</div>
+                                                    <div className="text-lg font-bold text-slate-700">
+                                                        {(quotes.reduce((acc, curr) => acc + curr.total, 0) / quotes.length).toLocaleString(undefined, {maximumFractionDigits: 0})}
+                                                    </div>
+                                                </div>
+                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Fastest Lead Time</div>
+                                                    <div className="text-lg font-bold text-blue-600">
+                                                        {quotes.find(q => q.id === getFastestLeadTimeId())?.leadTime} Days
+                                                    </div>
+                                                </div>
+                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Response Rate</div>
+                                                    <div className="text-lg font-bold text-slate-700">
+                                                        {quotes.length} / {Math.max(quotes.length, (rfq.invited_suppliers?.length || 1))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                     
                                     <div className="flex-1 overflow-auto p-4 md:p-6">
                                         
+                                        {/* VIEW 0: WAITING ROOM (LIVE STATUS PORTAL) */}
+                                        {quotes.length === 0 && (
+                                            <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+                                                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6 relative">
+                                                    <div className="absolute inset-0 rounded-full border-4 border-slate-100 animate-ping opacity-50"></div>
+                                                    <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                </div>
+                                                <h3 className="text-2xl font-bold text-slate-900 mb-2">Awaiting Supplier Responses</h3>
+                                                <p className="text-slate-500 max-w-md mb-6">
+                                                    Share the Response Portal link with suppliers to receive quotes. Responses will appear here automatically.
+                                                </p>
+                                                
+                                                <button onClick={handlePreviewSupplierPortal} className="bg-white border border-slate-200 text-slate-600 hover:text-purple-600 hover:border-purple-200 px-6 py-2 rounded-lg font-bold text-sm transition shadow-sm mb-10 flex items-center gap-2">
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                    Open Response Portal
+                                                </button>
+                                                
+                                                {/* Live Status of Invited Suppliers */}
+                                                <div className="w-full max-w-2xl bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+                                                    <div className="bg-slate-100 px-6 py-3 border-b border-slate-200 flex justify-between items-center">
+                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Invited Suppliers</span>
+                                                        <span className="text-xs font-bold text-slate-400">{rfq.invited_suppliers?.length || 0} Total</span>
+                                                    </div>
+                                                    <div className="divide-y divide-slate-200/50">
+                                                        {(!rfq.invited_suppliers || rfq.invited_suppliers.length === 0) ? (
+                                                            <div className="p-8 text-center">
+                                                                <p className="text-sm text-slate-400 mb-4">No suppliers invited yet.</p>
+                                                                <button onClick={handleOpenSourcingModal} className="bg-slate-900 text-white px-6 py-2 rounded-lg font-bold hover:bg-slate-800 transition text-sm">
+                                                                    Launch Sourcing Event
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            rfq.invited_suppliers.map(s => (
+                                                                <div key={s.id} className="p-4 flex justify-between items-center bg-white">
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-xs text-slate-500">
+                                                                            {s.name.charAt(0)}
+                                                                        </div>
+                                                                        <div className="text-left">
+                                                                            <div className="text-sm font-bold text-slate-800">{s.name}</div>
+                                                                            <div className="text-xs text-slate-400">{s.email || "Primary Contact"}</div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-xs font-mono text-slate-400">AWAITING RESPONSE</span>
+                                                                        <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+                                                                    </div>
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* VIEW 1: COMMERCIAL MATRIX */}
-                                        {comparisonView === 'matrix' && (
-                                            <div className="grid grid-flow-col auto-cols-[300px] gap-6 overflow-x-auto pb-4 items-stretch">
+                                        {quotes.length > 0 && comparisonView === 'matrix' && (
+                                            <div className="grid grid-flow-col auto-cols-[320px] gap-6 overflow-x-auto pb-6 items-stretch">
                                                 {quotes.map((quote) => {
                                                     const isBestPrice = quote.id === getBestPriceId();
                                                     const isFastest = quote.id === getFastestLeadTimeId();
                                                     
                                                     return (
-                                                        <div key={quote.id} className={`bg-white rounded-2xl border p-0 relative group hover:shadow-xl transition-all flex flex-col ${isBestPrice ? 'border-green-500/30 ring-4 ring-green-500/5' : 'border-slate-200'}`}>
-                                                            {/* Header Card */}
-                                                            <div className={`p-6 rounded-t-2xl border-b border-slate-100 relative ${isBestPrice ? 'bg-gradient-to-b from-green-50/50 to-white' : 'bg-white'}`}>
-                                                                {isBestPrice && <div className="absolute top-4 right-4 bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm">BEST PRICE</div>}
-                                                                {isFastest && <div className="absolute top-4 right-4 bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm" style={{right: isBestPrice ? '85px' : '16px'}}>FASTEST</div>}
-                                                                
-                                                                <h3 className="font-bold text-lg text-slate-900 mb-1 truncate" title={quote.supplierName}>{quote.supplierName}</h3>
-                                                                <div className="text-xs text-slate-400 mb-4">{new Date(quote.timestamp).toLocaleDateString()}</div>
-                                                                
-                                                                <div className="text-3xl font-bold text-slate-900 mb-1">
-                                                                    <span className="text-sm text-slate-400 font-normal align-top mr-1">{quote.currency}</span>
-                                                                    {quote.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                                                </div>
-                                                                
-                                                                {/* Savings Calc */}
-                                                                {quotes.length > 1 && (
-                                                                    <div className={`text-xs font-bold ${quote.total < (quotes.reduce((a,b)=>a+b.total,0)/quotes.length) ? 'text-green-600' : 'text-red-500'}`}>
-                                                                        {quote.total < (quotes.reduce((a,b)=>a+b.total,0)/quotes.length) ? '▼' : '▲'} {Math.abs((quote.total - (quotes.reduce((a,b)=>a+b.total,0)/quotes.length)) / (quotes.reduce((a,b)=>a+b.total,0)/quotes.length) * 100).toFixed(1)}% vs Avg
+                                                        <div key={quote.id} className={`bg-white rounded-2xl border relative group hover:shadow-xl transition-all flex flex-col overflow-hidden ${isBestPrice ? 'border-green-500 ring-2 ring-green-500/20 shadow-lg shadow-green-500/5' : 'border-slate-200'}`}>
+                                                            {/* Card Header */}
+                                                            <div className={`p-6 border-b border-slate-100 relative ${isBestPrice ? 'bg-gradient-to-b from-green-50/30 to-white' : 'bg-white'}`}>
+                                                                <div className="flex justify-between items-start mb-2">
+                                                                    <div className="flex-1 min-w-0 pr-2">
+                                                                        <h3 className="font-bold text-lg text-slate-900 truncate" title={quote.supplierName}>{quote.supplierName}</h3>
+                                                                        <div className="text-xs text-slate-400">{new Date(quote.timestamp).toLocaleDateString()}</div>
                                                                     </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* KPI Matrix */}
-                                                            <div className="p-6 space-y-4 text-sm flex-1">
-                                                                <div className="flex justify-between items-center">
-                                                                    <span className="text-slate-500 text-xs uppercase font-bold">Lead Time</span>
-                                                                    <span className={`font-bold ${isFastest ? 'text-blue-600' : 'text-slate-900'}`}>{quote.leadTime || '-'} Days</span>
+                                                                    <div className="flex flex-col gap-1 items-end">
+                                                                        {isBestPrice && <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded border border-green-200 uppercase tracking-wide">Best Price</span>}
+                                                                        {isFastest && <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200 uppercase tracking-wide">Fastest</span>}
+                                                                    </div>
                                                                 </div>
-                                                                <div className="flex justify-between items-center">
-                                                                    <span className="text-slate-500 text-xs uppercase font-bold">Payment</span>
-                                                                    <span className="text-slate-900">{quote.payment || '-'}</span>
-                                                                </div>
-                                                                <div className="flex justify-between items-center">
-                                                                    <span className="text-slate-500 text-xs uppercase font-bold">Validity</span>
-                                                                    <span className="text-slate-900">{quote.validity || '-'}</span>
-                                                                </div>
-                                                                <div className="flex justify-between items-center">
-                                                                    <span className="text-slate-500 text-xs uppercase font-bold">Completeness</span>
-                                                                    <div className="flex items-center gap-1">
-                                                                        <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                                                            <div className="h-full bg-slate-900" style={{width: `${(quote.items.filter(i => i.unitPrice !== null && i.unitPrice > 0).length / rfq.line_items.length) * 100}%`}}></div>
+                                                                
+                                                                <div className="mt-4">
+                                                                    <div className="text-3xl font-bold text-slate-900 flex items-baseline">
+                                                                        <span className="text-sm text-slate-400 font-normal mr-1">{quote.currency}</span>
+                                                                        {quote.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                                    </div>
+                                                                    {/* Delta */}
+                                                                    {quotes.length > 1 && (
+                                                                        <div className={`text-xs font-bold mt-1 ${quote.total < (quotes.reduce((a,b)=>a+b.total,0)/quotes.length) ? 'text-green-600' : 'text-red-500'}`}>
+                                                                            {quote.total < (quotes.reduce((a,b)=>a+b.total,0)/quotes.length) ? '▼' : '▲'} {Math.abs((quote.total - (quotes.reduce((a,b)=>a+b.total,0)/quotes.length)) / (quotes.reduce((a,b)=>a+b.total,0)/quotes.length) * 100).toFixed(1)}% vs Avg
                                                                         </div>
-                                                                        <span className="text-xs font-bold">{quote.items.filter(i => i.unitPrice !== null && i.unitPrice > 0).length}/{rfq.line_items.length}</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Card Body */}
+                                                            <div className="p-6 space-y-4 flex-1 bg-white">
+                                                                <div className="space-y-3">
+                                                                    <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-2">
+                                                                        <span className="text-slate-500">Lead Time</span>
+                                                                        <span className={`font-bold ${isFastest ? 'text-blue-600' : 'text-slate-900'}`}>{quote.leadTime || '-'} Days</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-2">
+                                                                        <span className="text-slate-500">Payment</span>
+                                                                        <span className="text-slate-900 font-medium">{quote.payment || '-'}</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-2">
+                                                                        <span className="text-slate-500">Validity</span>
+                                                                        <span className="text-slate-900 font-medium">{quote.validity || '-'}</span>
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                {/* Item Completeness Bar */}
+                                                                <div>
+                                                                    <div className="flex justify-between text-xs mb-1">
+                                                                        <span className="text-slate-400 font-bold">Line Item Coverage</span>
+                                                                        <span className="text-slate-900 font-bold">{Math.round((quote.items.filter(i => i.unitPrice !== null && i.unitPrice > 0).length / rfq.line_items.length) * 100)}%</span>
+                                                                    </div>
+                                                                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                                        <div className="h-full bg-slate-800" style={{width: `${(quote.items.filter(i => i.unitPrice !== null && i.unitPrice > 0).length / rfq.line_items.length) * 100}%`}}></div>
                                                                     </div>
                                                                 </div>
                                                             </div>
 
-                                                            {/* Actions */}
-                                                            <div className="p-4 border-t border-slate-100 bg-slate-50/50 rounded-b-2xl flex gap-2">
-                                                                <button onClick={() => handleGenerateAwardPO(quote)} className="flex-1 bg-slate-900 text-white py-2.5 rounded-lg text-xs font-bold hover:bg-slate-800 transition shadow-lg shadow-slate-900/10">Award PO</button>
-                                                                <button onClick={() => setSelectedQuoteForReview(quote)} className="px-3 py-2 border border-slate-200 bg-white rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition text-xs font-bold">Review Details</button>
+                                                            {/* Card Footer */}
+                                                            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
+                                                                <button onClick={() => handleGenerateAwardPO(quote)} className="w-full bg-slate-900 text-white py-3 rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-lg shadow-slate-900/10 flex items-center justify-center gap-2">
+                                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                                    Award Contract
+                                                                </button>
+                                                                <button onClick={() => setSelectedQuoteForReview(quote)} className="w-full py-2 text-slate-500 text-xs font-bold hover:text-slate-800 hover:bg-slate-100 rounded-lg transition">
+                                                                    View Full Details
+                                                                </button>
                                                             </div>
                                                         </div>
                                                     );
@@ -1393,8 +1882,8 @@ Procurement Team`;
                                             </div>
                                         )}
 
-                                        {/* VIEW 2: LINE ITEM COMPARISON */}
-                                        {comparisonView === 'items' && (
+                                        {/* VIEW 2: LINE ITEM COMPARISON (TABLE) */}
+                                        {quotes.length > 0 && comparisonView === 'items' && (
                                             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                                                 <div className="overflow-x-auto">
                                                     <table className="w-full text-left text-sm">

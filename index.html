@@ -7,6 +7,9 @@
   <!-- Tailwind via CDN for simplest deployment without PostCSS config -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
+    // Global Shim to prevent "process is not defined" errors in browser
+    window.process = window.process || { env: { NODE_ENV: 'production' } };
+    
     tailwind.config = {
       theme: {
         extend: {

@@ -1,11 +1,19 @@
-
-
 import { GoogleGenAI, Type } from "@google/genai";
-import { Rfq, LineItem, FileAttachment, Language, RiskAnalysisItem, InsightSource, InsightResponse, TrendingTopic, MarketDataResponse, SupplierCandidate } from "../types";
+import { Rfq, LineItem, FileAttachment, Language, RiskAnalysisItem, InsightSource, InsightResponse, TrendingTopic, MarketDataResponse, SupplierCandidate, SupplierFilters } from "../types";
+
+// Safe API Key Accessor
+const getApiKey = (): string => {
+    try {
+        // Vite replaces process.env.API_KEY with the string value at build time.
+        // However, in some runtime environments, accessing process might throw if not shimmed.
+        return typeof process !== 'undefined' && process.env ? process.env.API_KEY || "" : "";
+    } catch (e) {
+        return "";
+    }
+};
 
 // Initialize Gemini Client
-// WARNING: If process.env.API_KEY is missing at build time, this will be empty string.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 const MODEL_FAST = "gemini-2.5-flash";
 const MODEL_IMAGE = "gemini-2.5-flash-image";
@@ -20,12 +28,20 @@ const getLanguageName = (lang: Language): string => {
 
 // Helper to robustly extract JSON from potentially conversational text
 const cleanJson = (text: string): string => {
-    if (!text) return "";
+    if (!text) return "{}";
     
-    // 1. Try to find markdown code block
-    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (codeBlockMatch) {
-        text = codeBlockMatch[1];
+    // 1. Try to find markdown code block (json or generic)
+    const patterns = [
+        /```json\s*([\s\S]*?)\s*```/,
+        /```\s*([\s\S]*?)\s*```/
+    ];
+
+    for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+            text = match[1];
+            break; 
+        }
     }
 
     // 2. Find start of JSON (Object or Array)
@@ -44,7 +60,7 @@ const cleanJson = (text: string): string => {
 
     // 3. Find end of JSON
     let end = -1;
-    // If it started with [, look for ]. If it started with {, look for }.
+    // If it started with [, look for last ]. If it started with {, look for last }.
     if (text[start] === '[') {
         end = text.lastIndexOf(']');
     } else {
@@ -264,7 +280,7 @@ export const parseRequest = async (
   }
 };
 
-export const findSuppliers = async (rfq: Rfq, sourceCountry: string | null = null): Promise<SupplierCandidate[]> => {
+export const findSuppliers = async (rfq: Rfq, filters: SupplierFilters): Promise<SupplierCandidate[]> => {
     // Construct a concise summary for the prompt
     const summary = `
         Project: ${rfq.project_name || "Industrial Project"}
@@ -273,22 +289,24 @@ export const findSuppliers = async (rfq: Rfq, sourceCountry: string | null = nul
         Special Requirements: ${rfq.commercial.req_avl ? "AVL Required" : "Open Market"}, ${rfq.commercial.req_mtr ? "MTR Required" : ""}
     `;
 
-    let strategy = "";
-    if (sourceCountry && sourceCountry !== "Global") {
-        strategy = `
-            STRATEGY: EXCLUSIVE SOURCING FROM ${sourceCountry.toUpperCase()}.
-            - Only find suppliers that have manufacturing or major stock-holding facilities in ${sourceCountry}.
-            - Prioritize suppliers that are known to export to the Delivery Location (${rfq.commercial.destination}).
-        `;
+    // Construct strategy based on granular filters
+    let strategy = `STRATEGY: INTELLIGENT SOURCING.\n`;
+    
+    // 1. Region Logic
+    if (filters.region && filters.region !== "Global") {
+        strategy += `- REGION: STRICTLY search for suppliers with facilities in ${filters.region.toUpperCase()}. Prioritize local presence.\n`;
     } else {
-        strategy = `
-            STRATEGY: GLOBAL INTELLIGENT SOURCING (Best Value Analysis).
-            - Evaluate the Geopolitical Situation, Supply Chain Efficiency, and Logistics Cost for the Delivery Location (${rfq.commercial.destination}).
-            - Compare options: 
-               1. Local Suppliers (Speed/Low Logistics Cost).
-               2. Low-Cost Country Sourcing (China/India/Vietnam) vs Quality/Premium (EU/USA/Korea).
-            - Recommend a MIX of suppliers that balances these factors.
-        `;
+        strategy += `- REGION: Global Best Value (Balance Logistics vs Cost).\n`;
+    }
+
+    // 2. Type Logic
+    if (filters.types && filters.types.length > 0) {
+        strategy += `- SUPPLIER TYPE: Prioritize ${filters.types.join(' or ')}.\n`;
+    }
+
+    // 3. Certifications
+    if (filters.certs && filters.certs.length > 0) {
+        strategy += `- REQUIRED CERTS: Must likely hold ${filters.certs.join(', ')}.\n`;
     }
 
     const prompt = `
@@ -309,8 +327,9 @@ export const findSuppliers = async (rfq: Rfq, sourceCountry: string | null = nul
             "name": "Supplier Name",
             "website": "URL or N/A",
             "location": "City, Country",
-            "match_reason": "Brief reason why they are a fit (e.g. 'Specialist in X')",
-            "rationale": "Strategic reason for selection (e.g. 'Low cost leader, high tariff risk' or 'Domestic supplier, fast delivery')"
+            "match_reason": "Brief reason why they are a fit",
+            "rationale": "Strategic reason for selection based on filters",
+            "tags": ["Tag1", "Tag2"] // e.g. "ISO 9001", "Manufacturer", "USA"
           }
         ]
     `;
@@ -334,6 +353,7 @@ export const findSuppliers = async (rfq: Rfq, sourceCountry: string | null = nul
             location: s.location,
             match_reason: s.match_reason,
             rationale: s.rationale,
+            tags: s.tags || [],
             selected: true, // Select by default
             contacts: []    // Initialize empty contacts array for buyer input
         }));
@@ -361,12 +381,10 @@ export const analyzeRfqRisks = async (rfq: Rfq, lang: Language = 'en'): Promise<
       Language: ${targetLang}
     `;
 
-    // Construct a concise context payload
     const rfqContext = {
         project: rfq.project_name,
         description: rfq.project_description,
         commercial: rfq.commercial,
-        // Send a summary of items to save tokens, highlighting potential missing data points
         items: rfq.line_items.map(i => ({
             line: i.line,
             desc: i.description,
@@ -403,7 +421,6 @@ export const analyzeRfqRisks = async (rfq: Rfq, lang: Language = 'en'): Promise<
         return parsed;
     } catch (e) {
         console.error("Risk Analysis Error", e);
-        // Return a fallback error as a risk item if AI fails
         return [{
             category: "Technical",
             risk: "AI Analysis Failed",
@@ -411,49 +428,6 @@ export const analyzeRfqRisks = async (rfq: Rfq, lang: Language = 'en'): Promise<
             impact_level: "Low"
         }];
     }
-};
-
-export const clarifyRequest = async (rfq: Rfq, userMessage: string, lang: Language = 'en'): Promise<string> => {
-    // Legacy function, might not be needed if parseRequest handles conversation
-    const targetLang = getLanguageName(lang);
-    const systemInstruction = `
-    You are Crontal's RFQ assistant.
-    Goal: Confirm the user's action and summarize the current state.
-    CRITICAL: Output MUST be in ${targetLang}.
-    `;
-
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_FAST,
-            contents: `User said: "${userMessage}". RFQ now has ${rfq.line_items.length} items.`,
-            config: { systemInstruction }
-        });
-        return cleanJson(response.text || "");
-    } catch (e) {
-        return lang === 'zh' ? "表格已更新。" : "Table updated.";
-    }
-}
-
-export const generateRfqSummary = async (rfq: Rfq, lang: Language = 'en'): Promise<string> => {
-  const targetLang = getLanguageName(lang);
-  const systemInstruction = `
-    Role: Procurement Manager.
-    Task: Write an Executive Summary for Suppliers.
-    Language: ${targetLang}.
-    Length: <80 words.
-    Focus: Project scale, key materials, urgency.
-  `;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: MODEL_FAST,
-      contents: `RFP Name: ${rfq.project_name}. Items: ${rfq.line_items.length}. Descs: ${rfq.line_items.slice(0,5).map(i=>i.description).join('; ')}`,
-      config: { systemInstruction }
-    });
-    return cleanJson(response.text || "");
-  } catch (e) {
-    return "";
-  }
 };
 
 export const auditRfqSpecs = async (rfq: Rfq, lang: Language = 'en'): Promise<string[]> => {
@@ -507,7 +481,6 @@ export const editImage = async (base64Image: string, mimeType: string, prompt: s
             },
         });
         
-        // Find image part
         const candidate = response.candidates?.[0];
         if (candidate?.content?.parts) {
             for (const part of candidate.content.parts) {
@@ -525,17 +498,9 @@ export const editImage = async (base64Image: string, mimeType: string, prompt: s
 
 export const getTrendingTopics = async (category: string): Promise<TrendingTopic[]> => {
     const systemInstruction = `
-        You are an industrial news curator for the Stainless Steel, Piping, and EPC sectors.
-        
-        TASK:
-        Generate 4 relevant, hypothetical (but realistic based on current market trends) news headlines/topics for the category: "${category}".
-        These should look like actionable intelligence items for a procurement manager.
-
-        Focus areas:
-        - "Regulatory": Carbon tax, CBAM, tariffs, ASTM updates.
-        - "Supply Chain": Nickel prices, freight rates, port congestion, mill lead times.
-        - "Innovation": Green steel, hydrogen piping, new alloys.
-
+        You are an industrial news curator.
+        TASK: Generate 4 realistic news headlines/topics for: "${category}".
+        Focus: Regulatory, Supply Chain, Innovation.
         OUTPUT: JSON Array of 4 items.
     `;
 
@@ -551,9 +516,9 @@ export const getTrendingTopics = async (category: string): Promise<TrendingTopic
                     items: {
                         type: Type.OBJECT,
                         properties: {
-                            title: { type: Type.STRING, description: "Short punchy headline" },
-                            subtitle: { type: Type.STRING, description: "One sentence context" },
-                            tag: { type: Type.STRING, description: "e.g. Price Alert, Regulation, Tech" },
+                            title: { type: Type.STRING },
+                            subtitle: { type: Type.STRING },
+                            tag: { type: Type.STRING },
                             impact: { type: Type.STRING, enum: ['High', 'Medium', 'Low'] }
                         }
                     }
@@ -574,45 +539,20 @@ export const getTrendingTopics = async (category: string): Promise<TrendingTopic
 export const getLatestMarketData = async (): Promise<MarketDataResponse | null> => {
     const systemInstruction = `
         You are a financial data assistant. 
-        TASK: Search for the LATEST available market prices for the following commodities using Google Search Grounding.
+        TASK: Search for LATEST market prices using Google Search Grounding.
         
-        REQUIRED DATA (Stainless Inputs):
-        1. LME Nickel (Cash or 3-month) in USD per Ton.
-        2. Molybdenum Oxide in USD per Pound (lb).
-        3. Ferrochrome (High Carbon) in USD per Pound (lb).
-        4. US HRC Steel in USD per Short Ton (ST).
-        5. Brent Crude Oil in USD per Barrel.
+        REQUIRED DATA (Stainless & LME):
+        Nickel, Molybdenum, Ferrochrome, US HRC Steel, Brent Crude, Copper, Aluminum, Zinc, Lead, Tin.
 
-        REQUIRED DATA (LME Base Metals):
-        6. LME Copper in USD per Ton.
-        7. LME Aluminum in USD per Ton.
-        8. LME Zinc in USD per Ton.
-        9. LME Lead in USD per Ton.
-        10. LME Tin in USD per Ton.
-
-        OUTPUT FORMAT:
-        Return ONLY a raw JSON object. Do NOT include markdown formatting, code blocks, or conversational text. 
-        Just the JSON.
-
+        OUTPUT FORMAT: JSON ONLY. No markdown.
         Structure:
         {
-          "nickel": number,
-          "moly": number,
-          "chrome": number,
-          "steel": number,
-          "oil": number,
-          "copper": number,
-          "aluminum": number,
-          "zinc": number,
-          "lead": number,
-          "tin": number,
+          "nickel": number, "moly": number, "chrome": number, "steel": number, "oil": number,
+          "copper": number, "aluminum": number, "zinc": number, "lead": number, "tin": number,
           "last_updated": "YYYY-MM-DD"
         }
-        
-        Use approximate recent values if live data is strictly gated, but prioritize Grounding search results.
     `;
 
-    // Strategy 1: Try with Search Grounding
     try {
         const response = await ai.models.generateContent({
             model: MODEL_FAST,
@@ -628,88 +568,31 @@ export const getLatestMarketData = async (): Promise<MarketDataResponse | null> 
         data.isFallback = false;
         return data;
     } catch (e) {
-        console.error("Live Market Data Fetch Failed (Grounding)", e);
-        
-        // Strategy 2: Fallback to AI Estimate (No Search)
-        try {
-            console.log("Attempting fallback to AI Estimate...");
-            const response = await ai.models.generateContent({
-                model: MODEL_FAST,
-                contents: "Estimate current 2024/2025 market prices for: LME Nickel USD/Ton, Molybdenum USD/lb, Ferrochrome USD/lb, US HRC Steel USD/ST, Brent Crude USD/bbl, LME Copper, LME Aluminum, LME Zinc, LME Lead, LME Tin. Return JSON only based on your internal knowledge.",
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            nickel: { type: Type.NUMBER },
-                            moly: { type: Type.NUMBER },
-                            chrome: { type: Type.NUMBER },
-                            steel: { type: Type.NUMBER },
-                            oil: { type: Type.NUMBER },
-                            copper: { type: Type.NUMBER },
-                            aluminum: { type: Type.NUMBER },
-                            zinc: { type: Type.NUMBER },
-                            lead: { type: Type.NUMBER },
-                            tin: { type: Type.NUMBER },
-                            last_updated: { type: Type.STRING }
-                        }
-                    }
-                }
-            });
-            const clean = cleanJson(response.text || "{}");
-            const data = JSON.parse(clean);
-            data.isFallback = true; 
-            return data;
-        } catch (e2) {
-            console.error("AI Estimate Failed", e2);
-            // Strategy 3: Hardcoded Data (Last Resort)
-            return {
-                nickel: 16200, moly: 42, chrome: 1.45, steel: 820, oil: 78,
-                copper: 8900, aluminum: 2200, zinc: 2400, lead: 2100, tin: 26000,
-                last_updated: new Date().toISOString(),
-                isFallback: true
-            };
-        }
+        console.error("Live Market Data Fetch Failed", e);
+        // Fallback data
+        return {
+            nickel: 16200, moly: 42, chrome: 1.45, steel: 820, oil: 78,
+            copper: 8900, aluminum: 2200, zinc: 2400, lead: 2100, tin: 26000,
+            last_updated: new Date().toISOString(),
+            isFallback: true
+        };
     }
 };
 
 export const generateIndustryInsights = async (category: string, query: string): Promise<InsightResponse> => {
     const systemInstruction = `
-        You are a Senior Industrial Analyst specializing in the stainless steel, heavy piping, and EPC (Engineering, Procurement, Construction) sectors.
-        
-        YOUR TASK:
-        Provide a concise, data-driven executive summary on the following topic:
-        Category: ${category}
-        Specific Focus: ${query || "General Market Overview"}
-
-        CONTEXTUAL FOCUS:
-        - Industries: Stainless Steel, Carbon Steel, Oil & Gas Piping, Industrial Manufacturing.
-        - Regions: Global market with focus on major hubs (EU, US, Asia).
-        - Regulatory Standards: ASTM, ASME, EN, ISO.
-        - USE THE SEARCH TOOLS to find the most recent pricing, news, and regulations.
-
+        You are a Senior Industrial Analyst.
+        TASK: Provide a concise executive summary on: ${category} - ${query}.
         OUTPUT STRUCTURE (Markdown):
         ## 1. Executive Summary
-        [2-3 sentences summarizing the situation]
-
         ## 2. Key Developments
-        - [Point 1: Recent price moves, supply shocks, or new regulations like CBAM/Section 232]
-        - [Point 2: Technology shifts or major project announcements]
-
         ## 3. Market Impact
-        - **Pricing:** [Rising/Falling/Stable]
-        - **Lead Times:** [Increasing/Decreasing]
-        
-        ## 4. Strategic Advice for Procurement Managers
-        [Actionable bullet points on when to buy, stock up, or diversify suppliers]
-
-        TONE:
-        Professional, objective, forward-looking. Avoid generic fluff.
+        ## 4. Strategic Advice
     `;
 
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: MODEL_FAST,
             contents: `Generate insights for: ${query} in category: ${category}`,
             config: { 
                 systemInstruction,
@@ -718,8 +601,6 @@ export const generateIndustryInsights = async (category: string, query: string):
         });
 
         const text = response.text || "Unable to generate insights at this time.";
-        
-        // Extract Grounding Sources
         const sources: InsightSource[] = [];
         const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
         
