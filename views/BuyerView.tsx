@@ -44,7 +44,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [suggestedSuppliers, setSuggestedSuppliers] = useState<SupplierCandidate[]>([]);
     const [manualSupplierEmail, setManualSupplierEmail] = useState('');
     const [emailDraft, setEmailDraft] = useState<string>('');
-    const [generatedLink, setGeneratedLink] = useState<string>('');
     const [linkCopied, setLinkCopied] = useState(false);
     const [isBroadcasting, setIsBroadcasting] = useState(false);
     
@@ -532,8 +531,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
     const handleOpenSourcingModal = () => {
         if (!rfq) return;
-        const link = generateRfqLink();
-        setGeneratedLink(link);
+        // Just generate to prep, not storing in unused state anymore
+        generateRfqLink();
         setEmailDraft(''); // Reset email
         setSourcingStep(1); // Start at Discovery
         setSuggestedSuppliers([]); // Reset suppliers
@@ -636,18 +635,9 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         
         // Regenerate link to be sure it's fresh
         const link = generateRfqLink();
-        setGeneratedLink(link);
 
-        const selected = suggestedSuppliers.filter(s => s.selected);
-        
-        // Collect all contacts from selected suppliers
-        const allContacts: string[] = [];
-        selected.forEach(s => {
-            if (s.email) allContacts.push(s.email);
-            if (s.contacts && s.contacts.length > 0) allContacts.push(...s.contacts);
-        });
-        
-        const subject = `RFQ: ${rfq.project_name || 'Materials Inquiry'} - Due ASAP`;
+        // We use the same link for all suppliers in this serverless architecture 
+        // (no unique token per supplier in this simplified version, though unique IDs could be added to param)
         
         const body = `Hello,
 
@@ -1231,7 +1221,7 @@ Procurement Team`;
                                                     {isRiskAnalyzing ? 'Analyzing...' : 'Analyze Risks'}
                                                 </button>
                                                 <button onClick={handleOpenSourcingModal} className="flex-1 lg:flex-none px-6 py-2 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-lg text-xs font-bold hover:shadow-lg hover:shadow-slate-500/20 transition flex items-center justify-center gap-2 border border-slate-900">
-                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                                                     Sourcing & Send
                                                 </button>
                                             </div>
