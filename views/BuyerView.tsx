@@ -1678,6 +1678,19 @@ Procurement Team`;
                                                 </div>
                                             </div>
                                         )}
+
+                                        {/* AI RECOMMENDATION BANNER */}
+                                        {quotes.length > 0 && (
+                                            <div className="mt-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl p-4 text-white shadow-lg flex items-center gap-4 animate-in fade-in">
+                                                <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+                                                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] font-bold uppercase tracking-wider opacity-80">AI Procurement Advisor</div>
+                                                    <div className="font-medium text-sm">{getRecommendation()}</div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                     
                                     <div className="flex-1 overflow-auto p-4 md:p-6">
