@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import LZString from 'lz-string';
-import { Rfq, Quote, Language, LineItem, FileAttachment, RiskAnalysisItem, SupplierCandidate, SupplierFilters } from '../types';
-import { parseRequest, analyzeRfqRisks, findSuppliers, auditRfqSpecs } from '../services/geminiService';
+import { Rfq, Quote, Language, FileAttachment, SupplierFilters } from '../types';
+import { parseRequest, analyzeRfqRisks, findSuppliers } from '../services/geminiService';
 import { t } from '../utils/i18n';
 
 interface BuyerViewProps {
@@ -22,7 +22,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     // Risk & Sourcing State
     const [isAnalyzingRisk, setIsAnalyzingRisk] = useState(false);
     const [isSourcing, setIsSourcing] = useState(false);
-    const [supplierFilters, setSupplierFilters] = useState<SupplierFilters>({ region: 'Global', types: [], certs: [] });
+    const [supplierFilters] = useState<SupplierFilters>({ region: 'Global', types: [], certs: [] });
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
