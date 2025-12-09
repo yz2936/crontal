@@ -10,7 +10,13 @@ interface AuthViewProps {
 
 export default function AuthView({ onLogin, onBack }: AuthViewProps) {
   const [isLogin, setIsLogin] = useState(true);
-  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
+  const [formData, setFormData] = useState({ 
+      name: '', 
+      email: '', 
+      password: '',
+      companyName: '',
+      role: 'buyer' as 'buyer' | 'supplier'
+  });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -25,11 +31,19 @@ export default function AuthView({ onLogin, onBack }: AuthViewProps) {
         user = await authService.login(formData.email, formData.password);
       } else {
         if (!formData.name) throw new Error("Name is required");
-        user = await authService.signup(formData.name, formData.email, formData.password);
+        if (!formData.companyName) throw new Error("Company Name is required");
+        
+        user = await authService.signup(
+            formData.name, 
+            formData.email, 
+            formData.password, 
+            formData.role,
+            formData.companyName
+        );
       }
       onLogin(user);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -61,21 +75,54 @@ export default function AuthView({ onLogin, onBack }: AuthViewProps) {
             {isLogin ? 'Welcome back' : 'Create an account'}
           </h2>
           <p className="text-center text-slate-500 text-sm mb-8">
-            {isLogin ? 'Enter your credentials to access the portal' : 'Join Crontal to streamline your RFQs'}
+            {isLogin ? 'Enter your credentials to access the portal' : 'Join Crontal to streamline your workflow'}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            
+            {/* Role Switcher */}
             {!isLogin && (
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-accent/20 focus:border-accent outline-none transition"
-                  value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
-                />
-              </div>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl mb-4">
+                    <button
+                        type="button"
+                        onClick={() => setFormData({...formData, role: 'buyer'})}
+                        className={`py-2 text-xs font-bold uppercase rounded-lg transition ${formData.role === 'buyer' ? 'bg-white shadow text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        Buyer
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setFormData({...formData, role: 'supplier'})}
+                        className={`py-2 text-xs font-bold uppercase rounded-lg transition ${formData.role === 'supplier' ? 'bg-white shadow text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        Supplier
+                    </button>
+                </div>
+            )}
+
+            {!isLogin && (
+              <>
+                <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Full Name</label>
+                    <input
+                    type="text"
+                    required
+                    className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-accent/20 focus:border-accent outline-none transition"
+                    value={formData.name}
+                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Company Name</label>
+                    <input
+                    type="text"
+                    required
+                    className="w-full px-4 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-accent/20 focus:border-accent outline-none transition"
+                    value={formData.companyName}
+                    onChange={e => setFormData({ ...formData, companyName: e.target.value })}
+                    />
+                </div>
+              </>
             )}
             
             <div>
@@ -101,7 +148,8 @@ export default function AuthView({ onLogin, onBack }: AuthViewProps) {
             </div>
 
             {error && (
-              <div className="p-3 rounded-lg bg-red-50 text-red-600 text-xs border border-red-100">
+              <div className="p-3 rounded-lg bg-red-50 text-red-600 text-xs border border-red-100 flex items-center gap-2">
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 {error}
               </div>
             )}
@@ -109,9 +157,10 @@ export default function AuthView({ onLogin, onBack }: AuthViewProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-accent hover:bg-slate-800 text-white font-semibold py-2.5 rounded-xl transition shadow-lg disabled:opacity-70"
+              className="w-full bg-accent hover:bg-slate-800 text-white font-semibold py-2.5 rounded-xl transition shadow-lg disabled:opacity-70 flex justify-center items-center gap-2"
             >
-              {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Sign Up')}
+              {loading && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>}
+              {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
             </button>
           </form>
 
@@ -126,7 +175,7 @@ export default function AuthView({ onLogin, onBack }: AuthViewProps) {
         </div>
         <div className="bg-slate-50 px-8 py-4 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-400">
-            Demo Environment: Passwords are stored locally in your browser.
+            Secure Environment: Mock Backend Active.
           </p>
         </div>
       </div>

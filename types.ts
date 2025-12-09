@@ -150,6 +150,8 @@ export interface SupplierCandidate {
     id: string;
     email: string;
     name: string;
+    role: 'buyer' | 'supplier'; // Added Role
+    companyName?: string;       // Added Company
   }
   
   // Added INSIGHTS to ViewMode
