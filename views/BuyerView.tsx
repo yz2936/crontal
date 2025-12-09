@@ -43,7 +43,6 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [suggestedSuppliers, setSuggestedSuppliers] = useState<SupplierCandidate[]>([]);
     const [manualSupplierEmail, setManualSupplierEmail] = useState('');
     const [emailDraft, setEmailDraft] = useState<string>('');
-    const [linkCopied, setLinkCopied] = useState(false);
     const [isBroadcasting, setIsBroadcasting] = useState(false);
     
     // Comparison State
@@ -921,6 +920,19 @@ Procurement Team`;
                                                             <div className="text-xs text-slate-500">{s.match_reason}</div>
                                                         </div>
                                                     ))}
+                                                </div>
+                                                <div className="mt-3 pt-3 border-t border-slate-100">
+                                                    <div className="flex gap-2">
+                                                        <input 
+                                                            type="text" 
+                                                            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-brandOrange"
+                                                            placeholder="Add manual supplier email..."
+                                                            value={manualSupplierEmail}
+                                                            onChange={(e) => setManualSupplierEmail(e.target.value)}
+                                                            onKeyDown={(e) => e.key === 'Enter' && handleAddManualSupplier()}
+                                                        />
+                                                        <button onClick={handleAddManualSupplier} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 rounded-lg font-bold">+</button>
+                                                    </div>
                                                 </div>
                                                 <div className="mt-4 flex justify-end">
                                                     <button onClick={() => setSourcingStep(2)} className="bg-brandOrange text-white px-8 py-3 rounded-xl font-bold">Next</button>
