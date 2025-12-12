@@ -1,19 +1,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Rfq, LineItem, FileAttachment, Language, RiskAnalysisItem, InsightSource, InsightResponse, TrendingTopic, MarketDataResponse, SupplierCandidate, SupplierFilters } from "../types";
 
-// Safe API Key Accessor
-const getApiKey = (): string => {
-    try {
-        // Vite replaces process.env.API_KEY with the string value at build time.
-        // However, in some runtime environments, accessing process might throw if not shimmed.
-        return typeof process !== 'undefined' && process.env ? process.env.API_KEY || "" : "";
-    } catch (e) {
-        return "";
-    }
-};
-
 // Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
+// CRITICAL: We must use process.env.API_KEY directly for Vite to perform build-time replacement.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const MODEL_FAST = "gemini-2.5-flash";
 const MODEL_IMAGE = "gemini-2.5-flash-image";

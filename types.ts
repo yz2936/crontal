@@ -1,6 +1,7 @@
 
 
 
+
 export interface Dimension {
     value: number | null;
     unit: string | null;
@@ -171,8 +172,8 @@ export interface SupplierCandidate {
     contactEmail?: string;
   }
   
-  // Added INSIGHTS to ViewMode
-  export type ViewMode = 'HOME' | 'BUYER' | 'SUPPLIER' | 'TECH' | 'ABOUT' | 'ROI' | 'SUPPLIER_LANDING' | 'QUALITY' | 'PRIVACY' | 'TERMS' | 'BLOG' | 'INSIGHTS';
+  // Added INSIGHTS and IMAGE_EDITOR to ViewMode
+  export type ViewMode = 'HOME' | 'BUYER' | 'SUPPLIER' | 'TECH' | 'ABOUT' | 'ROI' | 'SUPPLIER_LANDING' | 'QUALITY' | 'PRIVACY' | 'TERMS' | 'BLOG' | 'INSIGHTS' | 'IMAGE_EDITOR';
   
   export interface TourStep {
     selector: string;

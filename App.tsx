@@ -15,6 +15,7 @@ import PrivacyPolicy from './views/PrivacyPolicy';
 import TermsOfService from './views/TermsOfService';
 import BlogPage from './views/BlogPage'; 
 import IndustryInsights from './views/IndustryInsights';
+import ImageEditor from './views/ImageEditor';
 import { Layout } from './components/Layout';
 import { authService } from './services/authService';
 import { storageService } from './services/storageService';
@@ -268,6 +269,7 @@ export default function App() {
           if (view === 'TERMS') return <TermsOfService {...navProps} />;
           if (view === 'BLOG') return <BlogPage {...navProps} />;
           if (view === 'INSIGHTS') return <IndustryInsights {...navProps} />;
+          if (view === 'IMAGE_EDITOR') return <ImageEditor onBack={() => handleNavigate('HOME')} lang={lang} />;
 
           if (view === 'SUPPLIER') {
               return <SupplierView rfq={rfq} onSubmitQuote={handleQuoteSubmit} lang={lang} onExit={handleSupplierExit} />;
@@ -306,6 +308,7 @@ export default function App() {
                   <h1 className="text-4xl font-bold tracking-tight text-slate-900">{t(lang, 'home_welcome', { name: user.name })}</h1>
                   <div className="flex gap-4 mt-8">
                     <button onClick={() => setView('BUYER')} className="px-6 py-3 rounded-xl bg-accent text-white font-medium hover:bg-accent/90 transition shadow-lg shadow-accent/20">{t(lang, 'start_rfq')}</button>
+                    <button onClick={() => setView('IMAGE_EDITOR')} className="px-6 py-3 rounded-xl bg-white border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition shadow-sm">Visual Specs</button>
                   </div>
                 </div>
               )}

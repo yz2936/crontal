@@ -168,6 +168,12 @@ export default function LandingPage(props: LandingPageProps) {
                   >
                       Example 2: Drawing Spec
                   </button>
+                  <button 
+                      onClick={() => props.onNavigate('IMAGE_EDITOR')}
+                      className="px-4 lg:px-6 py-2 rounded-full text-xs lg:text-sm font-bold bg-white text-brandOrange border border-brandOrange/30 hover:bg-brandOrange/5 transition"
+                  >
+                      Try Visual Editor →
+                  </button>
               </div>
 
               <div className="grid lg:grid-cols-2 gap-8 items-stretch">
