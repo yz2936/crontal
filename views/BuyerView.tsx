@@ -1986,6 +1986,22 @@ Procurement Team`;
                     )}
                 </div>
             </div>
+
+            {/* Floating Chat Toggle (Visible when closed) */}
+            {!isChatOpen && !showShareModal && !showSettingsModal && !showRiskModal && (
+                <button
+                    onClick={() => setIsChatOpen(true)}
+                    className="fixed bottom-8 right-8 z-50 bg-slate-900 text-white p-4 rounded-full shadow-2xl hover:bg-slate-800 hover:scale-105 transition-all flex items-center justify-center gap-2 group animate-in fade-in slide-in-from-bottom-4 duration-300"
+                    title="Open Assistant"
+                >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                    <span className="font-bold text-sm max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out whitespace-nowrap">
+                        Assistant
+                    </span>
+                </button>
+            )}
         </div>
     );
 }
