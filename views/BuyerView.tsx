@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage, RiskAnalysisItem, SupplierCandidate, SupplierFilters } from '../types';
+import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage, RiskAnalysisItem, SupplierCandidate, SupplierFilters, BuyerProfile } from '../types';
 import { parseRequest, analyzeRfqRisks, auditRfqSpecs, findSuppliers } from '../services/geminiService';
 import { storageService } from '../services/storageService';
 import { t } from '../utils/i18n';
@@ -31,6 +31,16 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
     const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
     
+    // Buyer Profile Settings
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [buyerProfile, setBuyerProfile] = useState<BuyerProfile>({
+        companyName: 'My Company Inc.',
+        address: '123 Industrial Blvd\nHouston, TX 77001',
+        logo: '',
+        contactPhone: '(555) 123-4567'
+    });
+    const logoInputRef = useRef<HTMLInputElement>(null);
+
     // Risk Analysis State
     const [isRiskAnalyzing, setIsRiskAnalyzing] = useState(false);
     const [showRiskModal, setShowRiskModal] = useState(false);
@@ -78,9 +88,13 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         { id: 'uom', label: t(lang, 'uom'), visible: true, width: 70 },
     ]);
 
-    // Load drafts on mount
+    // Load drafts & profile on mount
     useEffect(() => {
         setSavedRfqs(storageService.getRfqs());
+        const savedProfile = storageService.getBuyerProfile();
+        if (savedProfile) {
+            setBuyerProfile(savedProfile);
+        }
         // On mobile, default sidebar to closed
         if (window.innerWidth < 1024) {
             setIsSidebarOpen(false);
@@ -184,6 +198,24 @@ Procurement Team`;
             setAttachedFiles(prev => [...prev, ...newFiles]);
         }
         if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    // --- LOGO UPLOAD LOGIC ---
+    const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const result = ev.target?.result as string;
+                setBuyerProfile(prev => ({ ...prev, logo: result }));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleSaveProfile = () => {
+        storageService.saveBuyerProfile(buyerProfile);
+        setShowSettingsModal(false);
     };
 
     const removeFile = (index: number) => {
@@ -707,79 +739,234 @@ Procurement Team`;
         
         try {
             const doc = new jsPDF();
-            doc.setFontSize(22);
-            doc.text("PURCHASE ORDER", 14, 20);
+            const pageWidth = doc.internal.pageSize.getWidth();
             
-            doc.setFontSize(10);
-            const poNum = `PO-${rfq.id.replace('RFQ-', '')}`;
-            doc.text(`Order Number: ${poNum}`, 140, 18);
-            doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 23);
+            // --- HEADER SECTION ---
+            
+            // 1. Logo (Top Left) - Larger like reference
+            if (buyerProfile.logo) {
+                try {
+                    // Aspect ratio calculation to fit within box
+                    const imgProps = doc.getImageProperties(buyerProfile.logo);
+                    const pdfWidth = 25;
+                    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                    doc.addImage(buyerProfile.logo, 'PNG', 14, 10, pdfWidth, pdfHeight);
+                } catch (e) {
+                    // Fallback visual if logo fails
+                    doc.setFillColor(0, 51, 102); // Dark Blue
+                    doc.circle(24, 20, 10, 'F');
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFontSize(16);
+                    doc.text("C", 22, 23);
+                }
+            } else {
+                // Default Logo Visual
+                doc.setFillColor(0, 51, 102); // Dark Blue
+                doc.circle(24, 20, 10, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(16);
+                doc.text("C", 22, 23);
+            }
 
-            doc.setFillColor(11, 17, 33);
-            doc.roundedRect(14, 25, 30, 10, 1, 1, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(12);
-            doc.text("CRONTAL", 16, 31.5);
+            // 2. Company Info (Center Left - Next to Logo)
             doc.setTextColor(0, 0, 0);
+            doc.setFontSize(11);
+            doc.setFont("helvetica", "bold");
+            const companyName = buyerProfile.companyName || "Your Company Inc.";
+            doc.text(companyName, 45, 15);
+            
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9);
+            const addressLines = (buyerProfile.address || "123 Business Rd.\nCity, State 12345").split('\n');
+            let yAddr = 20;
+            addressLines.forEach(line => {
+                doc.text(line, 45, yAddr);
+                yAddr += 4;
+            });
+            if (buyerProfile.contactPhone) {
+                doc.text(`Phone: ${buyerProfile.contactPhone}`, 45, yAddr);
+            }
 
-            const startY = 45;
+            // 3. PO Details (Top Right)
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(18);
+            doc.setTextColor(0, 51, 102); // Appleton Blue
+            doc.text("PURCHASE ORDER", pageWidth - 14, 15, { align: 'right' });
+            
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(9);
+            const poNum = `PO-${rfq.id.replace('RFQ-', '')}`;
+            const dateStr = new Date().toLocaleDateString();
+            
+            // Grid for PO Info
+            const headerInfoY = 22;
+            doc.text("PO No.:", 150, headerInfoY);
+            doc.text(poNum, pageWidth - 14, headerInfoY, { align: 'right' });
+            
+            doc.text("Date:", 150, headerInfoY + 5);
+            doc.text(dateStr, pageWidth - 14, headerInfoY + 5, { align: 'right' });
+            
+            doc.text("Page:", 150, headerInfoY + 10);
+            doc.text("1", pageWidth - 14, headerInfoY + 10, { align: 'right' });
+
+            // --- VENDOR & SHIP TO SECTION ---
+            const sectionY = 45;
+            
+            // Vendor (Left)
+            doc.setFontSize(8);
+            doc.text("Vendor:", 14, sectionY - 3);
+            doc.setFont("helvetica", "bold");
             doc.setFontSize(10);
-            doc.text("VENDOR:", 14, startY);
-            doc.text(winningQuote.supplierName, 14, startY + 5);
+            doc.text(winningQuote.supplierName.toUpperCase(), 14, sectionY + 2);
             
-            doc.text("DELIVERY TO:", 110, startY);
-            doc.text(rfq.commercial.destination || "See Below", 110, startY + 5);
-            
-            doc.text("Project Ref:", 14, startY + 25);
-            doc.text(rfq.project_name || "N/A", 35, startY + 25);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9);
+            // Simulate vendor address if not present
+            doc.text("Vendor Address Line 1", 14, sectionY + 7);
+            doc.text("City, State, Zip", 14, sectionY + 11);
+            doc.text(`Phone: ${winningQuote.phone || "N/A"}`, 14, sectionY + 20);
 
+            // Bill To / Ship To (Right)
+            const rightColX = 110;
+            doc.setFontSize(8);
+            doc.text("Bill To:", rightColX, sectionY - 3);
+            doc.setFont("helvetica", "bold");
+            doc.text(companyName.toUpperCase(), rightColX, sectionY + 2);
+            
+            doc.setFont("helvetica", "normal");
+            const billAddr = buyerProfile.address.split('\n');
+            let billY = sectionY + 6;
+            billAddr.forEach(l => {
+                doc.text(l, rightColX, billY);
+                billY += 4;
+            });
+
+            // Ship To (Below Bill To)
+            const shipToY = billY + 6;
+            doc.setFontSize(8);
+            doc.text("Ship To:", rightColX, shipToY - 3);
+            doc.setFont("helvetica", "bold");
+            // Assuming Ship To same as Bill To or Destination from RFQ
+            const dest = rfq.commercial.destination || companyName;
+            doc.text(dest.toUpperCase(), rightColX, shipToY + 2);
+            // If just a city name, maybe add address placeholder
+            if (!dest.includes('\n') && !dest.includes(',')) {
+                 doc.setFont("helvetica", "normal");
+                 doc.text("Job Site Receiving", rightColX, shipToY + 6);
+                 doc.text(dest, rightColX, shipToY + 10);
+            }
+
+            // --- INFO STRIP (Middle) ---
+            const stripY = sectionY + 45;
+            
+            // Draw Lines
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(0.1);
+            doc.line(14, stripY, pageWidth - 14, stripY);
+            doc.line(14, stripY + 9, pageWidth - 14, stripY + 9);
+
+            // Fields
+            const fields = [
+                { label: "Buyer", val: buyerProfile.companyName.split(' ')[0] || "Purchasing" },
+                { label: "Due Date", val: rfq.line_items[0]?.required_delivery_date || "ASAP" },
+                { label: "Terms", val: winningQuote.payment || "Net 30" },
+                { label: "Ship Via", val: "Best Way" },
+                { label: "FOB", val: rfq.commercial.incoterm || "Origin" },
+                { label: "Reference", val: winningQuote.id }
+            ];
+
+            let xPos = 14;
+            const fieldWidth = (pageWidth - 28) / fields.length;
+            
+            fields.forEach((field) => {
+                doc.setFontSize(8);
+                doc.setFont("helvetica", "normal");
+                doc.text(field.label, xPos + 1, stripY + 3);
+                doc.setFont("helvetica", "bold");
+                doc.text(field.val, xPos + 1, stripY + 7);
+                xPos += fieldWidth;
+            });
+
+            // --- ITEMS TABLE ---
             const tableBody = rfq.line_items.map(item => {
                 const quoteItem = winningQuote.items.find(qi => qi.line === item.line);
                 const unitPrice = quoteItem?.unitPrice || 0;
                 const lineTotal = (quoteItem?.unitPrice || 0) * (item.quantity || 0);
                 
+                // Construct Description with specs
+                let desc = item.description;
+                if (item.size.outer_diameter.value) desc += `\n${item.size.outer_diameter.value}"`;
+                if (item.material_grade) desc += ` ${item.material_grade}`;
+                if (item.product_type) desc = `${item.product_type.toUpperCase()} - ${desc}`;
+
                 return [
-                    `${item.description} \n${item.product_type || ''} ${item.material_grade || ''}`,
-                    item.size.outer_diameter.value?.toString() || '-',
+                    item.line.toString(),
                     item.quantity?.toString() || '0',
-                    item.uom || 'pcs',
+                    item.uom || 'EA',
+                    desc,
                     `${winningQuote.currency} ${unitPrice.toFixed(2)}`,
                     `${winningQuote.currency} ${lineTotal.toFixed(2)}`
                 ];
             });
 
-            // Safer invocation for jspdf-autotable
             // @ts-ignore
-            if (typeof doc.autoTable === 'function') {
-                 // @ts-ignore
-                 doc.autoTable({
-                    startY: startY + 30,
-                    head: [['Description', 'OD', 'Qty', 'UOM', 'Unit Price', 'Amount']],
-                    body: tableBody,
-                    theme: 'grid',
-                    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1 },
-                    styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, valign: 'middle' },
-                });
-            } else {
-                try {
-                    autoTable(doc, {
-                        startY: startY + 30,
-                        head: [['Description', 'OD', 'Qty', 'UOM', 'Unit Price', 'Amount']],
-                        body: tableBody,
-                        theme: 'grid',
-                        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.1 },
-                        styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, valign: 'middle' },
-                    });
-                } catch(e) {
-                    console.error("Autotable fail", e);
+            doc.autoTable({
+                startY: stripY + 15,
+                head: [['Ln#', 'Qty', 'Unit', 'Description', 'Cost', 'Extension']],
+                body: tableBody,
+                theme: 'plain',
+                headStyles: { 
+                    fillColor: [0, 51, 102], // #003366 Dark Blue
+                    textColor: [255, 255, 255], 
+                    fontStyle: 'bold', 
+                    fontSize: 9,
+                    halign: 'left'
+                },
+                styles: { 
+                    fontSize: 9, 
+                    cellPadding: 3, 
+                    lineColor: [255, 255, 255], 
+                    lineWidth: 0, 
+                    valign: 'top' 
+                },
+                columnStyles: {
+                    0: { cellWidth: 15 },
+                    1: { cellWidth: 20 },
+                    2: { cellWidth: 20 },
+                    3: { cellWidth: 'auto' }, // Description
+                    4: { cellWidth: 30, halign: 'right' },
+                    5: { cellWidth: 30, halign: 'right' }
+                },
+                alternateRowStyles: {
+                    fillColor: [245, 245, 245]
                 }
-            }
+            });
 
+            // --- FOOTER ---
             // @ts-ignore
-            let finalY = (doc as any).lastAutoTable?.finalY || startY + 100;
+            let finalY = (doc as any).lastAutoTable?.finalY || 150;
+            
+            // Total Line
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(0.1);
+            doc.line(14, finalY + 5, pageWidth - 14, finalY + 5);
+
             doc.setFontSize(10);
-            doc.text("TOTAL:", 140, finalY + 5);
-            doc.text(`${winningQuote.currency} ${winningQuote.total.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 170, finalY + 5, { align: 'right' });
+            doc.setFont("helvetica", "bold");
+            
+            // Total Units
+            const totalQty = rfq.line_items.reduce((acc, i) => acc + (i.quantity || 0), 0);
+            doc.text(`Total Units: ${totalQty.toFixed(2)}`, 14, finalY + 12);
+            
+            // Total Amount
+            doc.text(`Total Extension: ${winningQuote.currency} ${winningQuote.total.toLocaleString(undefined, {minimumFractionDigits: 2})}`, pageWidth - 14, finalY + 12, { align: 'right' });
+
+            // Signature Line
+            const sigY = finalY + 30;
+            doc.line(pageWidth / 2 - 40, sigY, pageWidth / 2 + 40, sigY);
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "normal");
+            doc.text("Authorized Signature", pageWidth / 2, sigY + 4, { align: 'center' });
 
             doc.save(`PO_${rfq.id}_${winningQuote.supplierName.replace(/\s+/g, '_')}.pdf`);
         } catch (e) {
@@ -807,6 +994,71 @@ Procurement Team`;
                 </div>
             </div>
 
+            {/* SETTINGS MODAL */}
+            {showSettingsModal && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center animate-in fade-in p-4">
+                    <div className="bg-white w-full max-w-lg rounded-2xl shadow-xl p-6 animate-in zoom-in-95">
+                        <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                            <h3 className="font-bold text-lg text-slate-900">Buyer Profile Settings</h3>
+                            <button onClick={() => setShowSettingsModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <div className="flex flex-col items-center mb-6">
+                                <div 
+                                    className="w-24 h-24 rounded-full border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer hover:border-brandOrange overflow-hidden bg-slate-50 relative group"
+                                    onClick={() => logoInputRef.current?.click()}
+                                >
+                                    {buyerProfile.logo ? (
+                                        <img src={buyerProfile.logo} alt="Company Logo" className="w-full h-full object-contain p-2" />
+                                    ) : (
+                                        <div className="text-center text-slate-400 group-hover:text-brandOrange">
+                                            <svg className="w-8 h-8 mx-auto mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                            <span className="text-[10px] font-bold uppercase">Upload Logo</span>
+                                        </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-bold">Change</div>
+                                </div>
+                                <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoSelect} />
+                                <p className="text-[10px] text-slate-400 mt-2">Used in PDF Header. Best: Square PNG.</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Company Name</label>
+                                <input 
+                                    className="w-full p-2 border border-slate-200 rounded-lg text-sm"
+                                    value={buyerProfile.companyName}
+                                    onChange={e => setBuyerProfile({...buyerProfile, companyName: e.target.value})}
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Address (For Header/Bill To)</label>
+                                <textarea 
+                                    className="w-full p-2 border border-slate-200 rounded-lg text-sm h-20 resize-none"
+                                    value={buyerProfile.address}
+                                    onChange={e => setBuyerProfile({...buyerProfile, address: e.target.value})}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Phone Contact</label>
+                                <input 
+                                    className="w-full p-2 border border-slate-200 rounded-lg text-sm"
+                                    value={buyerProfile.contactPhone}
+                                    onChange={e => setBuyerProfile({...buyerProfile, contactPhone: e.target.value})}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-8 flex justify-end gap-3">
+                            <button onClick={() => setShowSettingsModal(false)} className="px-4 py-2 text-slate-500 font-bold text-sm hover:bg-slate-50 rounded-lg">Cancel</button>
+                            <button onClick={handleSaveProfile} className="px-6 py-2 bg-slate-900 text-white font-bold text-sm rounded-lg hover:bg-slate-800">Save Profile</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* MAIN CONTENT WRAPPER */}
             <div className="flex flex-col lg:flex-row flex-1 lg:overflow-hidden gap-6 w-full lg:h-[calc(100vh-100px)]">
                 
@@ -821,11 +1073,11 @@ Procurement Team`;
                             <span className="truncate">{t(lang, 'nav_new_project')}</span>
                         </button>
                         <button 
-                            onClick={() => setIsSidebarOpen(false)}
-                            className="ml-2 p-2 rounded-lg hover:bg-slate-200 text-slate-500 hidden lg:block"
-                            title="Collapse Sidebar"
+                            onClick={() => setShowSettingsModal(true)}
+                            className="ml-2 p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 shadow-sm transition"
+                            title="Company Settings"
                         >
-                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         </button>
                      </div>
 

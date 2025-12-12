@@ -1,8 +1,9 @@
 
-import { Rfq, Quote } from '../types';
+import { Rfq, Quote, BuyerProfile } from '../types';
 
 const BUYER_RFQ_KEY = 'crontal_buyer_rfqs';
 const SUPPLIER_QUOTE_KEY = 'crontal_supplier_quotes';
+const BUYER_PROFILE_KEY = 'crontal_buyer_profile';
 
 // Initialize Broadcast Channel for Real-time Sync (Simulates Server WebSocket)
 const channel = new BroadcastChannel('crontal_sync_network');
@@ -26,6 +27,16 @@ export const storageService = {
     },
 
     // --- LOCAL STORAGE PERSISTENCE ---
+
+    // Buyer Profile (Logo, Address)
+    saveBuyerProfile: (profile: BuyerProfile) => {
+        localStorage.setItem(BUYER_PROFILE_KEY, JSON.stringify(profile));
+    },
+
+    getBuyerProfile: (): BuyerProfile | null => {
+        const str = localStorage.getItem(BUYER_PROFILE_KEY);
+        return str ? JSON.parse(str) : null;
+    },
 
     // Buyer Methods
     saveRfq: (rfq: Rfq) => {

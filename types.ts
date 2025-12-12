@@ -1,5 +1,6 @@
 
 
+
 export interface Dimension {
     value: number | null;
     unit: string | null;
@@ -160,6 +161,14 @@ export interface SupplierCandidate {
     name: string;
     role: 'buyer' | 'supplier'; // Added Role
     companyName?: string;       // Added Company
+  }
+
+  export interface BuyerProfile {
+    companyName: string;
+    address: string;
+    logo: string; // Base64
+    contactPhone?: string;
+    contactEmail?: string;
   }
   
   // Added INSIGHTS to ViewMode
