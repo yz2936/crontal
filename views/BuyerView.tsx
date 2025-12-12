@@ -666,10 +666,6 @@ Procurement Team`;
         setManualSupplierEmail('');
     };
 
-    const removeSupplier = (id: string) => {
-        setSuggestedSuppliers(prev => prev.filter(s => s.id !== id));
-    };
-
     const handleBroadcastRfq = async () => {
         const selected = suggestedSuppliers.filter(s => s.selected);
         if (selected.length === 0) return;
@@ -1854,7 +1850,7 @@ Procurement Team`;
 
                                             {/* Comparison Cards */}
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                                {quotes.map((quote, i) => {
+                                                {quotes.map((quote) => {
                                                     const isBestPrice = quote.id === getBestPriceId();
                                                     const isFastest = quote.id === getFastestLeadTimeId();
                                                     
@@ -1912,6 +1908,76 @@ Procurement Team`;
                                                     );
                                                 })}
                                             </div>
+
+                                            {/* Quote Detail Modal */}
+                                            {selectedQuoteForReview && (
+                                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+                                                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+                                                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                                            <div>
+                                                                <h3 className="font-bold text-lg text-slate-900">{selectedQuoteForReview.supplierName}</h3>
+                                                                <p className="text-xs text-slate-500">Reference: {selectedQuoteForReview.id}</p>
+                                                            </div>
+                                                            <button onClick={() => setSelectedQuoteForReview(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition">
+                                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                            </button>
+                                                        </div>
+                                                        <div className="p-6 overflow-y-auto">
+                                                            <table className="w-full text-sm text-left mb-6">
+                                                                <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
+                                                                    <tr>
+                                                                        <th className="px-4 py-2">Item</th>
+                                                                        <th className="px-4 py-2 text-right">Qty</th>
+                                                                        <th className="px-4 py-2 text-right">Unit Price</th>
+                                                                        <th className="px-4 py-2 text-right">Total</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-slate-100">
+                                                                    {selectedQuoteForReview.items.map((item, idx) => (
+                                                                        <tr key={idx}>
+                                                                            <td className="px-4 py-3">
+                                                                                <div className="font-medium text-slate-900">{item.rfqDescription || "Item"}</div>
+                                                                                {item.alternates && <div className="text-xs text-amber-600 mt-1">Note: {item.alternates}</div>}
+                                                                            </td>
+                                                                            <td className="px-4 py-3 text-right">{item.quantity}</td>
+                                                                            <td className="px-4 py-3 text-right">{selectedQuoteForReview.currency} {item.unitPrice?.toFixed(2)}</td>
+                                                                            <td className="px-4 py-3 text-right font-bold">{selectedQuoteForReview.currency} {item.lineTotal?.toFixed(2)}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                                <tfoot className="border-t border-slate-200 bg-slate-50 font-bold">
+                                                                    <tr>
+                                                                        <td colSpan={3} className="px-4 py-3 text-right">Grand Total</td>
+                                                                        <td className="px-4 py-3 text-right">{selectedQuoteForReview.currency} {selectedQuoteForReview.total.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                                    </tr>
+                                                                </tfoot>
+                                                            </table>
+                                                            
+                                                            <div className="grid grid-cols-2 gap-4 text-sm bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                                                <div>
+                                                                    <span className="block text-xs text-slate-400 uppercase">Payment Terms</span>
+                                                                    <span className="font-medium text-slate-700">{selectedQuoteForReview.payment}</span>
+                                                                </div>
+                                                                <div>
+                                                                    <span className="block text-xs text-slate-400 uppercase">Lead Time</span>
+                                                                    <span className="font-medium text-slate-700">{selectedQuoteForReview.leadTime} Days</span>
+                                                                </div>
+                                                                <div>
+                                                                    <span className="block text-xs text-slate-400 uppercase">Validity</span>
+                                                                    <span className="font-medium text-slate-700">{selectedQuoteForReview.validity}</span>
+                                                                </div>
+                                                                 <div className="col-span-2 border-t border-slate-200 pt-2 mt-2">
+                                                                    <span className="block text-xs text-slate-400 uppercase">Notes</span>
+                                                                    <p className="text-slate-600 italic">{selectedQuoteForReview.notes || "No additional notes."}</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                                                            <button onClick={() => setSelectedQuoteForReview(null)} className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100 transition">Close</button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
