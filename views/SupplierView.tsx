@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import LZString from 'lz-string';
 import { Rfq, Quote, Language, FileAttachment } from '../types';
@@ -17,6 +16,9 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
   const [moqs, setMoqs] = useState<Record<number, number>>({});
   const [alternates, setAlternates] = useState<Record<number, string>>({});
   
+  // Persist a draft ID to update the same record when saving multiple times
+  const [quoteId] = useState<string>(`QT-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
+
   const [formData, setFormData] = useState({
       supplierName: '',
       currency: 'USD',
@@ -31,6 +33,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
   const [viewMode, setViewMode] = useState<'active' | 'history'>('active');
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -110,10 +113,8 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
     });
   };
 
-  const handleSubmit = async () => {
-      if (!rfq) return;
-
-      setIsSending(true);
+  const constructQuote = async (): Promise<Quote | null> => {
+      if (!rfq) return null;
 
       // Process attachments
       const processedAttachments: FileAttachment[] = [];
@@ -126,11 +127,8 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
           }
       }
 
-      // Ensure Unique ID for every submission to allow multiple quotes for same RFQ
-      const uniqueId = `QT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-      const quote: Quote = {
-          id: uniqueId,
+      return {
+          id: quoteId,
           rfqId: rfq.id,
           projectName: rfq.project_name || "Untitled RFP",
           supplierName: formData.supplierName || "Unnamed Supplier",
@@ -155,6 +153,31 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
               alternates: alternates[item.line] || ""
           }))
       };
+  };
+
+  const handleSaveDraft = async () => {
+      setIsSaving(true);
+      const quote = await constructQuote();
+      if (quote) {
+          storageService.saveQuote(quote);
+          // Just update local history list without changing view
+          setQuoteHistory(storageService.getQuotes());
+          // Optional: Add a simple toast or indication
+          setTimeout(() => {
+              setIsSaving(false);
+              alert("Draft saved successfully! You can resume later.");
+          }, 500);
+      } else {
+          setIsSaving(false);
+      }
+  };
+
+  const handleSubmit = async () => {
+      if (!rfq) return;
+      setIsSending(true);
+
+      const quote = await constructQuote();
+      if (!quote) return;
 
       // 1. Save locally (Supplier's own record)
       const updatedHistory = storageService.saveQuote(quote);
@@ -365,7 +388,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                         <tr>
                                             <th className="px-4 py-3 w-12 text-center">#</th>
                                             <th className="px-4 py-3 min-w-[200px]">{t(lang, 'description')}</th>
-                                            <th className="px-4 py-3 w-32 text-center">{t(lang, 'size')}</th>
+                                            <th className="px-4 py-3 w-40 text-center">{t(lang, 'size')}</th>
                                             <th className="px-4 py-3 text-right w-24">{t(lang, 'qty')}</th>
                                             <th className="px-4 py-3 w-24 bg-blue-50/50 text-blue-800">{t(lang, 'moq')}</th>
                                             <th className="px-4 py-3 w-32 bg-blue-50/50 text-blue-800">{t(lang, 'unit_price')}</th>
@@ -386,8 +409,12 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-4 text-slate-600 text-xs text-center font-mono">
-                                                    {item.size.outer_diameter.value ? `${item.size.outer_diameter.value}` : '-'} x 
-                                                    {item.size.wall_thickness.value ? ` ${item.size.wall_thickness.value}` : ' -'}
+                                                    <div className="flex flex-col items-center gap-0.5">
+                                                        {item.size.outer_diameter.value && <span>OD: {item.size.outer_diameter.value} {item.size.outer_diameter.unit || ''}</span>}
+                                                        {item.size.wall_thickness.value && <span>WT: {item.size.wall_thickness.value} {item.size.wall_thickness.unit || ''}</span>}
+                                                        {item.size.length.value && <span>L: {item.size.length.value} {item.size.length.unit || ''}</span>}
+                                                        {(!item.size.outer_diameter.value && !item.size.wall_thickness.value && !item.size.length.value) && <span>-</span>}
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-4 text-right font-bold text-slate-700">{item.quantity} <span className="text-[10px] font-normal text-slate-400">{item.uom}</span></td>
                                                 
@@ -450,7 +477,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                             </select>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-3 gap-4">
                                         <div>
                                             <label className="block text-slate-500 mb-1 text-xs font-bold">{t(lang, 'lead_time')}</label>
                                             <input 
@@ -467,6 +494,15 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                                 placeholder="e.g. Net 30"
                                                 value={formData.payment}
                                                 onChange={e => setFormData({...formData, payment: e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-slate-500 mb-1 text-xs font-bold">Validity (Days)</label>
+                                            <input 
+                                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-brandOrange/20 focus:border-brandOrange outline-none transition" 
+                                                placeholder="e.g. 30"
+                                                value={formData.validity}
+                                                onChange={e => setFormData({...formData, validity: e.target.value})}
                                             />
                                         </div>
                                     </div>
@@ -513,18 +549,27 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                         {formData.currency} {calculateTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </div>
                                 </div>
-                                <button 
-                                    onClick={handleSubmit}
-                                    disabled={isSending}
-                                    className="bg-slate-900 text-white hover:bg-slate-800 px-8 py-3 rounded-xl font-bold transition shadow-lg shadow-slate-900/20 transform hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-                                >
-                                    {isSending ? (
-                                        <>
-                                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                                            Sending...
-                                        </>
-                                    ) : t(lang, 'submit_quote')}
-                                </button>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={handleSaveDraft}
+                                        disabled={isSaving || isSending}
+                                        className="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-6 py-3 rounded-xl font-bold transition flex items-center gap-2"
+                                    >
+                                        {isSaving ? 'Saving...' : 'Save Draft'}
+                                    </button>
+                                    <button 
+                                        onClick={handleSubmit}
+                                        disabled={isSending || isSaving}
+                                        className="bg-slate-900 text-white hover:bg-slate-800 px-8 py-3 rounded-xl font-bold transition shadow-lg shadow-slate-900/20 transform hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                                    >
+                                        {isSending ? (
+                                            <>
+                                                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                                Sending...
+                                            </>
+                                        ) : t(lang, 'submit_quote')}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

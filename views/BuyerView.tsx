@@ -14,6 +14,26 @@ interface BuyerViewProps {
     lang: Language;
 }
 
+// --- DROPDOWN OPTIONS ---
+const SHAPE_OPTIONS = [
+    "Pipe", "Tube", "Flange", "Elbow", "Tee", "Reducer", "Cap", "Nipple",
+    "Valve", "Gasket", "Bolt", "Nut", "Plate", "Beam", "Channel", "Angle", "Bar"
+];
+
+const GRADE_OPTIONS = [
+    "A106 Gr.B", "A333 Gr.6", "A53 Gr.B", "API 5L X42", "API 5L X52", "API 5L X60", "API 5L X65",
+    "A105N", "A350 LF2", "A182 F304/304L", "A182 F316/316L", "A182 F11", "A182 F22",
+    "A312 TP304/304L", "A312 TP316/316L", "A234 WPB", "A403 WP304/L", "A403 WP316/L",
+    "A193 B7", "A194 2H", "SS304", "SS316", "Duplex 2205", "Super Duplex 2507", "Alloy 20", "Inconel 625"
+];
+
+const STANDARD_OPTIONS = [
+    "ASME B16.5", "ASME B16.9", "ASME B16.11", "ASME B36.10", "ASME B36.19",
+    "API 5L", "API 600", "API 6D", "API 6A",
+    "ASTM A106", "ASTM A312", "ASTM A105", "ASTM A182",
+    "DIN", "JIS", "EN 1092-1", "NACE MR0175"
+];
+
 export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps) {
     const [inputText, setInputText] = useState('');
     const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -75,15 +95,16 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
 
     // Resizable Table Configuration - Initial State in Pixels
     const [tableConfig, setTableConfig] = useState<ColumnConfig[]>([
-        { id: 'line', label: '#', visible: true, width: 50 },
-        { id: 'product_type', label: t(lang, 'shape'), visible: true, width: 140 },
-        { id: 'description', label: t(lang, 'description'), visible: true, width: 320 },
-        { id: 'material_grade', label: t(lang, 'grade'), visible: true, width: 140 },
-        { id: 'tolerance', label: 'Rating/Sch', visible: true, width: 110 },
-        { id: 'od', label: t(lang, 'od'), visible: true, width: 100, isCustom: true }, 
-        { id: 'wt', label: t(lang, 'wt'), visible: true, width: 100, isCustom: true },
+        { id: 'line', label: '#', visible: true, width: 40 },
+        { id: 'product_type', label: t(lang, 'shape'), visible: true, width: 120 },
+        { id: 'description', label: t(lang, 'description'), visible: true, width: 280 },
+        { id: 'material_grade', label: t(lang, 'grade'), visible: true, width: 130 },
+        { id: 'standard_or_spec', label: 'Standard', visible: true, width: 130 }, // New Dropdown Column
+        { id: 'tolerance', label: 'Rating/Sch', visible: true, width: 100 },
+        { id: 'od', label: t(lang, 'od'), visible: true, width: 90, isCustom: true }, 
+        { id: 'wt', label: t(lang, 'wt'), visible: true, width: 90, isCustom: true },
         { id: 'quantity', label: t(lang, 'qty'), visible: true, width: 80 },
-        { id: 'uom', label: t(lang, 'uom'), visible: true, width: 70 },
+        { id: 'uom', label: t(lang, 'uom'), visible: true, width: 60 },
     ]);
 
     // Load drafts & profile on mount
@@ -962,6 +983,17 @@ Procurement Team`;
     return (
         <div className="flex flex-col lg:flex-row h-full min-h-screen gap-0 relative pb-20 lg:pb-0">
             
+            {/* DATALISTS FOR DROPDOWNS */}
+            <datalist id="shape-options">
+                {SHAPE_OPTIONS.map((opt, i) => <option key={i} value={opt} />)}
+            </datalist>
+            <datalist id="grade-options">
+                {GRADE_OPTIONS.map((opt, i) => <option key={i} value={opt} />)}
+            </datalist>
+            <datalist id="standard-options">
+                {STANDARD_OPTIONS.map((opt, i) => <option key={i} value={opt} />)}
+            </datalist>
+
             {/* TOP BAR: STEPS & NAVIGATION (MOBILE ONLY) */}
             <div className="flex items-center justify-between px-4 py-3 shrink-0 lg:absolute lg:top-0 lg:left-0 lg:w-full lg:z-10 lg:bg-slate-50 lg:hidden bg-white border-b border-slate-200">
                 <span className="font-bold text-slate-800 text-sm">{rfq ? rfq.project_name : 'New Project'}</span>
@@ -1741,7 +1773,7 @@ Procurement Team`;
                                                         <td className="px-2 py-3 text-center text-slate-300 text-xs">{idx + 1}</td>
                                                         {tableConfig.filter(c => c.visible).map((col) => (
                                                             <td key={col.id} className="px-3 py-2 border-r border-slate-50 last:border-0">
-                                                                {/* Custom Renderers for Dimensions */}
+                                                                {/* Custom Renderers for Dimensions & Datalists */}
                                                                 {col.id === 'od' ? (
                                                                     <div className="flex items-center gap-1">
                                                                         <input 
@@ -1768,6 +1800,37 @@ Procurement Team`;
                                                                     </div>
                                                                 ) : col.id === 'line' ? (
                                                                     <span className="text-xs text-slate-400 font-mono">{item.line}</span>
+                                                                ) : col.id === 'product_type' ? (
+                                                                    <input
+                                                                        list="shape-options"
+                                                                        id={`cell-product_type-${idx}`}
+                                                                        className="w-full bg-transparent outline-none text-xs text-slate-600 focus:text-blue-600 font-bold"
+                                                                        value={item.product_type || ''}
+                                                                        onChange={(e) => handleUpdateLineItem(idx, 'product_type', e.target.value)}
+                                                                        onKeyDown={(e) => handleKeyDown(e, 'product_type', idx)}
+                                                                        placeholder="Select..."
+                                                                    />
+                                                                ) : col.id === 'material_grade' ? (
+                                                                    <input
+                                                                        list="grade-options"
+                                                                        id={`cell-material_grade-${idx}`}
+                                                                        className="w-full bg-transparent outline-none text-xs text-blue-600 font-medium"
+                                                                        value={item.material_grade || ''}
+                                                                        onChange={(e) => handleUpdateLineItem(idx, 'material_grade', e.target.value)}
+                                                                        onKeyDown={(e) => handleKeyDown(e, 'material_grade', idx)}
+                                                                        placeholder="Select..."
+                                                                    />
+                                                                ) : col.id === 'standard_or_spec' ? (
+                                                                    <input
+                                                                        list="standard-options"
+                                                                        id={`cell-standard_or_spec-${idx}`}
+                                                                        className="w-full bg-transparent outline-none text-xs text-slate-600"
+                                                                        // @ts-ignore
+                                                                        value={item.standard_or_spec || ''}
+                                                                        onChange={(e) => handleUpdateLineItem(idx, 'standard_or_spec' as keyof LineItem, e.target.value)}
+                                                                        onKeyDown={(e) => handleKeyDown(e, 'standard_or_spec', idx)}
+                                                                        placeholder="-"
+                                                                    />
                                                                 ) : (
                                                                     <input 
                                                                         id={`cell-${col.id}-${idx}`}
