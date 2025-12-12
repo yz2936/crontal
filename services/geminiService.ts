@@ -284,14 +284,15 @@ export const findSuppliers = async (rfq: Rfq, filters: SupplierFilters): Promise
     
     // 1. Region Logic
     if (filters.region && filters.region !== "Global") {
-        strategy += `- REGION: STRICTLY search for suppliers with facilities in ${filters.region.toUpperCase()}. Prioritize local presence.\n`;
+        strategy += `- REGION CONSTRAINT: STRICTLY search for suppliers with facilities in ${filters.region.toUpperCase()}. Prioritize local presence.\n`;
     } else {
         strategy += `- REGION: Global Best Value (Balance Logistics vs Cost).\n`;
     }
 
     // 2. Type Logic
     if (filters.types && filters.types.length > 0) {
-        strategy += `- SUPPLIER TYPE: Prioritize ${filters.types.join(' or ')}.\n`;
+        strategy += `- SUPPLIER TYPE: Prioritize ${filters.types.join(' or ')}. \n`;
+        if (filters.types.includes("Manufacturer")) strategy += "  * NOTE: Avoid traders if 'Manufacturer' is selected.\n";
     }
 
     // 3. Certifications
@@ -317,8 +318,9 @@ export const findSuppliers = async (rfq: Rfq, filters: SupplierFilters): Promise
             "name": "Supplier Name",
             "website": "URL or N/A",
             "location": "City, Country",
-            "match_reason": "Brief reason why they are a fit",
+            "match_reason": "Brief reason why they are a fit based on the specific items (e.g. 'Specializes in Heavy Wall Pipe')",
             "rationale": "Strategic reason for selection based on filters",
+            "email": "General sales email if found publicly, otherwise null",
             "tags": ["Tag1", "Tag2"] // e.g. "ISO 9001", "Manufacturer", "USA"
           }
         ]
@@ -343,6 +345,7 @@ export const findSuppliers = async (rfq: Rfq, filters: SupplierFilters): Promise
             location: s.location,
             match_reason: s.match_reason,
             rationale: s.rationale,
+            email: s.email || '',
             tags: s.tags || [],
             selected: true, // Select by default
             contacts: []    // Initialize empty contacts array for buyer input

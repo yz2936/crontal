@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Rfq, Quote, Language, ColumnConfig, LineItem, FileAttachment, ChatMessage, RiskAnalysisItem, SupplierCandidate, SupplierFilters, BuyerProfile } from '../types';
 import { parseRequest, analyzeRfqRisks, auditRfqSpecs, findSuppliers } from '../services/geminiService';
@@ -6,7 +5,7 @@ import { storageService } from '../services/storageService';
 import { t } from '../utils/i18n';
 import LZString from 'lz-string';
 import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import 'jspdf-autotable';
 
 interface BuyerViewProps {
     rfq: Rfq | null;
@@ -27,7 +26,7 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     // Navigation & View State
     const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-    const [isChatOpen, setIsChatOpen] = useState(true); // New state to collapse chat
+    const [isChatOpen, setIsChatOpen] = useState(true);
     const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
     const [savedRfqs, setSavedRfqs] = useState<Rfq[]>([]);
     
@@ -59,18 +58,17 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     });
 
     const [suggestedSuppliers, setSuggestedSuppliers] = useState<SupplierCandidate[]>([]);
+    const [manualSupplierName, setManualSupplierName] = useState('');
     const [manualSupplierEmail, setManualSupplierEmail] = useState('');
     const [emailDraft, setEmailDraft] = useState<string>('');
     const [isBroadcasting, setIsBroadcasting] = useState(false);
     const [broadcastComplete, setBroadcastComplete] = useState(false);
+    const [linkCopied, setLinkCopied] = useState(false);
     
     // Comparison State
     const [comparisonView, setComparisonView] = useState<'matrix' | 'items'>('matrix');
     const [selectedQuoteForReview, setSelectedQuoteForReview] = useState<Quote | null>(null);
     
-    // Contact Management (Temporary input state per supplier id)
-    const [contactInputs, setContactInputs] = useState<Record<string, string>>({});
-
     // UI State
     const [isHeaderInfoOpen, setIsHeaderInfoOpen] = useState(true); 
     const prevItemCount = useRef(0);
@@ -95,12 +93,15 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
         if (savedProfile) {
             setBuyerProfile(savedProfile);
         }
-        // On mobile, default sidebar to closed
-        if (window.innerWidth < 1024) {
-            setIsSidebarOpen(false);
-            setIsChatOpen(false);
-        }
     }, [rfq]); 
+
+    // Sync currentStep with RFQ state to prevent blank screens
+    useEffect(() => {
+        if (rfq && currentStep === 1) {
+            // If we have an RFQ but are in "Dashboard" state (1), force move to "Review" (2)
+            setCurrentStep(2);
+        }
+    }, [rfq, currentStep]);
 
     // Auto-switch to Comparison Step if Quotes exist (e.g. after import)
     useEffect(() => {
@@ -112,9 +113,8 @@ export default function BuyerView({ rfq, setRfq, quotes, lang }: BuyerViewProps)
     // Auto-populate Email Draft when entering Broadcast step
     useEffect(() => {
         if (sourcingStep === 3 && rfq) {
-            // Only regenerate if empty to avoid overwriting user edits if they step back and forth
+            const link = generateRfqLink();
             if (!emailDraft.trim()) {
-                const link = generateRfqLink();
                 const defaultBody = `Subject: RFQ - ${rfq.project_name}
 
 To: [Supplier Contact]
@@ -604,10 +604,10 @@ Procurement Team`;
 
     const handleOpenSourcingModal = () => {
         if (!rfq) return;
-        // Don't generate draft here, do it when stepping into step 3 or user requests
         setEmailDraft(''); 
         setSourcingStep(1); 
-        setSuggestedSuppliers([]); 
+        // Do not reset suggestedSuppliers if they exist, to persist previous search
+        if(suggestedSuppliers.length === 0) setSuggestedSuppliers([]); 
         setShowShareModal(true);
         setBroadcastComplete(false);
     };
@@ -628,7 +628,11 @@ Procurement Team`;
         setIsSourcing(true);
         try {
             const results = await findSuppliers(rfq, sourcingFilters);
-            setSuggestedSuppliers(results);
+            setSuggestedSuppliers(prev => {
+                // Keep manual entries when adding search results
+                const manualEntries = prev.filter(s => s.tags?.includes('Manual'));
+                return [...manualEntries, ...results];
+            });
         } catch (e) {
             console.error("Failed to find suppliers", e);
         } finally {
@@ -640,44 +644,30 @@ Procurement Team`;
         setSuggestedSuppliers(prev => prev.map(s => s.id === id ? { ...s, selected: !s.selected } : s));
     };
 
-    const handleAddContact = (supplierId: string) => {
-        const contact = contactInputs[supplierId]?.trim();
-        if (!contact) return;
-        
-        setSuggestedSuppliers(prev => prev.map(s => {
-            if (s.id === supplierId) {
-                return { ...s, contacts: [...(s.contacts || []), contact] };
-            }
-            return s;
-        }));
-        setContactInputs(prev => ({ ...prev, [supplierId]: '' }));
-    };
-
-    const handleRemoveContact = (supplierId: string, contactIndex: number) => {
-        setSuggestedSuppliers(prev => prev.map(s => {
-            if (s.id === supplierId) {
-                const newContacts = [...(s.contacts || [])];
-                newContacts.splice(contactIndex, 1);
-                return { ...s, contacts: newContacts };
-            }
-            return s;
-        }));
+    const updateSupplierEmail = (id: string, email: string) => {
+        setSuggestedSuppliers(prev => prev.map(s => s.id === id ? { ...s, email: email } : s));
     };
 
     const handleAddManualSupplier = () => {
-        if (!manualSupplierEmail) return;
+        if (!manualSupplierName || !manualSupplierEmail) return;
         const newSup: SupplierCandidate = {
             id: `MANUAL-${Date.now()}`,
-            name: "Manual Contact",
+            name: manualSupplierName,
             email: manualSupplierEmail,
             contacts: [manualSupplierEmail],
-            match_reason: "Manually added by user",
+            match_reason: "Manually added by buyer",
             selected: true,
-            location: "N/A",
-            sendStatus: 'idle'
+            location: "Custom",
+            sendStatus: 'idle',
+            tags: ['Manual']
         };
         setSuggestedSuppliers(prev => [...prev, newSup]);
+        setManualSupplierName('');
         setManualSupplierEmail('');
+    };
+
+    const removeSupplier = (id: string) => {
+        setSuggestedSuppliers(prev => prev.filter(s => s.id !== id));
     };
 
     const handleBroadcastRfq = async () => {
@@ -700,8 +690,6 @@ Procurement Team`;
         setIsBroadcasting(false);
         setBroadcastComplete(true);
         
-        // No longer set email draft here as it's done before sending
-
         if (rfq) {
             setRfq({ ...rfq, status: 'sent', invited_suppliers: selected }); 
             storageService.saveRfq({ ...rfq, status: 'sent', invited_suppliers: selected });
@@ -909,8 +897,8 @@ Procurement Team`;
                 ];
             });
 
-            // @ts-ignore
-            doc.autoTable({
+            // Reverted to prototype usage for compatibility
+            (doc as any).autoTable({
                 startY: stripY + 15,
                 head: [['Ln#', 'Qty', 'Unit', 'Description', 'Cost', 'Extension']],
                 body: tableBody,
@@ -1186,7 +1174,7 @@ Procurement Team`;
                                 <div className="border-b border-slate-100 bg-white px-6 py-3 flex justify-between items-center shadow-sm z-10 shrink-0">
                                     <h2 className="text-xl font-bold text-slate-900 flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-full bg-brandOrange/10 flex items-center justify-center text-brandOrange">
-                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                                         </div>
                                         <div>
                                             <span className="block leading-none">Distribute RFQ</span>
@@ -1222,139 +1210,128 @@ Procurement Team`;
 
                                 {/* Main Content Area */}
                                 <div className="flex-1 overflow-hidden flex bg-slate-50/30">
-                                    
-                                    {/* STEP 1: DISCOVER */}
+                                    {/* ... STEP 1: DISCOVER ... */}
                                     {sourcingStep === 1 && (
                                         <div className="flex-1 flex flex-col md:flex-row h-full animate-in fade-in slide-in-from-right-4 duration-300">
-                                            
-                                            {/* Left: Enhanced Filters */}
-                                            <div className="w-full md:w-80 bg-white border-r border-slate-200 p-6 overflow-y-auto shrink-0">
-                                                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-6">Discovery Filters</h3>
-                                                
-                                                <div className="space-y-6">
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Target Region</label>
-                                                        <select 
-                                                            value={sourcingFilters.region} 
-                                                            onChange={(e) => setSourcingFilters({...sourcingFilters, region: e.target.value})} 
-                                                            className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-brandOrange/20 focus:border-brandOrange outline-none transition font-medium text-sm"
-                                                        >
-                                                            <option value="">Global (AI Best Value)</option>
-                                                            <option value="USA">USA / North America</option>
-                                                            <option value="Europe">Europe</option>
-                                                            <option value="Asia">Asia (LCC)</option>
-                                                            <option value="Middle East">Middle East</option>
-                                                        </select>
-                                                    </div>
-
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Supplier Type</label>
-                                                        <div className="space-y-2">
-                                                            {['Manufacturer', 'Stockist / Distributor', 'Machine Shop'].map(type => (
-                                                                <label key={type} className="flex items-center gap-2 cursor-pointer group">
-                                                                    <input 
-                                                                        type="checkbox" 
-                                                                        checked={sourcingFilters.types.includes(type)}
-                                                                        onChange={() => toggleFilter('types', type)}
-                                                                        className="w-4 h-4 rounded border-slate-300 text-brandOrange focus:ring-brandOrange"
-                                                                    />
-                                                                    <span className="text-sm text-slate-700 group-hover:text-brandOrange transition-colors">{type}</span>
-                                                                </label>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-
-                                                    <div>
-                                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Certifications</label>
-                                                        <div className="space-y-2">
-                                                            {['ISO 9001', 'API 5L', 'ASME Stamp', 'PED 2014/68/EU'].map(cert => (
-                                                                <label key={cert} className="flex items-center gap-2 cursor-pointer group">
-                                                                    <input 
-                                                                        type="checkbox" 
-                                                                        checked={sourcingFilters.certs.includes(cert)}
-                                                                        onChange={() => toggleFilter('certs', cert)}
-                                                                        className="w-4 h-4 rounded border-slate-300 text-brandOrange focus:ring-brandOrange"
-                                                                    />
-                                                                    <span className="text-sm text-slate-700 group-hover:text-brandOrange transition-colors">{cert}</span>
-                                                                </label>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-
-                                                    <button 
-                                                        onClick={handleFindSuppliers} 
-                                                        disabled={isSourcing}
-                                                        className="w-full h-12 bg-slate-900 text-white rounded-xl font-bold shadow-lg hover:bg-slate-800 transition flex items-center justify-center gap-2 disabled:opacity-70 mt-4"
-                                                    >
-                                                        {isSourcing ? (
-                                                            <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> Scouting...</>
-                                                        ) : (
-                                                            <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> Find Suppliers</>
-                                                        )}
-                                                    </button>
+                                            {/* Filters Panel */}
+                                            <div className="w-full md:w-80 bg-white border-r border-slate-200 p-6 overflow-y-auto shrink-0 flex flex-col gap-6">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Target Region</label>
+                                                    <select value={sourcingFilters.region} onChange={(e) => setSourcingFilters({...sourcingFilters, region: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 text-sm">
+                                                        <option value="">Global</option>
+                                                        <option value="USA">North America</option>
+                                                        <option value="Europe">Europe</option>
+                                                        <option value="Asia">Asia</option>
+                                                        <option value="Middle East">Middle East</option>
+                                                    </select>
                                                 </div>
-                                                
-                                                {/* Manual Add Small */}
-                                                <div className="mt-8 pt-6 border-t border-slate-100">
-                                                    <p className="text-xs text-slate-400 mb-2">Know someone?</p>
-                                                    <div className="flex gap-2">
+
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-3">Supplier Type</label>
+                                                    <div className="space-y-2">
+                                                        {['Manufacturer', 'Stockist', 'Distributor'].map(type => (
+                                                            <label key={type} className="flex items-center gap-3 cursor-pointer group">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={sourcingFilters.types.includes(type)}
+                                                                    onChange={() => toggleFilter('types', type)}
+                                                                    className="w-4 h-4 rounded border-slate-300 text-brandOrange focus:ring-brandOrange cursor-pointer"
+                                                                />
+                                                                <span className="text-sm text-slate-600 group-hover:text-slate-900 transition">{type}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-3">Required Certs</label>
+                                                    <div className="space-y-2">
+                                                        {['ISO 9001', 'API 5L', 'ASME', 'NACE'].map(cert => (
+                                                            <label key={cert} className="flex items-center gap-3 cursor-pointer group">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={sourcingFilters.certs.includes(cert)}
+                                                                    onChange={() => toggleFilter('certs', cert)}
+                                                                    className="w-4 h-4 rounded border-slate-300 text-brandOrange focus:ring-brandOrange cursor-pointer"
+                                                                />
+                                                                <span className="text-sm text-slate-600 group-hover:text-slate-900 transition">{cert}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* NEW: Manual Add Section */}
+                                                <div className="pt-6 border-t border-slate-100">
+                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-3">Add Known Supplier</label>
+                                                    <div className="space-y-2">
                                                         <input 
-                                                            type="text" 
-                                                            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-brandOrange"
-                                                            placeholder="supplier@email.com"
-                                                            value={manualSupplierEmail}
-                                                            onChange={(e) => setManualSupplierEmail(e.target.value)}
-                                                            onKeyDown={(e) => e.key === 'Enter' && handleAddManualSupplier()}
+                                                            placeholder="Supplier Name" 
+                                                            className="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brandOrange"
+                                                            value={manualSupplierName}
+                                                            onChange={e => setManualSupplierName(e.target.value)}
                                                         />
-                                                        <button onClick={handleAddManualSupplier} className="bg-slate-100 hover:bg-slate-200 text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center font-bold transition">+</button>
+                                                        <input 
+                                                            placeholder="Email Address" 
+                                                            className="w-full p-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-brandOrange"
+                                                            value={manualSupplierEmail}
+                                                            onChange={e => setManualSupplierEmail(e.target.value)}
+                                                        />
+                                                        <button 
+                                                            onClick={handleAddManualSupplier}
+                                                            disabled={!manualSupplierName || !manualSupplierEmail}
+                                                            className="w-full py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 disabled:opacity-50 transition flex items-center justify-center gap-1"
+                                                        >
+                                                            + Add to List
+                                                        </button>
                                                     </div>
                                                 </div>
+
+                                                <button onClick={handleFindSuppliers} disabled={isSourcing} className="mt-auto w-full h-12 bg-slate-900 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-slate-800 transition">
+                                                    {isSourcing ? (
+                                                        <>
+                                                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                                            Scouting...
+                                                        </>
+                                                    ) : 'Find Suppliers'}
+                                                </button>
                                             </div>
 
-                                            {/* Right: Results Grid */}
+                                            {/* Results Area */}
                                             <div className="flex-1 p-8 overflow-y-auto">
                                                 {suggestedSuppliers.length === 0 ? (
-                                                    <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                                                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-6 text-slate-300">
-                                                            <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                                                    <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center max-w-md mx-auto">
+                                                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                                                            <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                                                         </div>
-                                                        <p className="font-bold text-lg text-slate-600">Start Scouting</p>
-                                                        <p className="text-sm mt-2 max-w-xs text-center">Use the filters on the left to find AI-verified suppliers that match your project requirements.</p>
+                                                        <h3 className="font-bold text-slate-600 text-lg mb-2">Start Discovery</h3>
+                                                        <p className="text-sm">Configure your search filters on the left and let AI scout the best suppliers for your specific material needs.</p>
                                                     </div>
                                                 ) : (
                                                     <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
                                                         {suggestedSuppliers.map(s => (
-                                                            <div 
-                                                                key={s.id} 
-                                                                onClick={() => toggleSupplierSelection(s.id)} 
-                                                                className={`p-6 rounded-2xl border transition-all cursor-pointer group hover:shadow-lg relative overflow-hidden flex flex-col ${s.selected ? 'border-brandOrange bg-white shadow-lg shadow-orange-500/5 ring-1 ring-brandOrange' : 'border-slate-200 bg-white hover:border-slate-300'}`}
-                                                            >
-                                                                <div className="flex justify-between items-start mb-4">
-                                                                    <h3 className="font-bold text-lg text-slate-900 group-hover:text-brandOrange transition-colors line-clamp-1">{s.name}</h3>
-                                                                    <div className={`w-6 h-6 rounded-full border flex items-center justify-center transition-colors shrink-0 ${s.selected ? 'bg-brandOrange border-brandOrange text-white' : 'border-slate-300'}`}>
-                                                                        {s.selected && <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                                                            <div key={s.id} onClick={() => toggleSupplierSelection(s.id)} className={`p-5 rounded-2xl border cursor-pointer transition-all hover:shadow-md flex flex-col bg-white ${s.selected ? 'border-brandOrange ring-1 ring-brandOrange shadow-sm' : 'border-slate-200'}`}>
+                                                                <div className="flex justify-between items-start mb-3">
+                                                                    <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-lg font-bold text-slate-700">
+                                                                        {s.name.charAt(0)}
+                                                                    </div>
+                                                                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${s.selected ? 'bg-brandOrange border-brandOrange' : 'border-slate-300 bg-white'}`}>
+                                                                        {s.selected && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                                                                     </div>
                                                                 </div>
+                                                                <h3 className="font-bold text-slate-900 mb-1">{s.name}</h3>
+                                                                <p className="text-xs text-slate-500 mb-3 flex items-center gap-1">
+                                                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                                                    {s.location}
+                                                                </p>
                                                                 
-                                                                <div className="flex-1">
-                                                                    {s.location && <div className="text-sm text-slate-500 mb-1 flex items-center gap-1.5"><svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>{s.location}</div>}
-                                                                    
-                                                                    {s.website && s.website !== 'N/A' && (
-                                                                        <a href={s.website.startsWith('http') ? s.website : `https://${s.website}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1.5 mb-3 ml-0.5">
-                                                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                                                            {s.website}
-                                                                        </a>
-                                                                    )}
+                                                                <div className="flex flex-wrap gap-1 mb-4">
+                                                                    {s.tags?.map((tag, i) => (
+                                                                        <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] rounded font-bold uppercase tracking-wider">{tag}</span>
+                                                                    ))}
+                                                                </div>
 
-                                                                    <div className="flex flex-wrap gap-2 mb-4">
-                                                                        {s.tags?.map((tag, i) => (
-                                                                            <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200">{tag}</span>
-                                                                        ))}
-                                                                    </div>
-
-                                                                    <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 italic leading-relaxed">
-                                                                        "{s.match_reason}"
-                                                                    </div>
+                                                                <div className="mt-auto bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                                    <p className="text-[10px] text-slate-600 italic">"{s.match_reason}"</p>
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -1364,129 +1341,149 @@ Procurement Team`;
                                         </div>
                                     )}
 
-                                    {/* STEP 2: REVIEW */}
+                                    {/* ... STEP 2: REVIEW & CONTACTS ... */}
                                     {sourcingStep === 2 && (
-                                        <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-300 w-full p-8 overflow-y-auto">
-                                            <div className="max-w-4xl mx-auto w-full">
-                                                <h3 className="font-bold text-2xl text-slate-900 mb-2">Review Contacts</h3>
-                                                <p className="text-slate-500 mb-8">Ensure we have the correct email addresses for your selected suppliers.</p>
-                                                
-                                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                                                    <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-                                                        <span className="font-bold text-slate-700">{suggestedSuppliers.filter(s => s.selected).length} Recipients Selected</span>
-                                                    </div>
-                                                    <div className="divide-y divide-slate-100">
-                                                        {suggestedSuppliers.filter(s => s.selected).map(s => (
-                                                            <div key={s.id} className="p-6 flex flex-col md:flex-row gap-6 items-start md:items-center">
-                                                                <div className="flex-1">
-                                                                    <div className="font-bold text-lg text-slate-900">{s.name}</div>
-                                                                    <div className="text-sm text-slate-500">{s.location || "Location Unknown"}</div>
-                                                                </div>
-                                                                
-                                                                <div className="flex-1 w-full">
-                                                                    <div className="flex flex-wrap gap-2 mb-3">
-                                                                        {s.contacts && s.contacts.map((c, i) => (
-                                                                            <div key={i} className="bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1.5 rounded-full text-sm flex items-center gap-2 font-medium">
-                                                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                                                                                {c}
-                                                                                <button onClick={() => handleRemoveContact(s.id, i)} className="hover:text-blue-900 font-bold ml-1">×</button>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
+                                        <div className="flex-1 flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-300 p-8">
+                                            <div className="flex justify-between items-center mb-6">
+                                                <div>
+                                                    <h3 className="font-bold text-xl text-slate-900">Manage Distribution List</h3>
+                                                    <p className="text-sm text-slate-500">Verify contact emails before broadcasting. Add manual contacts if needed.</p>
+                                                </div>
+                                                <div className="bg-slate-100 px-3 py-1 rounded-lg text-sm font-bold text-slate-600">
+                                                    {suggestedSuppliers.filter(s => s.selected).length} Selected
+                                                </div>
+                                            </div>
 
-                                                                    <div className="flex gap-2">
+                                            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex-1 flex flex-col">
+                                                <div className="overflow-y-auto flex-1">
+                                                    <table className="w-full text-left">
+                                                        <thead className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                                            <tr>
+                                                                <th className="px-6 py-3 w-1/3">Supplier</th>
+                                                                <th className="px-6 py-3">Contact Email (Required)</th>
+                                                                <th className="px-6 py-3 w-20 text-center">Action</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                            {suggestedSuppliers.filter(s => s.selected).map(s => (
+                                                                <tr key={s.id} className="group hover:bg-slate-50/50">
+                                                                    <td className="px-6 py-4">
+                                                                        <div className="font-bold text-slate-900">{s.name}</div>
+                                                                        <div className="text-xs text-slate-400">{s.location}</div>
+                                                                    </td>
+                                                                    <td className="px-6 py-4">
                                                                         <input 
-                                                                            placeholder="Add contact email..." 
-                                                                            className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:border-brandOrange transition bg-slate-50 focus:bg-white" 
-                                                                            value={contactInputs[s.id] || ''} 
-                                                                            onChange={e => setContactInputs({...contactInputs, [s.id]: e.target.value})}
-                                                                            onKeyDown={(e) => {
-                                                                                if (e.key === 'Enter') handleAddContact(s.id);
-                                                                            }}
+                                                                            type="email" 
+                                                                            value={s.email || ''} 
+                                                                            onChange={(e) => updateSupplierEmail(s.id, e.target.value)}
+                                                                            placeholder="sales@company.com" 
+                                                                            className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 outline-none transition ${!s.email ? 'border-red-300 focus:ring-red-200 bg-red-50' : 'border-slate-300 focus:ring-brandOrange/20 focus:border-brandOrange'}`}
                                                                         />
-                                                                        <button onClick={() => handleAddContact(s.id)} className="bg-slate-900 text-white px-5 rounded-xl text-sm font-bold hover:bg-slate-800 transition">Add</button>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
+                                                                    </td>
+                                                                    <td className="px-6 py-4 text-center">
+                                                                        <button onClick={() => toggleSupplierSelection(s.id)} className="text-slate-400 hover:text-red-500 p-2 rounded hover:bg-red-50 transition">
+                                                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                            
+                                                            {/* Add Manual Row */}
+                                                            <tr className="bg-slate-50">
+                                                                <td className="px-6 py-3">
+                                                                    <input 
+                                                                        placeholder="New Supplier Name" 
+                                                                        className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-sm"
+                                                                        value={manualSupplierName}
+                                                                        onChange={e => setManualSupplierName(e.target.value)}
+                                                                    />
+                                                                </td>
+                                                                <td className="px-6 py-3">
+                                                                    <input 
+                                                                        placeholder="email@example.com" 
+                                                                        className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-sm"
+                                                                        value={manualSupplierEmail}
+                                                                        onChange={e => setManualSupplierEmail(e.target.value)}
+                                                                    />
+                                                                </td>
+                                                                <td className="px-6 py-3 text-center">
+                                                                    <button 
+                                                                        onClick={handleAddManualSupplier}
+                                                                        disabled={!manualSupplierName || !manualSupplierEmail}
+                                                                        className="text-xs font-bold bg-slate-900 text-white px-3 py-1.5 rounded hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                    >
+                                                                        Add
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 text-xs text-slate-500">
+                                                    Tip: If a supplier email is missing, the AI couldn't find a public contact. Please add it manually.
                                                 </div>
                                             </div>
                                         </div>
                                     )}
 
-                                    {/* STEP 3: BROADCAST */}
+                                    {/* ... STEP 3: BROADCAST ... */}
                                     {sourcingStep === 3 && (
-                                        <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-300 w-full overflow-hidden">
-                                            
+                                        <div className="flex flex-col h-full w-full p-8 animate-in fade-in slide-in-from-right-4 duration-300">
                                             {!isBroadcasting && !broadcastComplete ? (
-                                                <div className="flex flex-col h-full w-full max-w-5xl mx-auto px-6 py-4">
-                                                    <div className="shrink-0 mb-4 text-center">
-                                                        <h2 className="text-xl font-bold text-slate-900 mb-1">Ready to Broadcast</h2>
-                                                        <p className="text-sm text-slate-500">Sending to <span className="font-bold text-slate-900">{suggestedSuppliers.filter(s => s.selected).length} suppliers</span>.</p>
-                                                    </div>
-                                                    
-                                                    <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden mb-2">
-                                                        <div className="bg-slate-50 border-b border-slate-100 px-4 py-2 flex justify-between items-center shrink-0">
-                                                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Email Preview</label>
-                                                            <div className="flex gap-1">
-                                                                <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
-                                                                <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
-                                                                <div className="w-2.5 h-2.5 rounded-full bg-green-400"></div>
-                                                            </div>
+                                                <div className="flex flex-col h-full gap-6">
+                                                    {/* Secure Link Box */}
+                                                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 shadow-sm">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <h4 className="font-bold text-blue-900 text-sm uppercase tracking-wide">Secure RFQ Link</h4>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    navigator.clipboard.writeText(generateRfqLink());
+                                                                    setLinkCopied(true);
+                                                                    setTimeout(() => setLinkCopied(false), 2000);
+                                                                }}
+                                                                className={`text-xs font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5 ${linkCopied ? 'bg-green-500 text-white' : 'bg-white border border-blue-200 text-blue-700 hover:bg-blue-100'}`}
+                                                            >
+                                                                {linkCopied ? (
+                                                                    <>
+                                                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                                                        Copied!
+                                                                    </>
+                                                                ) : (
+                                                                    'Copy Link'
+                                                                )}
+                                                            </button>
                                                         </div>
-                                                        <textarea
-                                                            className="w-full flex-1 p-6 text-sm text-slate-700 font-mono focus:bg-white focus:outline-none resize-none leading-relaxed transition-all"
-                                                            value={emailDraft}
-                                                            onChange={(e) => setEmailDraft(e.target.value)}
-                                                            placeholder="Loading draft..."
+                                                        <div className="bg-white border border-blue-200 rounded p-3 text-xs text-slate-500 break-all font-mono max-h-20 overflow-y-auto">
+                                                            {generateRfqLink()}
+                                                        </div>
+                                                        <p className="text-[10px] text-blue-600/70 mt-2">This link contains the full RFQ package securely encoded. No login required for suppliers.</p>
+                                                    </div>
+
+                                                    <div className="flex-1 flex flex-col">
+                                                        <h3 className="font-bold text-lg mb-2 text-slate-900">Email Preview</h3>
+                                                        <textarea 
+                                                            className="flex-1 p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brandOrange/20 focus:border-brandOrange outline-none resize-none font-mono text-sm leading-relaxed" 
+                                                            value={emailDraft} 
+                                                            onChange={e => setEmailDraft(e.target.value)} 
                                                         />
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="w-full max-w-2xl mx-auto mt-12 bg-white rounded-2xl border border-slate-200 shadow-xl p-8">
-                                                    <div className="flex items-center justify-between mb-8">
-                                                        <h3 className="font-bold text-slate-900 text-xl">Transmission Status</h3>
-                                                        {broadcastComplete ? (
-                                                            <span className="text-xs font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full border border-green-100 flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full"></div>COMPLETE</span>
-                                                        ) : (
-                                                            <span className="text-xs font-bold text-brandOrange bg-orange-50 px-3 py-1 rounded-full border border-orange-100 animate-pulse flex items-center gap-2"><div className="w-2 h-2 bg-brandOrange rounded-full"></div>SENDING...</span>
-                                                        )}
-                                                    </div>
-                                                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-                                                        {suggestedSuppliers.filter(s => s.selected).map(s => (
-                                                            <div key={s.id} className="flex items-center justify-between p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition rounded-lg">
-                                                                <div className="flex items-center gap-4">
-                                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                                                                        s.sendStatus === 'sent' ? 'bg-green-100 text-green-600' : 
-                                                                        s.sendStatus === 'sending' ? 'bg-brandOrange text-white' : 
-                                                                        'bg-slate-100 text-slate-300'
-                                                                    }`}>
-                                                                        {s.sendStatus === 'sent' ? (
-                                                                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                                                        ) : s.sendStatus === 'sending' ? (
-                                                                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                                                                        ) : (
-                                                                            <span className="font-bold text-sm">●</span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div>
-                                                                        <div className={`font-bold ${s.sendStatus === 'sent' ? 'text-slate-900' : 'text-slate-500'}`}>{s.name}</div>
-                                                                        <div className="text-xs text-slate-400">{s.email || "Primary Contact"}</div>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="text-xs font-mono text-slate-400 font-bold uppercase tracking-wider">
-                                                                    {s.sendStatus === 'sent' ? 'SENT' : s.sendStatus === 'sending' ? 'TRANSMITTING...' : 'PENDING'}
-                                                                </div>
+                                                <div className="h-full flex flex-col items-center justify-center">
+                                                    {isBroadcasting ? (
+                                                        <div className="text-center">
+                                                            <div className="w-16 h-16 border-4 border-brandOrange/30 border-t-brandOrange rounded-full animate-spin mx-auto mb-6"></div>
+                                                            <h3 className="text-xl font-bold text-slate-900 mb-2">Broadcasting RFQ...</h3>
+                                                            <p className="text-slate-500">Sending secure links to {suggestedSuppliers.filter(s => s.selected).length} suppliers.</p>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-center animate-in zoom-in-95">
+                                                            <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
+                                                                <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                                                             </div>
-                                                        ))}
-                                                    </div>
-                                                    
-                                                    {broadcastComplete && (
-                                                        <div className="mt-8 pt-6 border-t border-slate-100 text-center animate-in fade-in slide-in-from-bottom-2">
-                                                            <div className="flex justify-center gap-4">
-                                                                <button onClick={() => setShowShareModal(false)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 transition shadow-lg">Return to Dashboard</button>
-                                                            </div>
+                                                            <h3 className="text-2xl font-bold text-slate-900 mb-2">Broadcast Complete</h3>
+                                                            <p className="text-slate-500 max-w-sm mx-auto mb-8">Your RFQ has been sent. Suppliers will submit quotes directly to this portal via the secure link.</p>
+                                                            <button onClick={() => setShowShareModal(false)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 transition">Return to Dashboard</button>
                                                         </div>
                                                     )}
                                                 </div>
@@ -1497,30 +1494,23 @@ Procurement Team`;
 
                                 {/* Footer Actions */}
                                 <div className="border-t border-slate-200 bg-white p-4 z-10 flex justify-between items-center shrink-0">
-                                    <button 
-                                        onClick={() => sourcingStep > 1 && setSourcingStep((sourcingStep - 1) as any)}
-                                        disabled={sourcingStep === 1 || isBroadcasting}
-                                        className={`text-slate-500 font-bold text-sm px-4 py-2 hover:bg-slate-50 rounded-lg transition ${sourcingStep === 1 ? 'invisible' : ''}`}
-                                    >
-                                        ← Back
-                                    </button>
-
+                                    <button onClick={() => sourcingStep > 1 && setSourcingStep((sourcingStep - 1) as any)} disabled={sourcingStep === 1 || isBroadcasting || broadcastComplete} className="text-slate-500 font-bold text-sm px-4 hover:text-slate-800 disabled:opacity-30">Back</button>
                                     {sourcingStep < 3 ? (
                                         <button 
-                                            onClick={() => setSourcingStep((sourcingStep + 1) as any)}
+                                            onClick={() => setSourcingStep((sourcingStep + 1) as any)} 
                                             disabled={suggestedSuppliers.filter(s => s.selected).length === 0}
-                                            className="bg-brandOrange text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-orange-500/20 hover:bg-orange-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                            className="bg-brandOrange text-white px-8 py-3 rounded-xl font-bold hover:bg-orange-600 transition shadow-lg shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            Next Step →
+                                            Next Step
                                         </button>
                                     ) : (
                                         !broadcastComplete && !isBroadcasting && (
                                             <button 
-                                                onClick={handleBroadcastRfq}
-                                                className="bg-green-600 text-white px-10 py-3 rounded-xl font-bold shadow-lg shadow-green-500/20 hover:bg-green-700 transition flex items-center gap-2"
+                                                onClick={handleBroadcastRfq} 
+                                                className="bg-green-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-green-700 transition shadow-lg shadow-green-500/20 flex items-center gap-2"
                                             >
-                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                                                Launch Broadcast
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                                                Send {suggestedSuppliers.filter(s => s.selected).length} Emails
                                             </button>
                                         )
                                     )}
@@ -1534,25 +1524,18 @@ Procurement Team`;
                         <div className="fixed inset-0 bg-white/95 z-[100] p-6 flex flex-col animate-in fade-in zoom-in-95 backdrop-blur-md">
                             <div className="w-full h-full max-w-5xl mx-auto flex flex-col">
                                 <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                                        <span className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 text-sm">⚠</span>
-                                        Risk Analysis Report
-                                    </h2>
-                                    <button onClick={() => setShowRiskModal(false)} className="text-slate-400 hover:text-slate-600 bg-slate-100 p-2 rounded-full transition">×</button>
+                                    <h2 className="text-xl font-bold text-slate-900">Risk Analysis Report</h2>
+                                    <button onClick={() => setShowRiskModal(false)} className="text-slate-400 hover:text-slate-600 bg-slate-100 p-2 rounded-full">×</button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                                <div className="flex-1 overflow-y-auto space-y-4">
                                     {rfq.risks.map((risk, idx) => (
-                                        <div key={idx} className={`p-5 rounded-2xl border flex gap-4 transition-all hover:shadow-md ${risk.impact_level === 'High' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
-                                            <div className={`w-1.5 self-stretch rounded-full ${risk.impact_level === 'High' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
+                                        <div key={idx} className={`p-5 rounded-2xl border flex gap-4 ${risk.impact_level === 'High' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
                                             <div className="flex-1">
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <h3 className={`font-bold ${risk.impact_level === 'High' ? 'text-red-800' : 'text-amber-800'}`}>{risk.risk}</h3>
-                                                    <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded ${risk.impact_level === 'High' ? 'bg-red-200/50 text-red-700' : 'bg-amber-200/50 text-amber-700'}`}>{risk.category}</span>
-                                                </div>
-                                                <p className="text-sm text-slate-700 mb-4 leading-relaxed">{risk.recommendation}</p>
-                                                <div className="flex gap-3">
-                                                    <button onClick={() => handleMitigateRisk(risk, idx)} className="text-xs font-bold px-4 py-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition shadow-sm text-slate-700">Apply Fix</button>
-                                                    <button onClick={() => handleIgnoreRisk(idx)} className="text-xs text-slate-400 hover:text-slate-600 px-2 font-medium">Dismiss</button>
+                                                <h3 className="font-bold text-slate-900">{risk.risk}</h3>
+                                                <p className="text-sm text-slate-600 mt-1">{risk.recommendation}</p>
+                                                <div className="mt-3 flex gap-3">
+                                                    <button onClick={() => handleMitigateRisk(risk, idx)} className="text-xs font-bold px-3 py-1.5 bg-white border border-slate-200 rounded shadow-sm">Fix</button>
+                                                    <button onClick={() => handleIgnoreRisk(idx)} className="text-xs text-slate-400 px-2">Dismiss</button>
                                                 </div>
                                             </div>
                                         </div>
@@ -1561,68 +1544,10 @@ Procurement Team`;
                             </div>
                         </div>
                     )}
-
-                    {/* SUPPLIER DETAILS MODAL */}
-                    {selectedQuoteForReview && (
-                        <div className="fixed inset-0 z-[150] bg-black/20 backdrop-blur-sm flex justify-end animate-in fade-in">
-                            <div className="w-full max-w-md bg-white h-full shadow-2xl p-6 overflow-y-auto animate-in slide-in-from-right duration-300">
-                                <div className="flex justify-between items-start mb-6">
-                                    <div>
-                                        <h2 className="text-xl font-bold text-slate-900">{selectedQuoteForReview.supplierName}</h2>
-                                        <p className="text-sm text-slate-500">Quote Ref: {selectedQuoteForReview.id}</p>
-                                    </div>
-                                    <button onClick={() => setSelectedQuoteForReview(null)} className="p-2 hover:bg-slate-100 rounded-full">×</button>
-                                </div>
-                                
-                                <div className="space-y-6">
-                                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                                        <h3 className="text-xs font-bold uppercase text-slate-500 mb-3">Commercial Terms</h3>
-                                        <div className="space-y-2 text-sm">
-                                            <div className="flex justify-between"><span className="text-slate-600">Total:</span> <span className="font-bold text-slate-900">{selectedQuoteForReview.currency} {selectedQuoteForReview.total.toLocaleString()}</span></div>
-                                            <div className="flex justify-between"><span className="text-slate-600">Lead Time:</span> <span className="font-medium">{selectedQuoteForReview.leadTime} Days</span></div>
-                                            <div className="flex justify-between"><span className="text-slate-600">Payment:</span> <span className="font-medium">{selectedQuoteForReview.payment}</span></div>
-                                            <div className="flex justify-between"><span className="text-slate-600">Validity:</span> <span className="font-medium">{selectedQuoteForReview.validity}</span></div>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <h3 className="text-xs font-bold uppercase text-slate-500 mb-3">Notes</h3>
-                                        <p className="text-sm text-slate-700 bg-white border border-slate-200 p-3 rounded-lg leading-relaxed">
-                                            {selectedQuoteForReview.notes || "No notes provided."}
-                                        </p>
-                                    </div>
-
-                                    <div>
-                                        <h3 className="text-xs font-bold uppercase text-slate-500 mb-3">Attachments</h3>
-                                        {selectedQuoteForReview.attachments && selectedQuoteForReview.attachments.length > 0 ? (
-                                            <div className="space-y-2">
-                                                {selectedQuoteForReview.attachments.map((file, i) => (
-                                                    <div key={i} className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
-                                                        <div className="w-8 h-8 bg-red-50 text-red-500 rounded flex items-center justify-center font-bold text-[10px]">PDF</div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="text-sm font-medium truncate">{file.name || `Document ${i+1}`}</div>
-                                                            <div className="text-xs text-slate-400">{(file.data.length / 1024).toFixed(0)} KB</div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-sm text-slate-400 italic">No files attached.</p>
-                                        )}
-                                    </div>
-                                    
-                                    <div className="pt-6 border-t border-slate-100">
-                                        <button className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition">Contact Supplier</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
                     
                     {!rfq ? (
                         // STEP 1: EMPTY DASHBOARD
                         <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm p-4 lg:p-12 flex flex-col items-center justify-center animate-in fade-in">
-                            {/* ... (Dashboard Buttons) ... */}
                             <h2 className="text-2xl font-bold text-slate-900 mb-3">{t(lang, 'dashboard_title')}</h2>
                             <p className="text-slate-500 text-sm mb-12 text-center max-w-md leading-relaxed">Select an option below to initialize your procurement process.</p>
                             
@@ -1704,7 +1629,6 @@ Procurement Team`;
                                         {/* Collapsible Header Info */}
                                         {isHeaderInfoOpen && (
                                             <div id="commercial-section" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 animate-in slide-in-from-top-2 border-t border-slate-200 mt-2">
-                                                {/* ... (Existing Commercial Fields) ... */}
                                                 <div className="bg-white p-3 rounded-lg border border-slate-200 group hover:border-blue-300 transition-colors">
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1 group-hover:text-blue-500 transition-colors">Project Name</label>
                                                     <input 
@@ -1764,7 +1688,7 @@ Procurement Team`;
                                                                 onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, req_avl: e.target.checked}})}
                                                                 className="hidden"
                                                             />
-                                                            <span className="text-xs font-bold text-slate-700 group-hover:text-brandOrange transition-colors">AVL Restricted</span>
+                                                            <span className="text-xs font-bold text-slate-700 group-hover:text-brandOrange transition-colors">Approved Vendor List Only</span>
                                                         </label>
                                                         <label className="flex items-center gap-2 cursor-pointer group">
                                                             <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${rfq.commercial.req_tpi ? 'bg-brandOrange border-brandOrange' : 'border-slate-300 bg-white group-hover:border-brandOrange'}`}>
@@ -1778,386 +1702,223 @@ Procurement Team`;
                                                             />
                                                             <span className="text-xs font-bold text-slate-700 group-hover:text-brandOrange transition-colors">Third Party Inspection (TPI)</span>
                                                         </label>
+                                                        <div className="flex items-center gap-2 ml-auto">
+                                                            <label className="text-xs font-bold text-slate-500">Warranty (Months)</label>
+                                                            <input 
+                                                                type="number" 
+                                                                value={rfq.commercial.warranty_months}
+                                                                onChange={(e) => setRfq({...rfq, commercial: {...rfq.commercial, warranty_months: parseInt(e.target.value) || 0}})}
+                                                                className="w-16 p-1 text-center border border-slate-200 rounded text-xs font-bold focus:border-brandOrange outline-none"
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* Main Table (Same as before) */}
+                                    {/* Line Items Table */}
                                     <div className="flex-1 overflow-auto relative">
-                                        <table className="w-full text-left border-collapse min-w-[800px]">
-                                            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                                        <table className="w-full text-left border-collapse" style={{ minWidth: '1000px' }}>
+                                            <thead className="bg-slate-50 text-slate-500 font-bold text-[10px] uppercase tracking-wide border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                                                 <tr>
-                                                    {tableConfig.filter(c => c.visible).map(col => (
+                                                    <th className="w-10 px-2 py-3 text-center bg-slate-50"></th>
+                                                    {tableConfig.filter(c => c.visible).map((col) => (
                                                         <th 
                                                             key={col.id} 
-                                                            className="p-3 border-b border-r border-slate-200 last:border-r-0 whitespace-nowrap bg-slate-50 relative group select-none transition-colors"
-                                                            style={{ width: col.width, minWidth: col.width }}
+                                                            className="px-3 py-3 border-r border-slate-200 last:border-0 relative group bg-slate-50 select-none"
+                                                            style={{ width: col.width }}
                                                         >
                                                             {col.label}
                                                             <div 
-                                                                className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-brandOrange/50 group-hover:bg-slate-300 transition-colors z-10"
+                                                                className="absolute right-0 top-0 bottom-0 w-1 bg-transparent hover:bg-brandOrange cursor-col-resize z-20"
                                                                 onMouseDown={(e) => startResize(e, col.id)}
-                                                            />
+                                                            ></div>
                                                         </th>
                                                     ))}
-                                                    <th className="p-3 border-b border-slate-200 w-10"></th>
+                                                    <th className="px-3 py-3 bg-slate-50 w-20 text-center">Action</th>
                                                 </tr>
                                             </thead>
-                                            <tbody className="text-sm divide-y divide-slate-100">
+                                            <tbody className="divide-y divide-slate-100 bg-white">
                                                 {rfq.line_items.map((item, idx) => (
-                                                    <tr key={item.item_id} className="group hover:bg-blue-50/30 transition-colors odd:bg-white even:bg-slate-50/50">
-                                                        {/* ... (Existing Line Item Rows) ... */}
-                                                        {tableConfig.filter(c => c.visible).map(col => (
-                                                            <td key={col.id} className="p-0 border-r border-slate-100 last:border-r-0 relative">
-                                                                {col.id === 'line' ? (
-                                                                    <div className="p-2 text-center text-slate-400 font-mono text-xs select-none">{item.line}</div>
-                                                                ) : col.id === 'od' ? (
-                                                                    <div className="flex items-center h-full">
+                                                    <tr key={item.item_id} className="hover:bg-blue-50/30 transition-colors group">
+                                                        <td className="px-2 py-3 text-center text-slate-300 text-xs">{idx + 1}</td>
+                                                        {tableConfig.filter(c => c.visible).map((col) => (
+                                                            <td key={col.id} className="px-3 py-2 border-r border-slate-50 last:border-0">
+                                                                {/* Custom Renderers for Dimensions */}
+                                                                {col.id === 'od' ? (
+                                                                    <div className="flex items-center gap-1">
                                                                         <input 
-                                                                            className="w-full h-full px-3 py-2 bg-transparent outline-none focus:bg-white focus:ring-inset focus:ring-2 focus:ring-blue-500/20 text-slate-700 placeholder-slate-300 text-xs font-mono transition-all"
+                                                                            id={`cell-od-${idx}`}
+                                                                            className="w-full bg-transparent outline-none text-xs font-mono text-slate-600 focus:text-blue-600 font-medium"
                                                                             value={item.size.outer_diameter.value || ''}
+                                                                            placeholder="-"
                                                                             onChange={(e) => handleUpdateLineItem(idx, 'od', e.target.value)}
-                                                                            placeholder="OD"
+                                                                            onKeyDown={(e) => handleKeyDown(e, 'od', idx)}
                                                                         />
-                                                                        <span className="text-[10px] text-slate-400 px-1 select-none">{item.size.outer_diameter.unit}</span>
+                                                                        <span className="text-[10px] text-slate-400">{item.size.outer_diameter.unit || '"'}</span>
                                                                     </div>
                                                                 ) : col.id === 'wt' ? (
-                                                                    <div className="flex items-center h-full border-l border-dashed border-slate-200">
+                                                                    <div className="flex items-center gap-1">
                                                                         <input 
-                                                                            className="w-full h-full px-3 py-2 bg-transparent outline-none focus:bg-white focus:ring-inset focus:ring-2 focus:ring-blue-500/20 text-slate-700 placeholder-slate-300 text-xs font-mono transition-all"
+                                                                            id={`cell-wt-${idx}`}
+                                                                            className="w-full bg-transparent outline-none text-xs font-mono text-slate-600 focus:text-blue-600 font-medium"
                                                                             value={item.size.wall_thickness.value || ''}
+                                                                            placeholder="-"
                                                                             onChange={(e) => handleUpdateLineItem(idx, 'wt', e.target.value)}
-                                                                            placeholder="WT"
+                                                                            onKeyDown={(e) => handleKeyDown(e, 'wt', idx)}
                                                                         />
-                                                                        <span className="text-[10px] text-slate-400 px-1 select-none">{item.size.wall_thickness.unit}</span>
+                                                                        <span className="text-[10px] text-slate-400">{item.size.wall_thickness.unit || '"'}</span>
                                                                     </div>
+                                                                ) : col.id === 'line' ? (
+                                                                    <span className="text-xs text-slate-400 font-mono">{item.line}</span>
                                                                 ) : (
                                                                     <input 
                                                                         id={`cell-${col.id}-${idx}`}
-                                                                        className="w-full h-full px-3 py-3 bg-transparent outline-none focus:bg-white focus:ring-inset focus:ring-2 focus:ring-blue-500/20 transition-all text-slate-700 placeholder-slate-300 text-xs"
-                                                                        value={(item as any)[col.id] || ''}
+                                                                        className={`w-full bg-transparent outline-none text-xs ${col.id === 'description' ? 'font-bold text-slate-800' : 'text-slate-600'} focus:text-blue-600 transition-colors`}
+                                                                        // @ts-ignore
+                                                                        value={item[col.id]}
                                                                         onChange={(e) => handleUpdateLineItem(idx, col.id as keyof LineItem, e.target.value)}
                                                                         onKeyDown={(e) => handleKeyDown(e, col.id, idx)}
-                                                                        placeholder="-"
                                                                     />
                                                                 )}
                                                             </td>
                                                         ))}
-                                                        <td className="p-2 text-center">
-                                                            <button onClick={() => handleDeleteItem(idx)} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                        <td className="px-3 py-2 text-center">
+                                                            <button 
+                                                                onClick={() => handleDeleteItem(idx)}
+                                                                className="text-slate-300 hover:text-red-500 transition p-1 rounded hover:bg-red-50"
+                                                                title="Delete Item"
+                                                            >
                                                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                                             </button>
                                                         </td>
                                                     </tr>
                                                 ))}
+                                                
+                                                {/* Add Item Row */}
+                                                <tr>
+                                                    <td className="px-2 py-3 text-center text-slate-300 text-xs">+</td>
+                                                    <td colSpan={tableConfig.filter(c => c.visible).length + 1} className="px-3 py-2">
+                                                        <button 
+                                                            onClick={handleAddItem}
+                                                            className="text-xs font-bold text-slate-400 hover:text-blue-600 flex items-center gap-2 py-2 w-full transition"
+                                                        >
+                                                            <div className="w-5 h-5 rounded border border-slate-300 flex items-center justify-center text-slate-400">+</div>
+                                                            Add Line Item
+                                                        </button>
+                                                    </td>
+                                                </tr>
                                             </tbody>
                                         </table>
-                                        
-                                        <button onClick={handleAddItem} className="w-full p-4 text-slate-400 text-xs font-bold uppercase tracking-wide hover:bg-slate-50 hover:text-blue-600 transition border-t border-slate-100 flex items-center justify-center gap-2">
-                                            <div className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center">
-                                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" /></svg>
-                                            </div>
-                                            {t(lang, 'add_line_item')}
-                                        </button>
                                     </div>
-                                    
-                                    {quotes.length > 0 && (
-                                        <div className="p-4 border-t border-slate-200 bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] flex justify-between items-center animate-in slide-in-from-bottom-2 sticky bottom-0 z-20">
-                                            <div className="text-sm font-medium text-slate-600">
-                                                <span className="font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded mr-2">{quotes.length}</span> Quotes Received
-                                            </div>
-                                            <button 
-                                                onClick={() => setCurrentStep(3)}
-                                                className="bg-brandOrange text-white px-8 py-2.5 rounded-lg font-bold shadow-lg shadow-orange-500/20 hover:bg-orange-600 hover:-translate-y-0.5 transition flex items-center gap-2"
-                                            >
-                                                Compare Quotes →
-                                            </button>
-                                        </div>
-                                    )}
                                 </>
                             )}
 
-                            {/* --- STEP 3: COMPARE & EVALUATE (ENHANCED BID LEVELLING BOARD) --- */}
+                            {/* --- STEP 3: COMPARE & AWARD --- */}
                             {currentStep === 3 && (
-                                <div className="flex flex-col h-full bg-slate-50">
-                                    <div className="p-4 border-b border-slate-200 bg-white shadow-sm z-20">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <div>
-                                                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                                                    Bid Levelling Board
-                                                    <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${quotes.length > 0 ? 'text-blue-700 bg-blue-100' : 'text-amber-600 bg-amber-50'}`}>
-                                                        {quotes.length > 0 ? 'Reviewing Offers' : 'Awaiting Responses'}
-                                                    </span>
-                                                </h2>
-                                                <p className="text-xs text-slate-500 mt-1">Real-time analysis of incoming supplier data.</p>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => setComparisonView('matrix')} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${comparisonView === 'matrix' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Commercial Matrix</button>
-                                                <button onClick={() => setComparisonView('items')} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${comparisonView === 'items' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Line Item Details</button>
-                                                <button onClick={() => setCurrentStep(2)} className="ml-2 text-sm font-bold text-slate-400 hover:text-slate-600">← Back</button>
-                                            </div>
+                                <div className="flex-1 flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+                                    <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                        <div>
+                                            <h2 className="text-xl font-bold text-slate-900 mb-1">Bid Comparison Matrix</h2>
+                                            <p className="text-xs text-slate-500">Analyzing {quotes.length} received quotes against {rfq.line_items.length} line items.</p>
                                         </div>
-                                        
-                                        {/* TOP DASHBOARD METRICS */}
-                                        {quotes.length > 0 && (
-                                            <div className="grid grid-cols-4 gap-4 animate-in slide-in-from-top-2">
-                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Lowest Bid</div>
-                                                    <div className="text-lg font-bold text-green-600 flex items-center gap-2">
-                                                        {quotes.find(q => q.id === getBestPriceId())?.currency} {quotes.find(q => q.id === getBestPriceId())?.total.toLocaleString()}
-                                                        <span className="text-[10px] bg-green-100 px-1.5 py-0.5 rounded text-green-700">BEST</span>
-                                                    </div>
-                                                </div>
-                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Average Bid</div>
-                                                    <div className="text-lg font-bold text-slate-700">
-                                                        {(quotes.reduce((acc, curr) => acc + curr.total, 0) / quotes.length).toLocaleString(undefined, {maximumFractionDigits: 0})}
-                                                    </div>
-                                                </div>
-                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Fastest Lead Time</div>
-                                                    <div className="text-lg font-bold text-blue-600">
-                                                        {quotes.find(q => q.id === getFastestLeadTimeId())?.leadTime} Days
-                                                    </div>
-                                                </div>
-                                                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Response Rate</div>
-                                                    <div className="text-lg font-bold text-slate-700">
-                                                        {quotes.length} / {Math.max(quotes.length, (rfq.invited_suppliers?.length || 1))}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
+                                        <div className="flex gap-2 bg-slate-100 p-1 rounded-lg">
+                                            <button onClick={() => setComparisonView('matrix')} className={`px-4 py-2 rounded-md text-xs font-bold transition ${comparisonView === 'matrix' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}>Total Cost</button>
+                                            <button onClick={() => setComparisonView('items')} className={`px-4 py-2 rounded-md text-xs font-bold transition ${comparisonView === 'items' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}>Item Level</button>
+                                        </div>
+                                    </div>
 
-                                        {/* AI RECOMMENDATION BANNER */}
-                                        {quotes.length > 0 && (
-                                            <div className="mt-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl p-4 text-white shadow-lg flex items-center gap-4 animate-in fade-in">
-                                                <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
-                                                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                    {quotes.length === 0 ? (
+                                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-12">
+                                            <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                                                <svg className="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            </div>
+                                            <h3 className="text-lg font-bold text-slate-600 mb-2">Waiting for Bids</h3>
+                                            <p className="max-w-xs text-center text-sm mb-8">Share the RFQ link with suppliers. Their quotes will appear here automatically.</p>
+                                            <button onClick={handleOpenSourcingModal} className="text-brandOrange hover:underline font-bold text-sm">Resend Invitations</button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex-1 overflow-auto p-6 bg-slate-50/30">
+                                            
+                                            {/* AI Insight Box */}
+                                            <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-5 text-white mb-8 shadow-lg flex gap-4 items-start">
+                                                <div className="p-2 bg-white/10 rounded-lg">
+                                                    <svg className="w-6 h-6 text-brandOrange" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                                                 </div>
                                                 <div>
-                                                    <div className="text-[10px] font-bold uppercase tracking-wider opacity-80">AI Procurement Advisor</div>
-                                                    <div className="font-medium text-sm">{getRecommendation()}</div>
+                                                    <h4 className="font-bold text-sm uppercase tracking-wide text-slate-400 mb-1">AI Recommendation</h4>
+                                                    <p className="text-lg font-medium leading-relaxed">{getRecommendation()}</p>
                                                 </div>
                                             </div>
-                                        )}
-                                    </div>
-                                    
-                                    <div className="flex-1 overflow-auto p-4 md:p-6">
-                                        
-                                        {/* VIEW 0: WAITING ROOM (LIVE STATUS PORTAL) */}
-                                        {quotes.length === 0 && (
-                                            <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
-                                                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6 relative">
-                                                    <div className="absolute inset-0 rounded-full border-4 border-slate-100 animate-ping opacity-50"></div>
-                                                    <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                </div>
-                                                <h3 className="text-2xl font-bold text-slate-900 mb-2">Live Tender Status</h3>
-                                                <p className="text-slate-500 max-w-md mb-6 leading-relaxed">
-                                                    Monitoring incoming responses...
-                                                </p>
-                                                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 max-w-lg mb-10 text-left flex gap-3">
-                                                    <svg className="w-5 h-5 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                    <div>
-                                                        <h4 className="text-xs font-bold text-amber-800 uppercase mb-1">Serverless Demo Mode</h4>
-                                                        <p className="text-xs text-amber-700">
-                                                            To receive responses from other devices (e.g. mobile), the supplier must explicitly send you the generated <strong>Response Link</strong>. You must then open that link in this browser to import the quote.
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                
-                                                {/* Live Status of Invited Suppliers */}
-                                                <div className="w-full max-w-2xl bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
-                                                    <div className="bg-slate-100 px-6 py-3 border-b border-slate-200 flex justify-between items-center">
-                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Invited Suppliers</span>
-                                                        <span className="text-xs font-bold text-slate-400">{rfq.invited_suppliers?.length || 0} Total</span>
-                                                    </div>
-                                                    <div className="divide-y divide-slate-200/50">
-                                                        {(!rfq.invited_suppliers || rfq.invited_suppliers.length === 0) ? (
-                                                            <div className="p-8 text-center">
-                                                                <p className="text-sm text-slate-400 mb-4">No suppliers invited yet.</p>
-                                                                <button onClick={handleOpenSourcingModal} className="bg-slate-900 text-white px-6 py-2 rounded-lg font-bold hover:bg-slate-800 transition text-sm">
-                                                                    Launch Sourcing Event
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            rfq.invited_suppliers.map(s => (
-                                                                <div key={s.id} className="p-4 flex justify-between items-center bg-white">
-                                                                    <div className="flex items-center gap-4">
-                                                                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-xs text-slate-500">
-                                                                            {s.name.charAt(0)}
-                                                                        </div>
-                                                                        <div className="text-left">
-                                                                            <div className="text-sm font-bold text-slate-800">{s.name}</div>
-                                                                            <div className="text-xs text-slate-400">{s.email || "Primary Contact"}</div>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-xs font-mono text-slate-400">AWAITING RESPONSE</span>
-                                                                        <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
-                                                                    </div>
-                                                                </div>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
 
-                                        {/* VIEW 1: COMMERCIAL MATRIX */}
-                                        {quotes.length > 0 && comparisonView === 'matrix' && (
-                                            <div className="grid grid-flow-col auto-cols-[320px] gap-6 overflow-x-auto pb-6 items-stretch">
-                                                {quotes.map((quote) => {
+                                            {/* Comparison Cards */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                                {quotes.map((quote, i) => {
                                                     const isBestPrice = quote.id === getBestPriceId();
                                                     const isFastest = quote.id === getFastestLeadTimeId();
                                                     
                                                     return (
-                                                        <div key={quote.id} className={`bg-white rounded-2xl border relative group hover:shadow-xl transition-all flex flex-col overflow-hidden ${isBestPrice ? 'border-green-500 ring-2 ring-green-500/20 shadow-lg shadow-green-500/5' : 'border-slate-200'}`}>
-                                                            {/* Card Header */}
-                                                            <div className={`p-6 border-b border-slate-100 relative ${isBestPrice ? 'bg-gradient-to-b from-green-50/30 to-white' : 'bg-white'}`}>
-                                                                <div className="flex justify-between items-start mb-2">
-                                                                    <div className="flex-1 min-w-0 pr-2">
-                                                                        <h3 className="font-bold text-lg text-slate-900 truncate" title={quote.supplierName}>{quote.supplierName}</h3>
-                                                                        <div className="text-xs text-slate-400">{new Date(quote.timestamp).toLocaleDateString()}</div>
+                                                        <div key={quote.id} className={`bg-white rounded-2xl border transition-all duration-300 flex flex-col relative overflow-hidden ${isBestPrice ? 'border-green-500 shadow-xl scale-[1.02] z-10 ring-1 ring-green-500' : 'border-slate-200 shadow-sm hover:shadow-md'}`}>
+                                                            {isBestPrice && <div className="bg-green-500 text-white text-[10px] font-bold uppercase py-1 text-center tracking-widest">Best Price</div>}
+                                                            
+                                                            <div className="p-6 flex-1 flex flex-col">
+                                                                <div className="flex justify-between items-start mb-4">
+                                                                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500 text-sm">
+                                                                        {quote.supplierName.substring(0, 2).toUpperCase()}
                                                                     </div>
-                                                                    <div className="flex flex-col gap-1 items-end">
-                                                                        {isBestPrice && <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded border border-green-200 uppercase tracking-wide">Best Price</span>}
-                                                                        {isFastest && <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200 uppercase tracking-wide">Fastest</span>}
-                                                                    </div>
+                                                                    {isFastest && <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded uppercase">Fastest</span>}
                                                                 </div>
                                                                 
-                                                                <div className="mt-4">
-                                                                    <div className="text-3xl font-bold text-slate-900 flex items-baseline">
-                                                                        <span className="text-sm text-slate-400 font-normal mr-1">{quote.currency}</span>
-                                                                        {quote.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                                <h3 className="font-bold text-lg text-slate-900 mb-1">{quote.supplierName}</h3>
+                                                                <div className="text-xs text-slate-500 mb-6">Ref: {quote.id}</div>
+                                                                
+                                                                <div className="space-y-3 mb-8">
+                                                                    <div className="flex justify-between items-end border-b border-slate-100 pb-2">
+                                                                        <span className="text-xs font-bold text-slate-400 uppercase">Total</span>
+                                                                        <span className={`text-2xl font-bold font-mono ${isBestPrice ? 'text-green-600' : 'text-slate-900'}`}>{quote.currency} {quote.total.toLocaleString()}</span>
                                                                     </div>
-                                                                    {/* Delta */}
-                                                                    {quotes.length > 1 && (
-                                                                        <div className={`text-xs font-bold mt-1 ${quote.total < (quotes.reduce((a,b)=>a+b.total,0)/quotes.length) ? 'text-green-600' : 'text-red-500'}`}>
-                                                                            {quote.total < (quotes.reduce((a,b)=>a+b.total,0)/quotes.length) ? '▼' : '▲'} {Math.abs((quote.total - (quotes.reduce((a,b)=>a+b.total,0)/quotes.length)) / (quotes.reduce((a,b)=>a+b.total,0)/quotes.length) * 100).toFixed(1)}% vs Avg
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Card Body */}
-                                                            <div className="p-6 space-y-4 flex-1 bg-white">
-                                                                <div className="space-y-3">
-                                                                    <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-2">
+                                                                    <div className="flex justify-between text-sm">
                                                                         <span className="text-slate-500">Lead Time</span>
-                                                                        <span className={`font-bold ${isFastest ? 'text-blue-600' : 'text-slate-900'}`}>{quote.leadTime || '-'} Days</span>
+                                                                        <span className="font-bold text-slate-700">{quote.leadTime} Days</span>
                                                                     </div>
-                                                                    <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-2">
+                                                                    <div className="flex justify-between text-sm">
                                                                         <span className="text-slate-500">Payment</span>
-                                                                        <span className="text-slate-900 font-medium">{quote.payment || '-'}</span>
+                                                                        <span className="font-medium text-slate-700">{quote.payment}</span>
                                                                     </div>
-                                                                    <div className="flex justify-between items-center text-sm border-b border-slate-50 pb-2">
-                                                                        <span className="text-slate-500">Validity</span>
-                                                                        <span className="text-slate-900 font-medium">{quote.validity || '-'}</span>
-                                                                    </div>
-                                                                </div>
-                                                                
-                                                                {/* Item Completeness Bar */}
-                                                                <div>
-                                                                    <div className="flex justify-between text-xs mb-1">
-                                                                        <span className="text-slate-400 font-bold">Line Item Coverage</span>
-                                                                        <span className="text-slate-900 font-bold">{Math.round((quote.items.filter(i => i.unitPrice !== null && i.unitPrice > 0).length / rfq.line_items.length) * 100)}%</span>
-                                                                    </div>
-                                                                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                                        <div className="h-full bg-slate-800" style={{width: `${(quote.items.filter(i => i.unitPrice !== null && i.unitPrice > 0).length / rfq.line_items.length) * 100}%`}}></div>
+                                                                    <div className="flex justify-between text-sm">
+                                                                        <span className="text-slate-500">Valid Until</span>
+                                                                        <span className="font-medium text-slate-700">{quote.validity}</span>
                                                                     </div>
                                                                 </div>
-                                                            </div>
 
-                                                            {/* Card Footer */}
-                                                            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col gap-2">
-                                                                <button onClick={() => handleGenerateAwardPO(quote)} className="w-full bg-slate-900 text-white py-3 rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-lg shadow-slate-900/10 flex items-center justify-center gap-2">
-                                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                                    Award Contract
-                                                                </button>
-                                                                <button onClick={() => setSelectedQuoteForReview(quote)} className="w-full py-2 text-slate-500 text-xs font-bold hover:text-slate-800 hover:bg-slate-100 rounded-lg transition">
-                                                                    View Full Details
-                                                                </button>
+                                                                <div className="mt-auto space-y-2">
+                                                                    <button 
+                                                                        onClick={() => setSelectedQuoteForReview(quote)}
+                                                                        className="w-full py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition"
+                                                                    >
+                                                                        Review Details
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => handleGenerateAwardPO(quote)}
+                                                                        className={`w-full py-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${isBestPrice ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-500/30' : 'bg-slate-900 hover:bg-slate-800 text-white shadow-lg'}`}
+                                                                    >
+                                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                                        Award & Generate PO
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     );
                                                 })}
                                             </div>
-                                        )}
-
-                                        {/* VIEW 2: LINE ITEM COMPARISON (TABLE) */}
-                                        {quotes.length > 0 && comparisonView === 'items' && (
-                                            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                                                <div className="overflow-x-auto">
-                                                    <table className="w-full text-left text-sm">
-                                                        <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-bold">
-                                                            <tr>
-                                                                <th className="p-4 w-12 bg-slate-50 sticky left-0 z-10 border-r border-slate-200">#</th>
-                                                                <th className="p-4 bg-slate-50 sticky left-12 z-10 min-w-[200px] border-r border-slate-200 shadow-sm">Description</th>
-                                                                {quotes.map((q) => (
-                                                                    <th key={q.id} className="p-4 text-right min-w-[140px] border-r border-slate-100 last:border-r-0">
-                                                                        <div className="truncate max-w-[120px]" title={q.supplierName}>{q.supplierName}</div>
-                                                                        <div className="text-[10px] text-slate-400 font-normal mt-0.5">{q.currency}</div>
-                                                                    </th>
-                                                                ))}
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-100">
-                                                            {rfq.line_items.map((item) => (
-                                                                <tr key={item.item_id} className="hover:bg-slate-50 transition-colors">
-                                                                    <td className="p-4 font-mono text-slate-400 text-xs bg-white sticky left-0 z-10 border-r border-slate-200">{item.line}</td>
-                                                                    <td className="p-4 font-medium text-slate-700 bg-white sticky left-12 z-10 border-r border-slate-200 shadow-sm">
-                                                                        <div className="line-clamp-2" title={item.description}>{item.description}</div>
-                                                                        <div className="text-xs text-slate-400 font-normal mt-1 flex gap-2">
-                                                                            <span>{item.quantity} {item.uom}</span>
-                                                                            {item.size.outer_diameter.value && <span className="bg-slate-100 px-1 rounded">{item.size.outer_diameter.value}"</span>}
-                                                                        </div>
-                                                                    </td>
-                                                                    {quotes.map((q) => {
-                                                                        const qItem = q.items.find(qi => qi.line === item.line);
-                                                                        // Find lowest for THIS line item across all quotes
-                                                                        const lowestPriceForLine = Math.min(...quotes.map(qq => {
-                                                                            const ii = qq.items.find(i => i.line === item.line);
-                                                                            return (ii && ii.unitPrice) ? ii.unitPrice : Infinity;
-                                                                        }));
-                                                                        
-                                                                        const isLowest = (qItem?.unitPrice || 0) === lowestPriceForLine && lowestPriceForLine !== Infinity;
-
-                                                                        return (
-                                                                            <td key={q.id} className={`p-4 text-right border-r border-slate-100 last:border-r-0 font-mono relative ${isLowest ? 'bg-green-50/40' : ''}`}>
-                                                                                {qItem && qItem.unitPrice ? (
-                                                                                    <>
-                                                                                        {isLowest && <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-green-500 rounded-full"></div>}
-                                                                                        <div className={`font-bold ${isLowest ? 'text-green-700' : 'text-slate-700'}`}>
-                                                                                            {Number(qItem.unitPrice).toFixed(2)}
-                                                                                        </div>
-                                                                                        {qItem.alternates && (
-                                                                                            <div className="text-[10px] text-amber-600 bg-amber-50 px-1 rounded inline-block mt-1 max-w-[100px] truncate cursor-help border border-amber-100" title={qItem.alternates}>
-                                                                                                Note: {qItem.alternates}
-                                                                                            </div>
-                                                                                        )}
-                                                                                    </>
-                                                                                ) : (
-                                                                                    <span className="text-slate-300">-</span>
-                                                                                )}
-                                                                            </td>
-                                                                        );
-                                                                    })}
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
-                         </div>
+                        </div>
                     )}
-                 </div>
+                </div>
             </div>
         </div>
     );
