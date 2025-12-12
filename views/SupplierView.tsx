@@ -149,7 +149,8 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
               quantity: item.quantity,
               unitPrice: prices[item.line] || 0,
               lineTotal: (prices[item.line] || 0) * (item.quantity || 0),
-              rfqDescription: item.description, // Store snapshot for history
+              // Enriched Description for Shadow RFQ Reconstruction
+              rfqDescription: `${item.description} ${item.size.outer_diameter.value ? `(${item.size.outer_diameter.value}${item.size.outer_diameter.unit || '"'})` : ''} ${item.material_grade || ''}`, 
               moq: moqs[item.line] || null,
               alternates: alternates[item.line] || ""
           }))
@@ -188,9 +189,18 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                     <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                 </div>
                 <h2 className="text-2xl font-bold text-slate-900">{t(lang, 'quote_submitted_title')}</h2>
-                <p className="text-slate-500 text-sm leading-relaxed">
-                    {t(lang, 'quote_submitted_desc')}
-                </p>
+                
+                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 text-left">
+                    <div className="flex items-start gap-3">
+                        <svg className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        <div>
+                            <h3 className="text-sm font-bold text-amber-800 mb-1">Action Required</h3>
+                            <p className="text-xs text-amber-700 leading-relaxed">
+                                Because this is a secure serverless demo, the Buyer will not see your quote until you send them the link below. 
+                            </p>
+                        </div>
+                    </div>
+                </div>
                 
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-left">
                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-2 block">Secure Response Link</label>
@@ -203,15 +213,18 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                             setLinkCopied(true);
                             setTimeout(() => setLinkCopied(false), 2000);
                         }}
-                        className={`w-full py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${linkCopied ? 'bg-green-500 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
+                        className={`w-full py-3 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 ${linkCopied ? 'bg-green-500 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
                      >
                          {linkCopied ? (
                              <>
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                Copied!
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                Link Copied!
                              </>
                          ) : (
-                             t(lang, 'copy_response_link')
+                             <>
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                                Copy Link & Send to Buyer
+                             </>
                          )}
                      </button>
                 </div>

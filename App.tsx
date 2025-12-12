@@ -120,9 +120,57 @@ export default function App() {
                         originalRfq = allRfqs.find(r => r.id === incomingQuote.rfqId);
                     }
                     
+                    // 3. Shadow RFQ (Cross-Device Support)
+                    if (!originalRfq) {
+                        // Reconstruct a minimal RFQ from quote data to allow viewing on any device
+                        console.log("Original RFQ not found. Creating Shadow RFQ for display.");
+                        originalRfq = {
+                            id: incomingQuote.rfqId,
+                            project_name: incomingQuote.projectName || "Shadow Request (Imported)",
+                            status: 'sent',
+                            created_at: Date.now(),
+                            original_text: "Imported from Quote Link",
+                            commercial: {
+                                destination: "Imported Context",
+                                incoterm: "",
+                                paymentTerm: "",
+                                otherRequirements: "",
+                                req_mtr: false,
+                                req_avl: false,
+                                req_tpi: false,
+                                warranty_months: 12
+                            },
+                            line_items: incomingQuote.items.map(qItem => ({
+                                item_id: `SHADOW-${qItem.line}`,
+                                line: qItem.line,
+                                description: qItem.rfqDescription || "Item Description Unavailable",
+                                raw_description: "",
+                                product_type: null,
+                                material_grade: null,
+                                tolerance: null,
+                                test_reqs: [],
+                                size: { 
+                                    outer_diameter: { value: null, unit: null }, 
+                                    wall_thickness: { value: null, unit: null }, 
+                                    length: { value: null, unit: null } 
+                                },
+                                quantity: qItem.quantity,
+                                uom: "ea",
+                                other_requirements: []
+                            }))
+                        } as Rfq;
+                        
+                        // Notify user they are in a simulated view
+                        setTimeout(() => {
+                            alert("Portable Mode: Original RFQ not found on this device. Created a view-only copy from the quote data.");
+                        }, 500);
+                    }
+                    
                     if (originalRfq) {
                         setRfq(originalRfq);
                         storageService.saveReceivedQuote(incomingQuote);
+                        
+                        // Ensure we load ALL quotes for this RFQ (in case others exist)
                         const updatedQuotes = storageService.getReceivedQuotes(incomingQuote.rfqId);
                         setQuotes(updatedQuotes);
                         
@@ -130,16 +178,18 @@ export default function App() {
                         window.history.replaceState({}, '', window.location.pathname);
                         setView('BUYER');
                         
-                        // Small delay to allow UI to render before alert
-                        setTimeout(() => {
-                            alert(t('en', 'quote_imported_success', { supplier: incomingQuote.supplierName }));
-                        }, 500);
-                    } else {
-                        alert("Quote received, but the original RFQ was not found on this device. Please ensure you are on the same device where you created the RFQ.");
-                        // Even if RFQ not found, we might want to show the quote data raw? 
-                        // For now, redirect home to avoid broken state.
-                        setView('HOME');
-                    }
+                        // If user is not logged in, auto-login as demo buyer to show the view
+                        if (!authService.getCurrentUser()) {
+                             const demoUser = { id: 'demo-buyer', name: 'Demo Buyer', email: 'buyer@demo.com', role: 'buyer' as const };
+                             handleLogin(demoUser);
+                        }
+                        
+                        if (originalRfq.status !== 'sent') {
+                             setTimeout(() => {
+                                alert(t('en', 'quote_imported_success', { supplier: incomingQuote.supplierName }));
+                            }, 800);
+                        }
+                    } 
                 }
             } catch (e) {
                 console.error("Failed to import quote", e);

@@ -1703,9 +1703,18 @@ Procurement Team`;
                                                     <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                                 </div>
                                                 <h3 className="text-2xl font-bold text-slate-900 mb-2">Live Tender Status</h3>
-                                                <p className="text-slate-500 max-w-md mb-10">
-                                                    Monitoring incoming responses in real-time. Quotes will appear on the dashboard automatically as suppliers submit them.
+                                                <p className="text-slate-500 max-w-md mb-6 leading-relaxed">
+                                                    Monitoring incoming responses...
                                                 </p>
+                                                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 max-w-lg mb-10 text-left flex gap-3">
+                                                    <svg className="w-5 h-5 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                    <div>
+                                                        <h4 className="text-xs font-bold text-amber-800 uppercase mb-1">Serverless Demo Mode</h4>
+                                                        <p className="text-xs text-amber-700">
+                                                            To receive responses from other devices (e.g. mobile), the supplier must explicitly send you the generated <strong>Response Link</strong>. You must then open that link in this browser to import the quote.
+                                                        </p>
+                                                    </div>
+                                                </div>
                                                 
                                                 {/* Live Status of Invited Suppliers */}
                                                 <div className="w-full max-w-2xl bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
