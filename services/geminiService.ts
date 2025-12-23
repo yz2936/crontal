@@ -1,10 +1,7 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
-import { Rfq, LineItem, FileAttachment, Language, RiskAnalysisItem, InsightSource, InsightResponse, TrendingTopic, MarketDataResponse, SupplierCandidate, SupplierFilters } from "../types";
+import { Rfq, LineItem, FileAttachment, Language, RiskAnalysisItem, InsightResponse, TrendingTopic, MarketDataResponse, SupplierCandidate, SupplierFilters } from "../types.ts";
 
-// Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
+// Constants for model names
 const MODEL_FAST = "gemini-3-flash-preview";
 const MODEL_PRO = "gemini-3-pro-preview";
 const MODEL_IMAGE = "gemini-2.5-flash-image";
@@ -17,32 +14,9 @@ const getLanguageName = (lang: Language): string => {
     }
 };
 
-const cleanJson = (text: string): string => {
-    if (!text) return "{}";
-    // Improved regex to handle nested code blocks or prefixes
-    const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-    if (jsonMatch) {
-        let candidate = jsonMatch[0];
-        // Remove markdown backticks if they are still present
-        candidate = candidate.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
-        return candidate;
-    }
-    return text.trim();
-};
-
-const inferShape = (desc: string): string => {
-    if (!desc) return "";
-    const d = desc.toLowerCase();
-    if (d.includes("pipe") || d.includes("tube")) return "Pipe";
-    if (d.includes("flange") || d.includes("wn") || d.includes("blind") || d.includes("slip-on")) return "Flange";
-    if (d.includes("elbow") || d.includes("tee") || d.includes("reducer") || d.includes("cap")) return "Fitting";
-    if (d.includes("valve") || d.includes("ball") || d.includes("gate") || d.includes("check")) return "Valve";
-    if (d.includes("gasket")) return "Gasket";
-    if (d.includes("bolt") || d.includes("stud")) return "Bolt";
-    if (d.includes("plate") || d.includes("sheet")) return "Plate";
-    return "Other";
-};
-
+/**
+ * Parses user text and files into structured RFQ updates.
+ */
 export const parseRequest = async (
   text: string, 
   projectName: string | null, 
@@ -50,251 +24,221 @@ export const parseRequest = async (
   lang: Language = 'en', 
   currentLineItems: LineItem[] = []
 ): Promise<{ rfqUpdates: Partial<Rfq>, responseText: string }> => {
-  
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const isEditMode = currentLineItems.length > 0;
   const targetLang = getLanguageName(lang);
 
   const systemInstruction = `
-    You are Crontal's expert procurement AI. Your role is to interact naturally with the buyer AND extract/modify structured RFQ data.
-    MODE: ${isEditMode ? "EDITING EXISTING LIST" : "CREATING NEW LIST"}
+    You are Crontal's expert industrial procurement AI. 
+    TASK: Extract technical data from drawings/text and return structured JSON.
+    MODE: ${isEditMode ? "UPDATING EXISTING LIST" : "NEW RFQ"}
     TARGET LANGUAGE: ${targetLang}
-    TASKS:
-    1. Conversational response in "conversational_response".
-    2. Extract line items, commercial terms, and project name.
-    3. Normalise dimensions (OD, WT, Length) into numerical values.
-    4. Focus on industrial codes (ASTM, ASME, API).
+    RULES: 
+    1. Dimensions (OD, WT, Length) must be numerical. 
+    2. Units should be normalized to standard industrial strings (mm, inch, m, pcs).
+    3. Project name should be concise.
   `;
 
-  try {
-    const parts: any[] = [];
-    let promptText = `USER REQUEST:\n"""${text}"""\n\nRFP Context: ${projectName || "N/A"}\n`;
-    
-    if (isEditMode) {
-        const cleanList = currentLineItems.map(item => ({
-            line: item.line,
-            id: item.item_id,
-            desc: item.description,
-            qty: item.quantity
-        }));
-        promptText += `\n[CURRENT ITEMS]:\n${JSON.stringify(cleanList)}\n`;
-    }
+  let contextText = `User Request: "${text}"\nExisting Project: ${projectName || "None"}\n`;
+  if (isEditMode) {
+      contextText += `Current Items: ${JSON.stringify(currentLineItems.map(i => ({ line: i.line, desc: i.description, qty: i.quantity })))}`;
+  }
 
-    parts.push({ text: promptText });
-    if (files?.length) {
-        files.forEach(f => parts.push({ inlineData: { mimeType: f.mimeType, data: f.data } }));
-    }
+  const parts: any[] = [{ text: contextText }];
+  if (files) {
+      files.forEach(f => parts.push({ inlineData: { mimeType: f.mimeType, data: f.data } }));
+  }
 
-    const response = await ai.models.generateContent({
-      model: MODEL_FAST,
-      contents: { parts },
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            conversational_response: { type: Type.STRING },
-            project_name: { type: Type.STRING, nullable: true },
-            commercial: {
-                type: Type.OBJECT,
-                properties: {
-                    destination: { type: Type.STRING, nullable: true },
-                    incoterm: { type: Type.STRING, nullable: true },
-                    payment_terms: { type: Type.STRING, nullable: true }
-                }
-            },
-            line_items: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  item_id: { type: Type.STRING, nullable: true },
-                  description: { type: Type.STRING },
-                  product_type: { type: Type.STRING, nullable: true },
-                  material_grade: { type: Type.STRING, nullable: true },
-                  size: {
-                    type: Type.OBJECT,
-                    properties: {
-                      od_val: { type: Type.NUMBER, nullable: true },
-                      od_unit: { type: Type.STRING, nullable: true },
-                      wt_val: { type: Type.NUMBER, nullable: true },
-                      wt_unit: { type: Type.STRING, nullable: true }
-                    }
-                  },
-                  quantity: { type: Type.NUMBER, nullable: true },
-                  uom: { type: Type.STRING, nullable: true }
-                }
+  const response = await ai.models.generateContent({
+    model: MODEL_FAST,
+    contents: [{ parts }],
+    config: {
+      systemInstruction,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          conversational_response: { type: Type.STRING },
+          project_name: { type: Type.STRING },
+          commercial: {
+            type: Type.OBJECT,
+            properties: {
+              destination: { type: Type.STRING },
+              incoterm: { type: Type.STRING },
+              payment_terms: { type: Type.STRING }
+            }
+          },
+          line_items: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                line: { type: Type.INTEGER },
+                description: { type: Type.STRING },
+                material_grade: { type: Type.STRING },
+                quantity: { type: Type.NUMBER },
+                uom: { type: Type.STRING },
+                od: { type: Type.NUMBER },
+                od_unit: { type: Type.STRING },
+                wt: { type: Type.NUMBER },
+                wt_unit: { type: Type.STRING }
               }
             }
           }
         }
       }
-    });
-
-    const parsedData = JSON.parse(cleanJson(response.text || "{}"));
-    const items: LineItem[] = (parsedData.line_items || []).map((li: any, idx: number) => ({
-        item_id: li.item_id || `L${Date.now()}-${idx}`,
-        line: idx + 1,
-        raw_description: li.description || "",
-        description: li.description || "",
-        product_type: li.product_type || inferShape(li.description),
-        material_grade: li.material_grade,
-        size: {
-            outer_diameter: { value: li.size?.od_val, unit: li.size?.od_unit || 'mm' },
-            wall_thickness: { value: li.size?.wt_val, unit: li.size?.wt_unit || 'mm' },
-            length: { value: null, unit: null }
-        },
-        quantity: li.quantity,
-        uom: li.uom || 'pcs',
-        other_requirements: []
-    }));
-
-    return {
-        rfqUpdates: {
-            project_name: parsedData.project_name,
-            commercial: {
-                destination: parsedData.commercial?.destination || "",
-                incoterm: parsedData.commercial?.incoterm || "",
-                paymentTerm: parsedData.commercial?.payment_terms || "",
-                otherRequirements: "",
-                req_mtr: false,
-                req_avl: false,
-                req_tpi: false,
-                warranty_months: 12
-            },
-            line_items: items
-        },
-        responseText: parsedData.conversational_response || "Request processed."
-    };
-  } catch (error: any) {
-    console.error("Gemini Error:", error);
-    return { rfqUpdates: { line_items: [] }, responseText: "I encountered an error processing that request." }; 
-  }
-};
-
-export const findSuppliers = async (rfq: Rfq, filters: SupplierFilters): Promise<SupplierCandidate[]> => {
-    const summary = `Project: ${rfq.project_name}. Items: ${rfq.line_items.slice(0, 3).map(i => i.description).join(', ')}. Region: ${filters.region}.`;
-    const prompt = `Find 5 high-quality industrial suppliers for: ${summary}. Return JSON array of objects with fields: {name, website, location, match_reason, rationale, email, tags:[]}`;
-
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_PRO,
-            contents: prompt,
-            config: { 
-              tools: [{googleSearch: {}}],
-              responseMimeType: "application/json"
-            }
-        });
-        const results = JSON.parse(cleanJson(response.text || "[]"));
-        return results.map((s: any, i: number) => ({
-            id: `SUP-${i}`,
-            ...s,
-            selected: true,
-            contacts: []
-        }));
-    } catch (e) {
-        console.error("FindSuppliers Error:", e);
-        return [];
     }
+  });
+
+  const data = JSON.parse(response.text || "{}");
+  
+  const formattedItems: LineItem[] = (data.line_items || []).map((li: any) => ({
+    item_id: `L-${Date.now()}-${li.line}`,
+    line: li.line,
+    raw_description: li.description,
+    description: li.description,
+    material_grade: li.material_grade,
+    size: {
+        outer_diameter: { value: li.od || null, unit: li.od_unit || 'mm' },
+        wall_thickness: { value: li.wt || null, unit: li.wt_unit || 'mm' },
+        length: { value: null, unit: null }
+    },
+    quantity: li.quantity || 0,
+    uom: li.uom || 'pcs',
+    other_requirements: []
+  }));
+
+  return {
+    rfqUpdates: {
+      project_name: data.project_name,
+      commercial: data.commercial ? {
+          destination: data.commercial.destination || "",
+          incoterm: data.commercial.incoterm || "",
+          paymentTerm: data.commercial.payment_terms || "",
+          otherRequirements: "",
+          req_mtr: false,
+          req_avl: false,
+          req_tpi: false,
+          warranty_months: 12
+      } : undefined,
+      line_items: formattedItems
+    },
+    responseText: data.conversational_response || "Request processed."
+  };
 };
 
-export const analyzeRfqRisks = async (rfq: Rfq, lang: Language = 'en'): Promise<RiskAnalysisItem[]> => {
-    const context = { project: rfq.project_name, items: rfq.line_items.map(i => ({ line: i.line, grade: i.material_grade, desc: i.description })) };
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_FAST,
-            contents: JSON.stringify(context),
-            config: {
-                systemInstruction: "Identify procurement risks (Technical/Commercial/Strategic) based on industry standards. Return JSON array of objects {category, risk, recommendation, impact_level}.",
-                responseMimeType: "application/json"
+export const getLatestMarketData = async (): Promise<MarketDataResponse> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: MODEL_PRO,
+        contents: "Get current market prices for Nickel, Molybdenum, Ferrochrome, HRC Steel, Brent Crude, Copper, Aluminum, Zinc, Lead, and Tin. Return JSON with numeric values in USD.",
+        config: {
+            tools: [{ googleSearch: {} }],
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    nickel: { type: Type.NUMBER },
+                    moly: { type: Type.NUMBER },
+                    chrome: { type: Type.NUMBER },
+                    steel: { type: Type.NUMBER },
+                    oil: { type: Type.NUMBER },
+                    copper: { type: Type.NUMBER },
+                    aluminum: { type: Type.NUMBER },
+                    zinc: { type: Type.NUMBER },
+                    lead: { type: Type.NUMBER },
+                    tin: { type: Type.NUMBER },
+                    last_updated: { type: Type.STRING }
+                }
             }
-        });
-        return JSON.parse(cleanJson(response.text || "[]"));
-    } catch (e) {
-        return [{ category: "Technical", risk: "Service analysis unavailable", recommendation: "Manual review required.", impact_level: "Medium" }];
-    }
-};
-
-export const auditRfqSpecs = async (rfq: Rfq): Promise<string[]> => {
-    try {
-      const response = await ai.models.generateContent({
-        model: MODEL_FAST,
-        contents: `Audit this material list for missing technical specs or errors: ${JSON.stringify(rfq.line_items)}`,
-        config: { 
-          systemInstruction: "Return a JSON array of specific warning strings about missing specs.",
-          responseMimeType: "application/json"
         }
-      });
-      return JSON.parse(cleanJson(response.text || "[]"));
-    } catch (e) {
-      return [];
-    }
-};
-
-export const editImage = async (base64Image: string, mimeType: string, prompt: string): Promise<string | null> => {
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_IMAGE,
-            contents: { parts: [{ inlineData: { data: base64Image, mimeType: mimeType } }, { text: prompt }] },
-        });
-        const part = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-        return part ? `data:image/png;base64,${part.inlineData.data}` : null;
-    } catch (e) {
-        console.error("EditImage Error:", e);
-        return null;
-    }
+    });
+    const data = JSON.parse(response.text || "{}");
+    return { ...data, isFallback: false };
 };
 
 export const getTrendingTopics = async (category: string): Promise<TrendingTopic[]> => {
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_FAST,
-            contents: `Identify 4 major trending news topics or market shifts for industrial sector category: ${category}`,
-            config: {
-                systemInstruction: "Return JSON array of 4 objects {title, subtitle, tag, impact}.",
-                responseMimeType: "application/json"
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: MODEL_FAST,
+        contents: `What are 4 trending news topics for industrial ${category}? Return JSON list.`,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        title: { type: Type.STRING },
+                        subtitle: { type: Type.STRING },
+                        tag: { type: Type.STRING },
+                        impact: { type: Type.STRING, enum: ['High', 'Medium', 'Low'] }
+                    }
+                }
             }
-        });
-        return JSON.parse(cleanJson(response.text || "[]"));
-    } catch(e) {
-        return [];
-    }
-};
-
-export const getLatestMarketData = async (): Promise<MarketDataResponse | null> => {
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_FAST,
-            contents: "Retrieve current market prices for major industrial commodities: Nickel, Moly, Chrome, Steel, Oil, Copper, Aluminum, Zinc, Lead, Tin.",
-            config: {
-                systemInstruction: "Return JSON: {nickel, moly, chrome, steel, oil, copper, aluminum, zinc, lead, tin, last_updated: 'YYYY-MM-DD'}",
-                tools: [{googleSearch: {}}],
-                responseMimeType: "application/json"
-            }
-        });
-        const data = JSON.parse(cleanJson(response.text || "{}"));
-        return { ...data, isFallback: false };
-    } catch (e) {
-        console.error("GetMarketData Error:", e);
-        return { nickel: 16200, moly: 42, chrome: 1.45, steel: 820, oil: 78, copper: 8900, aluminum: 2200, zinc: 2400, lead: 2100, tin: 26000, last_updated: new Date().toISOString(), isFallback: true };
-    }
+        }
+    });
+    return JSON.parse(response.text || "[]");
 };
 
 export const generateIndustryInsights = async (category: string, query: string): Promise<InsightResponse> => {
-    try {
-        const response = await ai.models.generateContent({
-            model: MODEL_FAST,
-            contents: `Generate detailed industrial procurement insights for: ${query} in category: ${category}`,
-            config: { 
-              tools: [{googleSearch: {}}],
-              systemInstruction: "Provide deep strategic insights grounded in current market data."
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: MODEL_PRO,
+        contents: `Generate procurement intelligence for ${query} in ${category}. Ground findings in search data.`,
+        config: { tools: [{ googleSearch: {} }] }
+    });
+
+    const sources: any[] = (response.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
+        .filter((c: any) => c.web)
+        .map((c: any) => ({ title: c.web.title, uri: c.web.uri }));
+
+    return { content: response.text || "No insights found.", sources };
+};
+
+export const editImage = async (data: string, mimeType: string, prompt: string): Promise<string | null> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: MODEL_IMAGE,
+        contents: { parts: [{ inlineData: { data, mimeType } }, { text: prompt }] }
+    });
+    const part = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+    return part ? `data:${part.inlineData.mimeType};base64,${part.inlineData.data}` : null;
+};
+
+export const findSuppliers = async (rfq: Rfq, filters: SupplierFilters): Promise<SupplierCandidate[]> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: MODEL_PRO,
+        contents: `Find 5 industrial suppliers for: ${rfq.project_name}. Requirements: ${rfq.line_items.map(i => i.description).join(', ')}. Filter: ${filters.region}.`,
+        config: { 
+            tools: [{ googleSearch: {} }],
+            responseMimeType: "application/json"
+        }
+    });
+    return JSON.parse(response.text || "[]");
+};
+
+export const analyzeRfqRisks = async (rfq: Rfq, lang: Language = 'en'): Promise<RiskAnalysisItem[]> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: MODEL_FAST,
+        contents: `Analyze this RFQ for technical and commercial risks: ${JSON.stringify(rfq)}`,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        category: { type: Type.STRING, enum: ['Technical', 'Commercial', 'Strategic'] },
+                        risk: { type: Type.STRING },
+                        recommendation: { type: Type.STRING },
+                        impact_level: { type: Type.STRING, enum: ['High', 'Medium', 'Low'] }
+                    }
+                }
             }
-        });
-        const sources: InsightSource[] = (response.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
-            .filter((c: any) => c.web?.uri)
-            .map((c: any) => ({ title: c.web.title, uri: c.web.uri }));
-        return { content: response.text || "No insights found.", sources };
-    } catch (e) {
-        return { content: "Insights service currently limited.", sources: [] };
-    }
+        }
+    });
+    return JSON.parse(response.text || "[]");
 };

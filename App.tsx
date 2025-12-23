@@ -1,26 +1,25 @@
-
 import { useState, useEffect } from 'react';
 import LZString from 'lz-string';
-import { Rfq, Quote, ViewMode, Language, User, CapabilityId } from './types';
-import BuyerView from './views/BuyerView';
-import SupplierView from './views/SupplierView';
-import AuthView from './views/AuthView';
-import LandingPage from './views/LandingPage';
-import TechCapabilities from './views/TechCapabilities';
-import QualityStandards from './views/QualityStandards';
-import About from './views/About';
-import RoiPage from './views/RoiPage';
-import SupplierLandingPage from './views/SupplierLandingPage';
-import PrivacyPolicy from './views/PrivacyPolicy';
-import TermsOfService from './views/TermsOfService';
-import BlogPage from './views/BlogPage'; 
-import IndustryInsights from './views/IndustryInsights';
-import ImageEditor from './views/ImageEditor';
-import CapabilityDetail from './views/CapabilityDetail';
-import { Layout } from './components/Layout';
-import { authService } from './services/authService';
-import { storageService } from './services/storageService';
-import { t } from './utils/i18n';
+import { Rfq, Quote, ViewMode, Language, User, CapabilityId } from './types.ts';
+import BuyerView from './views/BuyerView.tsx';
+import SupplierView from './views/SupplierView.tsx';
+import AuthView from './views/AuthView.tsx';
+import LandingPage from './views/LandingPage.tsx';
+import TechCapabilities from './views/TechCapabilities.tsx';
+import QualityStandards from './views/QualityStandards.tsx';
+import About from './views/About.tsx';
+import RoiPage from './views/RoiPage.tsx';
+import SupplierLandingPage from './views/SupplierLandingPage.tsx';
+import PrivacyPolicy from './views/PrivacyPolicy.tsx';
+import TermsOfService from './views/TermsOfService.tsx';
+import BlogPage from './views/BlogPage.tsx'; 
+import IndustryInsights from './views/IndustryInsights.tsx';
+import ImageEditor from './views/ImageEditor.tsx';
+import CapabilityDetail from './views/CapabilityDetail.tsx';
+import { Layout } from './components/Layout.tsx';
+import { authService } from './services/authService.ts';
+import { storageService } from './services/storageService.ts';
+import { t } from './utils/i18n.ts';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -31,10 +30,8 @@ export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [selectedCapability, setSelectedCapability] = useState<CapabilityId>('structuring');
 
-  // Check for API Key presence
   const apiKey = process.env.API_KEY;
 
-  // Central Navigation Handler
   const handleNavigate = (target: string) => {
     if (target.startsWith('CAPABILITY:')) {
         const capId = target.split(':')[1];
@@ -51,7 +48,6 @@ export default function App() {
       handleNavigate('CAPABILITY');
   };
 
-  // Load quotes whenever the active RFQ changes
   useEffect(() => {
     if (rfq?.id) {
         const storedQuotes = storageService.getReceivedQuotes(rfq.id);
@@ -61,21 +57,16 @@ export default function App() {
     }
   }, [rfq?.id]);
 
-  // Real-time Server Sync (Simulated)
   useEffect(() => {
     storageService.subscribeToEvents((event) => {
         if (event.type === 'NEW_QUOTE') {
             const incomingQuote = event.payload as Quote;
-            // Only update if it matches current RFQ context
             if (rfq && incomingQuote.rfqId === rfq.id) {
-                // Save and update state
                 storageService.saveReceivedQuote(incomingQuote);
                 setQuotes(prev => {
-                    // Avoid duplicates
                     if (prev.find(q => q.id === incomingQuote.id)) return prev;
                     return [incomingQuote, ...prev];
                 });
-                console.log("Real-time quote received:", incomingQuote.supplierName);
             }
         }
     });
@@ -96,7 +87,6 @@ export default function App() {
         
         if (mode === 'supplier' && encodedData) {
             try {
-                // Fix for potential spaces being treated as + in URL encoding sometimes
                 const safeData = encodedData.replace(/ /g, '+');
                 const decompressed = LZString.decompressFromEncodedURIComponent(safeData);
                 if (decompressed) {
@@ -104,13 +94,11 @@ export default function App() {
                     setRfq(sharedRfq);
                     setView('SUPPLIER');
                     setCheckingAuth(false);
-                    // Clean URL to prevent re-triggering logic on refresh
                     window.history.replaceState({}, '', window.location.pathname);
                     return;
                 }
             } catch (e) {
                 console.error("Failed to load shared RFQ", e);
-                alert("Failed to load RFQ data. The link might be corrupted.");
             }
         }
 
@@ -120,24 +108,17 @@ export default function App() {
                 const decompressed = LZString.decompressFromEncodedURIComponent(safeData);
                 if (decompressed) {
                     const incomingQuote: Quote = JSON.parse(decompressed);
-                    
-                    // Attempt to load the original RFQ
-                    // 1. Try direct key
                     let originalRfq = null;
                     const storedRfqStr = localStorage.getItem(`rfq_${incomingQuote.rfqId}`);
                     
                     if (storedRfqStr) {
                          originalRfq = JSON.parse(storedRfqStr);
                     } else {
-                        // 2. Fallback: Search in the saved list
                         const allRfqs = storageService.getRfqs();
                         originalRfq = allRfqs.find(r => r.id === incomingQuote.rfqId);
                     }
                     
-                    // 3. Shadow RFQ (Cross-Device Support)
                     if (!originalRfq) {
-                        // Reconstruct a minimal RFQ from quote data to allow viewing on any device
-                        console.log("Original RFQ not found. Creating Shadow RFQ for display.");
                         originalRfq = {
                             id: incomingQuote.rfqId,
                             project_name: incomingQuote.projectName || "Shadow Request (Imported)",
@@ -159,10 +140,6 @@ export default function App() {
                                 line: qItem.line,
                                 description: qItem.rfqDescription || "Item Description Unavailable",
                                 raw_description: "",
-                                product_type: null,
-                                material_grade: null,
-                                tolerance: null,
-                                test_reqs: [],
                                 size: { 
                                     outer_diameter: { value: null, unit: null }, 
                                     wall_thickness: { value: null, unit: null }, 
@@ -173,41 +150,23 @@ export default function App() {
                                 other_requirements: []
                             }))
                         } as Rfq;
-                        
-                        // Notify user they are in a simulated view
-                        setTimeout(() => {
-                            alert("Portable Mode: Original RFQ not found on this device. Created a view-only copy from the quote data.");
-                        }, 500);
                     }
                     
                     if (originalRfq) {
                         setRfq(originalRfq);
                         storageService.saveReceivedQuote(incomingQuote);
-                        
-                        // Ensure we load ALL quotes for this RFQ (in case others exist)
                         const updatedQuotes = storageService.getReceivedQuotes(incomingQuote.rfqId);
                         setQuotes(updatedQuotes);
-                        
-                        // Clean URL and switch view
                         window.history.replaceState({}, '', window.location.pathname);
                         setView('BUYER');
-                        
-                        // If user is not logged in, auto-login as demo buyer to show the view
                         if (!authService.getCurrentUser()) {
                              const demoUser = { id: 'demo-buyer', name: 'Demo Buyer', email: 'buyer@demo.com', role: 'buyer' as const };
-                             handleLogin(demoUser);
-                        }
-                        
-                        if (originalRfq.status !== 'sent') {
-                             setTimeout(() => {
-                                alert(t('en', 'quote_imported_success', { supplier: incomingQuote.supplierName }));
-                            }, 800);
+                             setUser(demoUser);
                         }
                     } 
                 }
             } catch (e) {
                 console.error("Failed to import quote", e);
-                alert("Failed to import quote response.");
             }
         }
 
@@ -218,7 +177,6 @@ export default function App() {
 
     handleUrlState();
   }, []);
-
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
@@ -237,7 +195,6 @@ export default function App() {
     setRfq(updatedRfq);
     if (updatedRfq && updatedRfq.id) {
         localStorage.setItem(`rfq_${updatedRfq.id}`, JSON.stringify(updatedRfq));
-        // Also update main list to keep in sync
         storageService.saveRfq(updatedRfq);
     }
   };
@@ -246,15 +203,10 @@ export default function App() {
     setQuotes(prev => [...prev, newQuote]);
   };
 
-  const handleSupplierExit = () => {
-      window.location.href = window.location.pathname;
-  };
-
   if (checkingAuth) {
       return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400 text-sm">Loading Crontal...</div>;
   }
 
-  // Marketing Pages Navigation Props
   const navProps = {
       onBack: () => handleNavigate('HOME'),
       onNavigate: handleNavigate,
@@ -268,7 +220,7 @@ export default function App() {
     <>
       {!apiKey && (
         <div className="bg-red-600 text-white text-center py-2 text-xs font-bold fixed top-0 w-full z-[100] shadow-md">
-          ⚠️ DEPLOYMENT WARNING: API_KEY is missing. App is running in offline mode. Please check Cloudflare Environment Variables.
+          ⚠️ DEPLOYMENT WARNING: API_KEY is missing. App is running in offline mode.
         </div>
       )}
       <div className={!apiKey ? 'mt-8' : ''}>
@@ -284,10 +236,7 @@ export default function App() {
           if (view === 'INSIGHTS') return <IndustryInsights {...navProps} />;
           if (view === 'IMAGE_EDITOR') return <ImageEditor onBack={() => handleNavigate('HOME')} lang={lang} />;
           if (view === 'CAPABILITY') return <CapabilityDetail {...navProps} capabilityId={selectedCapability} />;
-
-          if (view === 'SUPPLIER') {
-              return <SupplierView rfq={rfq} onSubmitQuote={handleQuoteSubmit} lang={lang} onExit={handleSupplierExit} />;
-          }
+          if (view === 'SUPPLIER') return <SupplierView rfq={rfq} onSubmitQuote={handleQuoteSubmit} lang={lang} onExit={() => handleNavigate('HOME')} />;
           
           if (view === 'HOME' && !user) {
               return (
