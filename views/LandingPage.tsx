@@ -17,6 +17,7 @@ interface LandingPageProps {
   onPrivacy: () => void;
   onTerms: () => void;
   onBlog: () => void;
+  onCapability?: (id: string) => void;
   lang: Language;
   setLang: (lang: Language) => void;
 }
@@ -49,7 +50,7 @@ const standards = [
     { name: "ANSI", desc: "National", iconPath: "M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" },
     { name: "IEEE", desc: "Electrical", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59 8 8-8 8 3.59 8 8-3.59 8-8 8zm-4-8h8" },
     { name: "AWS", desc: "Welding", iconPath: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
-    { name: "JIS", desc: "Japanese", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" },
+    { name: "JIS", desc: "Japanese", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59 8 8-8 8 3.59 8 8-3.59 8-8 8z" },
     { name: "BSI", desc: "British", iconPath: "M12 2l-5.5 9h11L12 2zm0 3.8L14.2 9H9.8L12 5.8zM5 20l5.5-9h-11L5 20z" },
     { name: "CSA", desc: "Canadian", iconPath: "M12 2L2 19h20L12 2z" },
     { name: "EN", desc: "European", iconPath: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z M12 6l1.5 4.5h4.5L14.5 13l1.5 4.5-4-3-4 3 1.5-4.5L5.5 10.5h4.5z" }
@@ -73,7 +74,20 @@ const StandardItem: React.FC<StandardItemProps> = ({ s }) => (
 
 export default function LandingPage(props: LandingPageProps) {
   const [activeExample, setActiveExample] = useState<'email' | 'drawing'>('email');
-  const { lang } = props;
+  const { lang, onCapability } = props;
+
+  const handleSchedule = () => {
+      // Open mailto for now, in production this would link to Calendly
+      window.open('mailto:sales@crontal.com?subject=Schedule%20Strategy%20Call&body=Hi%20Crontal%20Team%2C%0A%0AI%20would%20like%20to%20schedule%20a%20demo%20to%20see%20how%20your%20RFQ%20automation%20tools%20can%20help%20our%20procurement%20process.', '_blank');
+  };
+
+  const capabilities = [
+      { id: 'structuring', titleKey: 'cap_card_1_title', descKey: 'cap_card_1_desc', icon: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10", color: "blue" },
+      { id: 'validation', titleKey: 'cap_card_2_title', descKey: 'cap_card_2_desc', icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z", color: "green" },
+      { id: 'sourcing', titleKey: 'cap_card_3_title', descKey: 'cap_card_3_desc', icon: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z", color: "orange" },
+      { id: 'comparison', titleKey: 'cap_card_4_title', descKey: 'cap_card_4_desc', icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z", color: "purple" },
+      { id: 'awarding', titleKey: 'cap_card_5_title', descKey: 'cap_card_5_desc', icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z", color: "slate" },
+  ];
 
   return (
     <div className="bg-white text-slate-900 font-sans min-h-screen selection:bg-brandOrange/30 selection:text-white overflow-x-hidden">
@@ -102,17 +116,17 @@ export default function LandingPage(props: LandingPageProps) {
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
                 <ShimmerButton 
-                    onClick={props.onStart}
+                    onClick={handleSchedule}
                     className="px-8 py-4 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition shadow-2xl shadow-slate-900/20 uppercase tracking-wide flex items-center justify-center gap-2 w-full sm:w-auto"
                 >
-                    {t(lang, 'cta_start')}
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                    {t(lang, 'cta_schedule')}
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                 </ShimmerButton>
                 <button 
-                    onClick={props.onRoi}
+                    onClick={props.onStart}
                     className="px-8 py-4 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:border-brandOrange hover:text-brandOrange transition uppercase tracking-wide bg-white w-full sm:w-auto"
                 >
-                    {t(lang, 'cta_roi')}
+                    {t(lang, 'cta_start')}
                 </button>
             </div>
         </div>
@@ -121,6 +135,37 @@ export default function LandingPage(props: LandingPageProps) {
         <div className="animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200 mb-12 px-2 sm:px-0">
             <AutoDemo />
         </div>
+      </section>
+
+      {/* --- NEW: STRATEGIC IMPACT SECTION --- */}
+      <section className="py-20 bg-slate-900 text-white relative overflow-hidden">
+          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none"></div>
+          <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-[100px] -translate-x-1/2 translate-y-1/2 pointer-events-none"></div>
+          
+          <div className="max-w-7xl mx-auto px-6 relative z-10">
+              <div className="text-center mb-16">
+                  <h2 className="text-3xl lg:text-4xl font-bold mb-4">{t(lang, 'impact_title')}</h2>
+                  <p className="text-slate-400">{t(lang, 'impact_subtitle')}</p>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-8 text-center">
+                  <div className="p-8 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                      <div className="text-5xl lg:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-br from-blue-400 to-cyan-300 mb-2">{t(lang, 'impact_1_val')}</div>
+                      <div className="text-xl font-bold text-white mb-2">{t(lang, 'impact_1_label')}</div>
+                      <p className="text-sm text-slate-400 leading-relaxed">{t(lang, 'impact_1_desc')}</p>
+                  </div>
+                  <div className="p-8 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm transform md:-translate-y-4 shadow-2xl shadow-brandOrange/10">
+                      <div className="text-5xl lg:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-br from-brandOrange to-yellow-400 mb-2">{t(lang, 'impact_2_val')}</div>
+                      <div className="text-xl font-bold text-white mb-2">{t(lang, 'impact_2_label')}</div>
+                      <p className="text-sm text-slate-400 leading-relaxed">{t(lang, 'impact_2_desc')}</p>
+                  </div>
+                  <div className="p-8 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                      <div className="text-5xl lg:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-br from-emerald-400 to-green-300 mb-2">{t(lang, 'impact_3_val')}</div>
+                      <div className="text-xl font-bold text-white mb-2">{t(lang, 'impact_3_label')}</div>
+                      <p className="text-sm text-slate-400 leading-relaxed">{t(lang, 'impact_3_desc')}</p>
+                  </div>
+              </div>
+          </div>
       </section>
 
       {/* --- Standards Ticker --- */}
@@ -145,6 +190,40 @@ export default function LandingPage(props: LandingPageProps) {
           </div>
       </section>
 
+      {/* --- NEW: CAPABILITIES ECOSYSTEM --- */}
+      <section className="py-20 lg:py-28 bg-slate-50">
+          <div className="max-w-7xl mx-auto px-6">
+              <div className="text-center mb-16">
+                  <h2 className="text-4xl font-bold text-slate-900 mb-6">{t(lang, 'cap_section_title')}</h2>
+                  <p className="text-lg text-slate-500 max-w-2xl mx-auto">{t(lang, 'cap_section_desc')}</p>
+              </div>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
+                  {capabilities.map((cap) => (
+                      <div 
+                        key={cap.id} 
+                        onClick={() => onCapability?.(cap.id)}
+                        className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer group flex flex-col items-start h-full"
+                      >
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-6 text-white shadow-md transition-transform group-hover:scale-110 ${
+                              cap.color === 'blue' ? 'bg-blue-500' : 
+                              cap.color === 'green' ? 'bg-green-500' : 
+                              cap.color === 'orange' ? 'bg-brandOrange' : 
+                              cap.color === 'purple' ? 'bg-purple-500' : 'bg-slate-700'
+                          }`}>
+                              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={cap.icon} /></svg>
+                          </div>
+                          <h3 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-brandOrange transition-colors">{t(lang, cap.titleKey as any)}</h3>
+                          <p className="text-slate-500 text-sm mb-6 flex-1">{t(lang, cap.descKey as any)}</p>
+                          <div className="text-xs font-bold text-slate-400 uppercase tracking-wider group-hover:text-brandOrange flex items-center gap-1 mt-auto">
+                              {t(lang, 'learn_more')}
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      </section>
+
       {/* --- Section 2: Concrete Examples (Transformation) --- */}
       <section className="py-16 lg:py-24 bg-white border-b border-slate-200">
           <div className="max-w-7xl mx-auto px-4 lg:px-6">
@@ -160,19 +239,19 @@ export default function LandingPage(props: LandingPageProps) {
                       onClick={() => setActiveExample('email')}
                       className={`px-4 lg:px-6 py-2 rounded-full text-xs lg:text-sm font-bold transition ${activeExample === 'email' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
                   >
-                      Example 1: Messy Email
+                      Input: Unstructured Text
                   </button>
                   <button 
                       onClick={() => setActiveExample('drawing')}
                       className={`px-4 lg:px-6 py-2 rounded-full text-xs lg:text-sm font-bold transition ${activeExample === 'drawing' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
                   >
-                      Example 2: Drawing Spec
+                      Input: Engineering Drawing
                   </button>
                   <button 
                       onClick={() => props.onNavigate('IMAGE_EDITOR')}
                       className="px-4 lg:px-6 py-2 rounded-full text-xs lg:text-sm font-bold bg-white text-brandOrange border border-brandOrange/30 hover:bg-brandOrange/5 transition"
                   >
-                      Try Visual Editor →
+                      Visual Spec Editor →
                   </button>
               </div>
 
@@ -180,7 +259,7 @@ export default function LandingPage(props: LandingPageProps) {
                   {/* INPUT */}
                   <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 lg:p-8 relative overflow-hidden group">
                       <div className="absolute top-4 left-4 bg-red-100 text-red-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide">
-                          Input: {activeExample === 'email' ? 'Natural Language' : 'PDF Extraction'}
+                          Source Data
                       </div>
                       
                       <div className="mt-8 font-mono text-xs lg:text-sm text-slate-600 bg-slate-50 p-4 lg:p-6 rounded-xl border border-dashed border-slate-300 min-h-[300px] flex flex-col justify-center">
@@ -219,7 +298,7 @@ export default function LandingPage(props: LandingPageProps) {
                   <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl p-4 lg:p-8 relative overflow-hidden">
                       <div className="absolute top-0 right-0 w-64 h-64 bg-brandOrange/10 rounded-full blur-[80px]"></div>
                       <div className="absolute top-4 left-4 bg-green-500 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wide z-10">
-                          Output: Crontal Structured Data
+                          Structured Output
                       </div>
 
                       <div className="mt-12 relative z-10 overflow-x-auto">
@@ -321,53 +400,6 @@ export default function LandingPage(props: LandingPageProps) {
           </div>
       </section>
 
-      {/* --- Section 3: Value Proposition (Why?) --- */}
-      <section className="py-16 lg:py-24 bg-white">
-          <div className="max-w-7xl mx-auto px-6">
-              <div className="text-center mb-16 lg:mb-20">
-                  <h2 className="text-3xl lg:text-4xl font-bold text-slate-900 mb-6">{t(lang, 'val_prop_title')}</h2>
-                  <p className="text-lg text-slate-500 max-w-2xl mx-auto">
-                      We replaced the manual "Copy-Paste" workflow with an intelligent engine.
-                  </p>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-12">
-                  {/* Value 1: Standardization */}
-                  <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 group">
-                      <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                          <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                      </div>
-                      <h3 className="text-xl font-bold text-slate-900 mb-3">{t(lang, 'val_prop_1_title')}</h3>
-                      <p className="text-slate-500 leading-relaxed text-sm">
-                          {t(lang, 'val_prop_1_desc')}
-                      </p>
-                  </div>
-
-                  {/* Value 2: Risk Reduction */}
-                  <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 group">
-                      <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                          <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                      </div>
-                      <h3 className="text-xl font-bold text-slate-900 mb-3">{t(lang, 'val_prop_2_title')}</h3>
-                      <p className="text-slate-500 leading-relaxed text-sm">
-                          {t(lang, 'val_prop_2_desc')}
-                      </p>
-                  </div>
-
-                  {/* Value 3: Speed */}
-                  <div className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300 group">
-                      <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                          <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                      </div>
-                      <h3 className="text-xl font-bold text-slate-900 mb-3">{t(lang, 'val_prop_3_title')}</h3>
-                      <p className="text-slate-500 leading-relaxed text-sm">
-                          {t(lang, 'val_prop_3_desc')}
-                      </p>
-                  </div>
-              </div>
-          </div>
-      </section>
-
       {/* --- Section 5: CTA --- */}
       <section className="py-24 lg:py-32 bg-slate-900 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-brandOrange/10 rounded-full blur-[100px] pointer-events-none"></div>
@@ -381,10 +413,10 @@ export default function LandingPage(props: LandingPageProps) {
               
               <div className="flex flex-col sm:flex-row justify-center gap-6">
                   <ShimmerButton 
-                      onClick={props.onStart}
+                      onClick={handleSchedule}
                       className="px-10 py-4 bg-brandOrange text-white rounded-xl text-sm font-bold uppercase tracking-wide hover:bg-orange-500 transition shadow-[0_0_30px_rgba(249,115,22,0.4)] w-full sm:w-auto"
                   >
-                      {t(lang, 'cta_start')}
+                      {t(lang, 'cta_schedule')}
                   </ShimmerButton>
               </div>
           </div>

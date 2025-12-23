@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import LZString from 'lz-string';
-import { Rfq, Quote, Language, FileAttachment } from '../types';
+import { Rfq, Quote, Language, FileAttachment, LineItem } from '../types';
 import { t } from '../utils/i18n';
 import { storageService } from '../services/storageService';
 
@@ -12,12 +12,15 @@ interface SupplierViewProps {
 }
 
 export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: SupplierViewProps) {
+  // Use a local activeRfq state to allow loading "Shadow RFQs" from history when the original link is gone
+  const [activeRfq, setActiveRfq] = useState<Rfq | null>(rfq);
+  
   const [prices, setPrices] = useState<Record<number, number>>({});
   const [moqs, setMoqs] = useState<Record<number, number>>({});
   const [alternates, setAlternates] = useState<Record<number, string>>({});
   
   // Persist a draft ID to update the same record when saving multiple times
-  const [quoteId] = useState<string>(`QT-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
+  const [quoteId, setQuoteId] = useState<string>(`QT-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
 
   const [formData, setFormData] = useState({
       supplierName: '',
@@ -40,8 +43,13 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
       setQuoteHistory(storageService.getQuotes());
   }, []);
 
-  // Standalone Page Layout Wrapper
-  if (!rfq && viewMode === 'active') {
+  // Update activeRfq if prop changes (e.g. new link loaded)
+  useEffect(() => {
+      if (rfq) setActiveRfq(rfq);
+  }, [rfq]);
+
+  // Standalone Page Layout Wrapper - Only show if no active RFQ (shadow or real)
+  if (!activeRfq && viewMode === 'active') {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center text-slate-400 gap-4">
               <p>{t(lang, 'no_active_rfq')}</p>
@@ -66,9 +74,9 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
   };
 
   const calculateTotal = () => {
-      if (!rfq) return 0;
+      if (!activeRfq) return 0;
       let total = 0;
-      rfq.line_items.forEach(item => {
+      activeRfq.line_items.forEach(item => {
           const price = prices[item.line] || 0;
           total += price * (item.quantity || 0);
       });
@@ -114,7 +122,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
   };
 
   const constructQuote = async (): Promise<Quote | null> => {
-      if (!rfq) return null;
+      if (!activeRfq) return null;
 
       // Process attachments
       const processedAttachments: FileAttachment[] = [];
@@ -129,8 +137,8 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
 
       return {
           id: quoteId,
-          rfqId: rfq.id,
-          projectName: rfq.project_name || "Untitled RFP",
+          rfqId: activeRfq.id,
+          projectName: activeRfq.project_name || "Untitled RFP",
           supplierName: formData.supplierName || "Unnamed Supplier",
           currency: formData.currency,
           total: calculateTotal(),
@@ -142,7 +150,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
           email: '',
           phone: '',
           timestamp: Date.now(),
-          items: rfq.line_items.map(item => ({
+          items: activeRfq.line_items.map(item => ({
               line: item.line,
               quantity: item.quantity,
               unitPrice: prices[item.line] || 0,
@@ -173,7 +181,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
   };
 
   const handleSubmit = async () => {
-      if (!rfq) return;
+      if (!activeRfq) return;
       setIsSending(true);
 
       const quote = await constructQuote();
@@ -202,6 +210,84 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
           setSubmittedLink(responseUrl);
           onSubmitQuote(quote); // Optimistic UI update
       }, 800);
+  };
+
+  const handleLoadQuote = (quote: Quote) => {
+      // 1. Set ID first to ensure updates map to this record
+      setQuoteId(quote.id);
+
+      // 2. Restore Form Data
+      setFormData({
+          supplierName: quote.supplierName,
+          currency: quote.currency,
+          leadTime: quote.leadTime,
+          payment: quote.payment,
+          validity: quote.validity,
+          notes: quote.notes
+      });
+
+      // 3. Restore Line Items Data
+      const newPrices: Record<number, number> = {};
+      const newMoqs: Record<number, number> = {};
+      const newAlternates: Record<number, string> = {};
+
+      quote.items.forEach(item => {
+          newPrices[item.line] = item.unitPrice || 0;
+          if (item.moq) newMoqs[item.line] = item.moq;
+          if (item.alternates) newAlternates[item.line] = item.alternates;
+      });
+
+      setPrices(newPrices);
+      setMoqs(newMoqs);
+      setAlternates(newAlternates);
+
+      // 4. Set Active RFQ (Reconstruct if needed)
+      // If the current prop RFQ matches the quote, use it (best data quality)
+      if (rfq && rfq.id === quote.rfqId) {
+          setActiveRfq(rfq);
+      } else {
+          // Reconstruct a Shadow RFQ for viewing
+          const shadowItems: LineItem[] = quote.items.map(qi => ({
+              item_id: `SHADOW-${qi.line}`,
+              line: qi.line,
+              description: qi.rfqDescription || "Item", // Use stored description
+              raw_description: "",
+              product_type: null,
+              material_grade: null,
+              tolerance: null,
+              test_reqs: [],
+              size: { 
+                  outer_diameter: { value: null, unit: null }, 
+                  wall_thickness: { value: null, unit: null }, 
+                  length: { value: null, unit: null } 
+              },
+              quantity: qi.quantity,
+              uom: "unit", 
+              other_requirements: []
+          }));
+
+          const shadowRfq: Rfq = {
+              id: quote.rfqId,
+              project_name: quote.projectName || "Restored Quote",
+              status: 'sent',
+              created_at: quote.timestamp,
+              original_text: "",
+              commercial: {
+                  destination: "Reference Only",
+                  incoterm: "",
+                  paymentTerm: "",
+                  otherRequirements: "",
+                  req_mtr: false,
+                  req_avl: false,
+                  req_tpi: false,
+                  warranty_months: 0
+              },
+              line_items: shadowItems
+          };
+          setActiveRfq(shadowRfq);
+      }
+
+      setViewMode('active');
   };
 
   if (submittedLink) {
@@ -320,26 +406,33 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                 <div className="p-8 text-center text-slate-400 text-sm">No history found on this device.</div>
                             ) : (
                                 quoteHistory.map(q => (
-                                    <div key={q.id} className="p-4 hover:bg-slate-50 flex justify-between items-center transition-colors">
+                                    <button 
+                                        key={q.id} 
+                                        onClick={() => handleLoadQuote(q)}
+                                        className="w-full text-left p-4 hover:bg-slate-50 flex justify-between items-center transition-colors group"
+                                    >
                                         <div>
-                                            <div className="font-medium text-slate-900">{q.projectName || "Untitled RFP"}</div>
+                                            <div className="font-medium text-slate-900 group-hover:text-blue-600 transition-colors">{q.projectName || "Untitled RFP"}</div>
                                             <div className="text-xs text-slate-500">Ref: {q.rfqId} • {new Date(q.timestamp).toLocaleDateString()}</div>
                                         </div>
                                         <div className="text-right">
                                             <div className="font-bold text-slate-900">{q.currency} {q.total.toLocaleString()}</div>
-                                            <div className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full inline-block mt-1 font-bold">{t(lang, 'status_sent')}</div>
+                                            <div className="flex items-center justify-end gap-2 mt-1">
+                                                <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full font-bold">{t(lang, 'status_sent')}</span>
+                                                <svg className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transform group-hover:translate-x-1 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                            </div>
                                         </div>
-                                    </div>
+                                    </button>
                                 ))
                             )}
                         </div>
                      </div>
                 ) : (
                     // Active Quote View
-                    rfq ? (
+                    activeRfq ? (
                     <div className="space-y-6">
                         {/* AI Summary Banner (If Exists) */}
-                        {rfq.ai_summary && (
+                        {activeRfq.ai_summary && (
                             <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-5 rounded-2xl border border-slate-700 relative overflow-hidden text-white shadow-lg">
                                 <div className="absolute top-0 right-0 p-4 opacity-10">
                                     <svg className="w-24 h-24" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1010 10A10 10 0 0012 2zm0 18a8 8 0 118-8 8 8 0 01-8 8z" /></svg>
@@ -349,7 +442,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                         <div className="px-2 py-0.5 bg-white/20 text-white text-[10px] font-bold rounded-full uppercase tracking-wide">Executive Summary</div>
                                     </div>
                                     <p className="text-slate-100 text-sm font-medium leading-relaxed italic max-w-3xl">
-                                        "{rfq.ai_summary}"
+                                        "{activeRfq.ai_summary}"
                                     </p>
                                 </div>
                             </div>
@@ -360,23 +453,23 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                 <div className="flex flex-col md:flex-row justify-between items-start gap-4">
                                     <div>
                                         <div className="flex items-center gap-2">
-                                            <h2 className="text-xl font-bold text-slate-900">{rfq.project_name}</h2>
+                                            <h2 className="text-xl font-bold text-slate-900">{activeRfq.project_name}</h2>
                                             <span className="px-2 py-0.5 rounded text-blue-700 bg-blue-50 text-[10px] font-bold uppercase tracking-wide border border-blue-100">Open for Bid</span>
                                         </div>
-                                        <div className="text-xs text-slate-500 mt-1 font-mono">Ref: {rfq.id}</div>
+                                        <div className="text-xs text-slate-500 mt-1 font-mono">Ref: {activeRfq.id}</div>
                                         <div className="flex flex-wrap gap-2 mt-3">
-                                            {rfq.commercial.req_mtr && <span className="text-[10px] bg-red-50 text-red-700 px-2 py-1 rounded border border-red-100 font-bold uppercase">MTR Required</span>}
-                                            {rfq.commercial.req_avl && <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded border border-amber-100 font-bold uppercase">AVL Only</span>}
+                                            {activeRfq.commercial.req_mtr && <span className="text-[10px] bg-red-50 text-red-700 px-2 py-1 rounded border border-red-100 font-bold uppercase">MTR Required</span>}
+                                            {activeRfq.commercial.req_avl && <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded border border-amber-100 font-bold uppercase">AVL Only</span>}
                                         </div>
                                     </div>
                                     <div className="text-right text-xs text-slate-600 bg-white p-3 rounded-lg border border-slate-200 shadow-sm w-full md:w-auto">
                                         <div className="flex justify-between md:justify-end gap-4 mb-1">
                                             <span className="text-slate-400">Destination</span>
-                                            <span className="font-bold">{rfq.commercial.destination || "Not Specified"}</span>
+                                            <span className="font-bold">{activeRfq.commercial.destination || "Not Specified"}</span>
                                         </div>
                                         <div className="flex justify-between md:justify-end gap-4">
                                             <span className="text-slate-400">Incoterm</span>
-                                            <span className="font-bold">{rfq.commercial.incoterm || "Not Specified"}</span>
+                                            <span className="font-bold">{activeRfq.commercial.incoterm || "Not Specified"}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -396,7 +489,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {rfq.line_items.map(item => (
+                                        {activeRfq.line_items.map(item => (
                                             <tr key={item.item_id} className="hover:bg-slate-50 transition-colors group">
                                                 <td className="px-4 py-4 text-slate-400 font-mono text-xs text-center">{item.line}</td>
                                                 <td className="px-4 py-4">
@@ -423,6 +516,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                                     <input 
                                                         type="number" 
                                                         placeholder="-"
+                                                        value={moqs[item.line] || ''}
                                                         className="w-full bg-white border border-slate-200 rounded-lg px-2 py-2 text-sm text-center focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm"
                                                         onChange={(e) => handleMoqChange(item.line, e.target.value)}
                                                     />
@@ -431,6 +525,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                                     <input 
                                                         type="number" 
                                                         placeholder="0.00"
+                                                        value={prices[item.line] || ''}
                                                         className="w-full text-right bg-white border border-slate-200 rounded-lg px-2 py-2 text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm"
                                                         onChange={(e) => handlePriceChange(item.line, e.target.value)}
                                                     />
@@ -439,6 +534,7 @@ export default function SupplierView({ rfq, onSubmitQuote, lang, onExit }: Suppl
                                                     <textarea 
                                                         rows={1}
                                                         placeholder="..."
+                                                        value={alternates[item.line] || ''}
                                                         className="w-full bg-white border border-slate-200 rounded-lg px-2 py-2 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm resize-none"
                                                         onChange={(e) => handleAltChange(item.line, e.target.value)}
                                                     />

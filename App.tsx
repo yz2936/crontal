@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import LZString from 'lz-string';
-import { Rfq, Quote, ViewMode, Language, User } from './types';
+import { Rfq, Quote, ViewMode, Language, User, CapabilityId } from './types';
 import BuyerView from './views/BuyerView';
 import SupplierView from './views/SupplierView';
 import AuthView from './views/AuthView';
@@ -16,6 +16,7 @@ import TermsOfService from './views/TermsOfService';
 import BlogPage from './views/BlogPage'; 
 import IndustryInsights from './views/IndustryInsights';
 import ImageEditor from './views/ImageEditor';
+import CapabilityDetail from './views/CapabilityDetail';
 import { Layout } from './components/Layout';
 import { authService } from './services/authService';
 import { storageService } from './services/storageService';
@@ -28,14 +29,26 @@ export default function App() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [lang, setLang] = useState<Language>('en');
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [selectedCapability, setSelectedCapability] = useState<CapabilityId>('structuring');
 
   // Check for API Key presence
   const apiKey = process.env.API_KEY;
 
   // Central Navigation Handler
   const handleNavigate = (target: string) => {
-    setView(target as ViewMode);
+    if (target.startsWith('CAPABILITY:')) {
+        const capId = target.split(':')[1];
+        setSelectedCapability(capId as CapabilityId);
+        setView('CAPABILITY');
+    } else {
+        setView(target as ViewMode);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCapabilityNav = (id: string) => {
+      setSelectedCapability(id as CapabilityId);
+      handleNavigate('CAPABILITY');
   };
 
   // Load quotes whenever the active RFQ changes
@@ -270,6 +283,7 @@ export default function App() {
           if (view === 'BLOG') return <BlogPage {...navProps} />;
           if (view === 'INSIGHTS') return <IndustryInsights {...navProps} />;
           if (view === 'IMAGE_EDITOR') return <ImageEditor onBack={() => handleNavigate('HOME')} lang={lang} />;
+          if (view === 'CAPABILITY') return <CapabilityDetail {...navProps} capabilityId={selectedCapability} />;
 
           if (view === 'SUPPLIER') {
               return <SupplierView rfq={rfq} onSubmitQuote={handleQuoteSubmit} lang={lang} onExit={handleSupplierExit} />;
@@ -288,6 +302,7 @@ export default function App() {
                     onPrivacy={() => handleNavigate('PRIVACY')}
                     onTerms={() => handleNavigate('TERMS')}
                     onBlog={() => handleNavigate('BLOG')}
+                    onCapability={handleCapabilityNav}
                     lang={lang}
                     setLang={setLang}
                 />

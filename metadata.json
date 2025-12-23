@@ -1,5 +1,8 @@
+
 {
-  "name": "Copy of Crontal - RFQ Automation",
-  "description": "A React-based RFQ automation platform enabling buyers to generate structured requests from natural language and suppliers to submit quotes instantly, powered by Gemini.",
-  "requestFramePermissions": []
+  "name": "Crontal - Industrial Procurement Automation",
+  "description": "AI-powered RFQ automation for industrial buyers. Convert PDF engineering drawings to POs instantly.",
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

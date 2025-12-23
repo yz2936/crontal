@@ -2,6 +2,8 @@
 
 
 
+
+
 export interface Dimension {
     value: number | null;
     unit: string | null;
@@ -172,9 +174,11 @@ export interface SupplierCandidate {
     contactEmail?: string;
   }
   
-  // Added INSIGHTS and IMAGE_EDITOR to ViewMode
-  export type ViewMode = 'HOME' | 'BUYER' | 'SUPPLIER' | 'TECH' | 'ABOUT' | 'ROI' | 'SUPPLIER_LANDING' | 'QUALITY' | 'PRIVACY' | 'TERMS' | 'BLOG' | 'INSIGHTS' | 'IMAGE_EDITOR';
+  // Added CAPABILITY
+  export type ViewMode = 'HOME' | 'BUYER' | 'SUPPLIER' | 'TECH' | 'ABOUT' | 'ROI' | 'SUPPLIER_LANDING' | 'QUALITY' | 'PRIVACY' | 'TERMS' | 'BLOG' | 'INSIGHTS' | 'IMAGE_EDITOR' | 'CAPABILITY';
   
+  export type CapabilityId = 'structuring' | 'validation' | 'sourcing' | 'comparison' | 'awarding';
+
   export interface TourStep {
     selector: string;
     text: string;
