@@ -12,20 +12,11 @@ interface MarketingNavbarProps {
 
 export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({ onStart, onNavigate, darkMode = false, lang = 'en', setLang }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isCapabilitiesOpen, setIsCapabilitiesOpen] = useState(false);
 
   const textClass = darkMode ? 'text-white hover:text-blue-400' : 'text-slate-500 hover:text-brandOrange';
   const logoTextClass = darkMode ? 'text-white' : 'text-slate-900';
   const logoSubTextClass = darkMode ? 'text-slate-400' : 'text-slate-400';
   const bgClass = darkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-slate-200';
-
-  const capabilities = [
-    { label: 'AI Structuring', id: 'structuring', desc: 'PDF to JSON' },
-    { label: 'Tech Validation', id: 'validation', desc: 'ASTM/API Check' },
-    { label: 'Supplier Mgmt', id: 'sourcing', desc: 'Secure Portal' },
-    { label: 'Bid Comparison', id: 'comparison', desc: 'Real-time Matrix' },
-    { label: 'Auto Awarding', id: 'awarding', desc: 'Instant POs' },
-  ];
 
   const navItems = [
     { label: 'About', action: () => onNavigate('ABOUT') },
@@ -55,37 +46,6 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({ onStart, onNav
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-6">
-            
-            {/* Capabilities Dropdown */}
-            <div 
-                className="relative group h-full"
-                onMouseEnter={() => setIsCapabilitiesOpen(true)}
-                onMouseLeave={() => setIsCapabilitiesOpen(false)}
-            >
-                <button 
-                    className={`flex items-center gap-1 text-xs font-bold uppercase tracking-widest transition-colors ${textClass} py-2`}
-                >
-                    Capabilities
-                    <svg className={`w-3 h-3 transition-transform ${isCapabilitiesOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                </button>
-                
-                {/* Dropdown Content */}
-                <div className={`absolute top-full left-0 w-56 pt-2 transition-all duration-200 transform origin-top-left ${isCapabilitiesOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'}`}>
-                    <div className={`rounded-xl border shadow-xl p-2 flex flex-col gap-1 ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-                        {capabilities.map(cap => (
-                            <button
-                                key={cap.id}
-                                onClick={() => { onNavigate(`CAPABILITY:${cap.id}`); setIsCapabilitiesOpen(false); }}
-                                className={`text-left px-4 py-3 rounded-lg flex flex-col group/item transition-colors ${darkMode ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}
-                            >
-                                <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'} group-hover/item:text-brandOrange transition-colors`}>{cap.label}</span>
-                                <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{cap.desc}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </div>
-
             {navItems.map((item) => (
               <button
                 key={item.label}
@@ -131,20 +91,7 @@ export const MarketingNavbar: React.FC<MarketingNavbarProps> = ({ onStart, onNav
 
         {/* Mobile Menu Dropdown */}
         {isMobileMenuOpen && (
-          <div className="md:hidden pt-4 pb-2 space-y-1 border-t border-slate-100 mt-4 animate-in slide-in-from-top-2">
-            <div className="px-2 py-2">
-                <p className={`text-[10px] font-bold uppercase tracking-widest mb-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Capabilities</p>
-                {capabilities.map((cap) => (
-                    <button
-                        key={cap.id}
-                        onClick={() => { onNavigate(`CAPABILITY:${cap.id}`); setIsMobileMenuOpen(false); }}
-                        className={`block w-full text-left py-2 px-2 text-sm font-medium ${textClass}`}
-                    >
-                        {cap.label}
-                    </button>
-                ))}
-            </div>
-            <div className="h-px bg-slate-200/50 my-2"></div>
+          <div className="md:hidden pt-4 pb-2 space-y-2 border-t border-slate-100 mt-4 animate-in slide-in-from-top-2">
             {navItems.map((item) => (
               <button
                 key={item.label}

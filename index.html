@@ -3,70 +3,84 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Crontal · Industrial Procurement AI</title>
-  <meta name="description" content="AI-powered RFQ automation for industrial buyers." />
-  
+  <title>Crontal · RFQ Automation</title>
+  <!-- Tailwind via CDN for simplest deployment without PostCSS config -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    // Critical: Global process shim for environment variable access
-    window.process = {
-      env: {
-        NODE_ENV: 'production',
-        API_KEY: '' // Injected by the environment
-      }
-    };
-
+    // Global Shim to prevent "process is not defined" errors in browser
+    window.process = window.process || { env: { NODE_ENV: 'production' } };
+    
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            accent: '#0B1121',
-            brandOrange: '#F97316',
-            brandTeal: '#2DD4BF',
+            accent: '#0B1121', // Crontal Deep Navy
+            accentLight: '#1e293b', 
+            brandOrange: '#F97316', // Crontal Safety Orange
+            brandTeal: '#2DD4BF', // Industrial Teal
+            brandDark: '#0F172A', // Slate 900
+          },
+          fontFamily: {
+             sans: ['Inter', 'system-ui', 'sans-serif'],
+             serif: ['Merriweather', 'serif'],
+             mono: ['Fira Code', 'monospace'],
           },
           animation: {
-            'shimmer': 'shimmer 2s infinite',
-            'scroll': 'scroll 30s linear infinite',
-            'scan': 'scan 2s ease-in-out infinite',
-            'stamp': 'stamp 0.3s ease-out forwards',
+            'fade-up': 'fadeUp 0.8s ease-out forwards',
+            'scan': 'scan 3s ease-in-out infinite',
+            'gradient-x': 'gradient-x 15s ease infinite',
+            'scroll': 'scroll 40s linear infinite',
+            'bounce-x': 'bounceX 1s infinite',
+            'stamp': 'stamp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
           },
           keyframes: {
-            shimmer: {
-              '100%': { transform: 'translateX(100%)' },
-            },
-            scroll: {
-              '0%': { transform: 'translateX(0)' },
-              '100%': { transform: 'translateX(-50%)' },
+            fadeUp: {
+              '0%': { opacity: '0', transform: 'translateY(20px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
             },
             scan: {
               '0%, 100%': { top: '0%' },
               '50%': { top: '100%' },
             },
+            bounceX: {
+              '0%, 100%': { transform: 'translateX(0)' },
+              '50%': { transform: 'translateX(25%)' },
+            },
+            'gradient-x': {
+              '0%, 100%': {
+                'background-size': '200% 200%',
+                'background-position': 'left center',
+              },
+              '50%': {
+                'background-size': '200% 200%',
+                'background-position': 'right center',
+              },
+            },
+            scroll: {
+              '0%': { transform: 'translateX(0)' },
+              '100%': { transform: 'translateX(-50%)' },
+            },
             stamp: {
-              '0%': { opacity: '0', transform: 'translate(-50%, -50%) scale(2) rotate(0deg)' },
-              '100%': { opacity: '1', transform: 'translate(-50%, -50%) scale(1) rotate(-12deg)' },
+              '0%': { opacity: '0', transform: 'scale(2) rotate(0deg)' },
+              '100%': { opacity: '1', transform: 'scale(1) rotate(-12deg)' },
             }
           }
         }
       }
     }
   </script>
-
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
     "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.1",
-    "react-dom/client": "https://aistudiocdn.com/react-dom/client@^19.2.1",
-    "react/jsx-runtime": "https://aistudiocdn.com/react/jsx-runtime@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
     "lz-string": "https://aistudiocdn.com/lz-string@^1.5.0",
     "jspdf": "https://aistudiocdn.com/jspdf@^3.0.4",
     "jspdf-autotable": "https://aistudiocdn.com/jspdf-autotable@^5.0.2",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "vite": "https://esm.sh/vite@^7.3.0",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+    "vite": "https://aistudiocdn.com/vite@^7.2.6",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
   }
 }
 </script>
@@ -74,7 +88,6 @@
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 selection:bg-brandOrange/20">
   <div id="root"></div>
-  <script type="module" src="./index.tsx"></script>
-<script type="module" src="/index.tsx"></script>
+  <script type="module" src="/index.tsx"></script>
 </body>
 </html>
